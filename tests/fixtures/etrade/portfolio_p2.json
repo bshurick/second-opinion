@@ -1,0 +1,4 @@
+{"PortfolioResponse": {"AccountPortfolio": [{"accountId": "10000001", "totalPages": 2, "Position": [
+  {"positionId": 3, "symbolDescription": "VANGUARD 500 INDEX ADMIRAL", "quantity": 12.345, "pricePaid": 400.0, "totalGain": 100.0, "positionType": "LONG",
+   "Product": {"symbol": "VFIAX", "securityType": "MF"}, "Quick": {"lastTrade": 408.1}}
+]}]}}

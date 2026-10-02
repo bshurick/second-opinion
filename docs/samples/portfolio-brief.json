@@ -1,0 +1,3180 @@
+{
+ "as_of": "2026-09-15T21:04:40+00:00",
+ "sources": {
+  "holdings": "snaptrade",
+  "quotes": "yahoo",
+  "sectors": "yahoo",
+  "events": "yahoo",
+  "news": "yahoo"
+ },
+ "totals": {
+  "market_value": 390785.0,
+  "cash": 21715.0,
+  "total_value": 412500.0,
+  "cash_pct": 0.0526,
+  "cash_like": 21715.0,
+  "cash_like_pct": 0.0526,
+  "cost_basis": 317200.0,
+  "unrealized_pnl": 73585.0,
+  "unrealized_pnl_pct": 0.232,
+  "day_change": 1142.05,
+  "day_change_pct": 0.0029,
+  "day_change_coverage": 1.0,
+  "no_cost_basis_value": 0.0,
+  "no_cost_basis_pct": 0.0
+ },
+ "accounts": [
+  {
+   "account_id": "sample-brokerage",
+   "name": "Sample Brokerage",
+   "institution_name": "Sample Securities",
+   "account_type": "Individual",
+   "supports_trading": true,
+   "market_value": 155785.0,
+   "cash": 12215.0,
+   "cash_adjusted_for_money_market": 0.0,
+   "total_value": 168000.0,
+   "weight": 0.4073,
+   "position_count": 5
+  },
+  {
+   "account_id": "sample-roth",
+   "name": "Sample Roth IRA",
+   "institution_name": "Sample Securities",
+   "account_type": "Roth IRA",
+   "supports_trading": false,
+   "market_value": 71100.0,
+   "cash": 3400.0,
+   "cash_adjusted_for_money_market": 0.0,
+   "total_value": 74500.0,
+   "weight": 0.1806,
+   "position_count": 3
+  },
+  {
+   "account_id": "sample-401k",
+   "name": "Sample 401(k)",
+   "institution_name": "Sample Retirement Plan",
+   "account_type": "401(k)",
+   "supports_trading": false,
+   "market_value": 163900.0,
+   "cash": 6100.0,
+   "cash_adjusted_for_money_market": 0.0,
+   "total_value": 170000.0,
+   "weight": 0.4121,
+   "position_count": 2
+  }
+ ],
+ "positions": [
+  {
+   "symbol": "VTI",
+   "name": "Vanguard Total Stock Market ETF",
+   "units": 520.0,
+   "price": 312.0,
+   "market_value": 162240.0,
+   "weight": 0.3933,
+   "cost_basis": 118800.0,
+   "unrealized_pnl": 43440.0,
+   "unrealized_pnl_pct": 0.3657,
+   "day_change": 967.63,
+   "day_change_pct": 0.006,
+   "week_change_pct": 0.0208,
+   "month_change_pct": 0.0532,
+   "sector": "ETF",
+   "accounts": [
+    "sample-brokerage",
+    "sample-401k"
+   ]
+  },
+  {
+   "symbol": "BND",
+   "name": "Vanguard Total Bond Market ETF",
+   "units": 950.0,
+   "price": 74.0,
+   "market_value": 70300.0,
+   "weight": 0.1704,
+   "cost_basis": 72200.0,
+   "unrealized_pnl": -1900.0,
+   "unrealized_pnl_pct": -0.0263,
+   "day_change": 70.23,
+   "day_change_pct": 0.001,
+   "week_change_pct": 0.0043,
+   "month_change_pct": 0.0142,
+   "sector": "ETF",
+   "accounts": [
+    "sample-401k"
+   ]
+  },
+  {
+   "symbol": "VXUS",
+   "name": "Vanguard Total International Stock ETF",
+   "units": 600.0,
+   "price": 68.0,
+   "market_value": 40800.0,
+   "weight": 0.0989,
+   "cost_basis": 34200.0,
+   "unrealized_pnl": 6600.0,
+   "unrealized_pnl_pct": 0.193,
+   "day_change": 81.44,
+   "day_change_pct": 0.002,
+   "week_change_pct": 0.0147,
+   "month_change_pct": 0.0468,
+   "sector": "ETF",
+   "accounts": [
+    "sample-roth"
+   ]
+  },
+  {
+   "symbol": "AAPL",
+   "name": "Apple Inc.",
+   "units": 120.0,
+   "price": 232.0,
+   "market_value": 27840.0,
+   "weight": 0.0675,
+   "cost_basis": 19200.0,
+   "unrealized_pnl": 8640.0,
+   "unrealized_pnl_pct": 0.45,
+   "day_change": 492.26,
+   "day_change_pct": 0.018,
+   "week_change_pct": 0.0521,
+   "month_change_pct": 0.0834,
+   "sector": "Technology",
+   "accounts": [
+    "sample-brokerage"
+   ]
+  },
+  {
+   "symbol": "MSFT",
+   "name": "Microsoft Corp.",
+   "units": 55.0,
+   "price": 505.0,
+   "market_value": 27775.0,
+   "weight": 0.0673,
+   "cost_basis": 18150.0,
+   "unrealized_pnl": 9625.0,
+   "unrealized_pnl_pct": 0.5303,
+   "day_change": -252.25,
+   "day_change_pct": -0.009,
+   "week_change_pct": -0.0263,
+   "month_change_pct": -0.038,
+   "sector": "Technology",
+   "accounts": [
+    "sample-brokerage"
+   ]
+  },
+  {
+   "symbol": "COST",
+   "name": "Costco Wholesale Corp.",
+   "units": 22.0,
+   "price": 915.0,
+   "market_value": 20130.0,
+   "weight": 0.0488,
+   "cost_basis": 15400.0,
+   "unrealized_pnl": 4730.0,
+   "unrealized_pnl_pct": 0.3071,
+   "day_change": 80.2,
+   "day_change_pct": 0.004,
+   "week_change_pct": 0.0195,
+   "month_change_pct": 0.058,
+   "sector": "Consumer Defensive",
+   "accounts": [
+    "sample-brokerage"
+   ]
+  },
+  {
+   "symbol": "JNJ",
+   "name": "Johnson & Johnson",
+   "units": 100.0,
+   "price": 165.0,
+   "market_value": 16500.0,
+   "weight": 0.04,
+   "cost_basis": 15800.0,
+   "unrealized_pnl": 700.0,
+   "unrealized_pnl_pct": 0.0443,
+   "day_change": -234.28,
+   "day_change_pct": -0.014,
+   "week_change_pct": -0.0273,
+   "month_change_pct": -0.0427,
+   "sector": "Healthcare",
+   "accounts": [
+    "sample-roth"
+   ]
+  },
+  {
+   "symbol": "VNQ",
+   "name": "Vanguard Real Estate ETF",
+   "units": 150.0,
+   "price": 92.0,
+   "market_value": 13800.0,
+   "weight": 0.0335,
+   "cost_basis": 13050.0,
+   "unrealized_pnl": 750.0,
+   "unrealized_pnl_pct": 0.0575,
+   "day_change": -97.28,
+   "day_change_pct": -0.007,
+   "week_change_pct": -0.018,
+   "month_change_pct": -0.0428,
+   "sector": "ETF",
+   "accounts": [
+    "sample-roth"
+   ]
+  },
+  {
+   "symbol": "SCHD",
+   "name": "Schwab US Dividend Equity ETF",
+   "units": 400.0,
+   "price": 28.5,
+   "market_value": 11400.0,
+   "weight": 0.0276,
+   "cost_basis": 10400.0,
+   "unrealized_pnl": 1000.0,
+   "unrealized_pnl_pct": 0.0962,
+   "day_change": 34.1,
+   "day_change_pct": 0.003,
+   "week_change_pct": 0.0122,
+   "month_change_pct": 0.0376,
+   "sector": "ETF",
+   "accounts": [
+    "sample-brokerage"
+   ]
+  }
+ ],
+ "top_holdings": [
+  {
+   "symbol": "VTI",
+   "name": "Vanguard Total Stock Market ETF",
+   "units": 520.0,
+   "price": 312.0,
+   "market_value": 162240.0,
+   "weight": 0.3933,
+   "cost_basis": 118800.0,
+   "unrealized_pnl": 43440.0,
+   "unrealized_pnl_pct": 0.3657,
+   "day_change": 967.63,
+   "day_change_pct": 0.006,
+   "week_change_pct": 0.0208,
+   "month_change_pct": 0.0532,
+   "sector": "ETF",
+   "accounts": [
+    "sample-brokerage",
+    "sample-401k"
+   ]
+  },
+  {
+   "symbol": "BND",
+   "name": "Vanguard Total Bond Market ETF",
+   "units": 950.0,
+   "price": 74.0,
+   "market_value": 70300.0,
+   "weight": 0.1704,
+   "cost_basis": 72200.0,
+   "unrealized_pnl": -1900.0,
+   "unrealized_pnl_pct": -0.0263,
+   "day_change": 70.23,
+   "day_change_pct": 0.001,
+   "week_change_pct": 0.0043,
+   "month_change_pct": 0.0142,
+   "sector": "ETF",
+   "accounts": [
+    "sample-401k"
+   ]
+  },
+  {
+   "symbol": "VXUS",
+   "name": "Vanguard Total International Stock ETF",
+   "units": 600.0,
+   "price": 68.0,
+   "market_value": 40800.0,
+   "weight": 0.0989,
+   "cost_basis": 34200.0,
+   "unrealized_pnl": 6600.0,
+   "unrealized_pnl_pct": 0.193,
+   "day_change": 81.44,
+   "day_change_pct": 0.002,
+   "week_change_pct": 0.0147,
+   "month_change_pct": 0.0468,
+   "sector": "ETF",
+   "accounts": [
+    "sample-roth"
+   ]
+  },
+  {
+   "symbol": "AAPL",
+   "name": "Apple Inc.",
+   "units": 120.0,
+   "price": 232.0,
+   "market_value": 27840.0,
+   "weight": 0.0675,
+   "cost_basis": 19200.0,
+   "unrealized_pnl": 8640.0,
+   "unrealized_pnl_pct": 0.45,
+   "day_change": 492.26,
+   "day_change_pct": 0.018,
+   "week_change_pct": 0.0521,
+   "month_change_pct": 0.0834,
+   "sector": "Technology",
+   "accounts": [
+    "sample-brokerage"
+   ]
+  },
+  {
+   "symbol": "MSFT",
+   "name": "Microsoft Corp.",
+   "units": 55.0,
+   "price": 505.0,
+   "market_value": 27775.0,
+   "weight": 0.0673,
+   "cost_basis": 18150.0,
+   "unrealized_pnl": 9625.0,
+   "unrealized_pnl_pct": 0.5303,
+   "day_change": -252.25,
+   "day_change_pct": -0.009,
+   "week_change_pct": -0.0263,
+   "month_change_pct": -0.038,
+   "sector": "Technology",
+   "accounts": [
+    "sample-brokerage"
+   ]
+  },
+  {
+   "symbol": "COST",
+   "name": "Costco Wholesale Corp.",
+   "units": 22.0,
+   "price": 915.0,
+   "market_value": 20130.0,
+   "weight": 0.0488,
+   "cost_basis": 15400.0,
+   "unrealized_pnl": 4730.0,
+   "unrealized_pnl_pct": 0.3071,
+   "day_change": 80.2,
+   "day_change_pct": 0.004,
+   "week_change_pct": 0.0195,
+   "month_change_pct": 0.058,
+   "sector": "Consumer Defensive",
+   "accounts": [
+    "sample-brokerage"
+   ]
+  },
+  {
+   "symbol": "JNJ",
+   "name": "Johnson & Johnson",
+   "units": 100.0,
+   "price": 165.0,
+   "market_value": 16500.0,
+   "weight": 0.04,
+   "cost_basis": 15800.0,
+   "unrealized_pnl": 700.0,
+   "unrealized_pnl_pct": 0.0443,
+   "day_change": -234.28,
+   "day_change_pct": -0.014,
+   "week_change_pct": -0.0273,
+   "month_change_pct": -0.0427,
+   "sector": "Healthcare",
+   "accounts": [
+    "sample-roth"
+   ]
+  },
+  {
+   "symbol": "VNQ",
+   "name": "Vanguard Real Estate ETF",
+   "units": 150.0,
+   "price": 92.0,
+   "market_value": 13800.0,
+   "weight": 0.0335,
+   "cost_basis": 13050.0,
+   "unrealized_pnl": 750.0,
+   "unrealized_pnl_pct": 0.0575,
+   "day_change": -97.28,
+   "day_change_pct": -0.007,
+   "week_change_pct": -0.018,
+   "month_change_pct": -0.0428,
+   "sector": "ETF",
+   "accounts": [
+    "sample-roth"
+   ]
+  },
+  {
+   "symbol": "SCHD",
+   "name": "Schwab US Dividend Equity ETF",
+   "units": 400.0,
+   "price": 28.5,
+   "market_value": 11400.0,
+   "weight": 0.0276,
+   "cost_basis": 10400.0,
+   "unrealized_pnl": 1000.0,
+   "unrealized_pnl_pct": 0.0962,
+   "day_change": 34.1,
+   "day_change_pct": 0.003,
+   "week_change_pct": 0.0122,
+   "month_change_pct": 0.0376,
+   "sector": "ETF",
+   "accounts": [
+    "sample-brokerage"
+   ]
+  }
+ ],
+ "concentration": {
+  "hhi": 0.2112,
+  "hhi_interpretation": "concentrated",
+  "top_5_concentration": 0.7975,
+  "position_count": 9,
+  "largest_position": {
+   "symbol": "VTI",
+   "weight": 0.3933,
+   "asset_class": "fund"
+  },
+  "single_stock": {
+   "hhi": 0.0131,
+   "hhi_interpretation": "diversified",
+   "weight": 0.2236,
+   "count": 4,
+   "largest": {
+    "symbol": "AAPL",
+    "weight": 0.0675
+   }
+  }
+ },
+ "sector_weights": {
+  "Consumer Defensive": 0.0515,
+  "Healthcare": 0.0422,
+  "Technology": 0.1423
+ },
+ "sector_exposure": {
+  "sectors": {
+   "Basic Materials": {
+    "weight": 0.0132,
+    "direct": 0.0,
+    "via_funds": 0.0132,
+    "funds": [
+     {
+      "symbol": "VTI",
+      "weight": 0.0078
+     },
+     {
+      "symbol": "VXUS",
+      "weight": 0.0048
+     },
+     {
+      "symbol": "SCHD",
+      "weight": 0.0006
+     }
+    ]
+   },
+   "Communication Services": {
+    "weight": 0.0424,
+    "direct": 0.0,
+    "via_funds": 0.0424,
+    "funds": [
+     {
+      "symbol": "VTI",
+      "weight": 0.0352
+     },
+     {
+      "symbol": "VXUS",
+      "weight": 0.0058
+     },
+     {
+      "symbol": "SCHD",
+      "weight": 0.0014
+     }
+    ]
+   },
+   "Consumer Cyclical": {
+    "weight": 0.0559,
+    "direct": 0.0,
+    "via_funds": 0.0559,
+    "funds": [
+     {
+      "symbol": "VTI",
+      "weight": 0.043
+     },
+     {
+      "symbol": "VXUS",
+      "weight": 0.0107
+     },
+     {
+      "symbol": "SCHD",
+      "weight": 0.0022
+     }
+    ]
+   },
+   "Consumer Defensive": {
+    "weight": 0.0804,
+    "direct": 0.0488,
+    "via_funds": 0.0316,
+    "funds": [
+     {
+      "symbol": "VTI",
+      "weight": 0.0196
+     },
+     {
+      "symbol": "VXUS",
+      "weight": 0.0068
+     },
+     {
+      "symbol": "SCHD",
+      "weight": 0.0052
+     }
+    ]
+   },
+   "Energy": {
+    "weight": 0.0224,
+    "direct": 0.0,
+    "via_funds": 0.0224,
+    "funds": [
+     {
+      "symbol": "VTI",
+      "weight": 0.0117
+     },
+     {
+      "symbol": "SCHD",
+      "weight": 0.0058
+     },
+     {
+      "symbol": "VXUS",
+      "weight": 0.0048
+     }
+    ]
+   },
+   "Financial Services": {
+    "weight": 0.0747,
+    "direct": 0.0,
+    "via_funds": 0.0747,
+    "funds": [
+     {
+      "symbol": "VTI",
+      "weight": 0.0509
+     },
+     {
+      "symbol": "VXUS",
+      "weight": 0.0213
+     },
+     {
+      "symbol": "SCHD",
+      "weight": 0.0025
+     }
+    ]
+   },
+   "Healthcare": {
+    "weight": 0.0923,
+    "direct": 0.04,
+    "via_funds": 0.0523,
+    "funds": [
+     {
+      "symbol": "VTI",
+      "weight": 0.0391
+     },
+     {
+      "symbol": "VXUS",
+      "weight": 0.0087
+     },
+     {
+      "symbol": "SCHD",
+      "weight": 0.0044
+     }
+    ]
+   },
+   "Industrials": {
+    "weight": 0.0531,
+    "direct": 0.0,
+    "via_funds": 0.0531,
+    "funds": [
+     {
+      "symbol": "VTI",
+      "weight": 0.0352
+     },
+     {
+      "symbol": "VXUS",
+      "weight": 0.0145
+     },
+     {
+      "symbol": "SCHD",
+      "weight": 0.0033
+     }
+    ]
+   },
+   "Real Estate": {
+    "weight": 0.0455,
+    "direct": 0.0,
+    "via_funds": 0.0455,
+    "funds": [
+     {
+      "symbol": "VNQ",
+      "weight": 0.0328
+     },
+     {
+      "symbol": "VTI",
+      "weight": 0.0098
+     },
+     {
+      "symbol": "VXUS",
+      "weight": 0.0029
+     }
+    ]
+   },
+   "Technology": {
+    "weight": 0.2797,
+    "direct": 0.1348,
+    "via_funds": 0.1449,
+    "funds": [
+     {
+      "symbol": "VTI",
+      "weight": 0.1291
+     },
+     {
+      "symbol": "VXUS",
+      "weight": 0.0136
+     },
+     {
+      "symbol": "SCHD",
+      "weight": 0.0022
+     }
+    ]
+   },
+   "Utilities": {
+    "weight": 0.0127,
+    "direct": 0.0,
+    "via_funds": 0.0127,
+    "funds": [
+     {
+      "symbol": "VTI",
+      "weight": 0.0098
+     },
+     {
+      "symbol": "VXUS",
+      "weight": 0.0029
+     }
+    ]
+   }
+  },
+  "equity_share": 0.7723,
+  "not_sectorized": {
+   "bonds_and_cash": 0.2277,
+   "funds_without_data": 0.0,
+   "unknown_stocks": 0.0
+  },
+  "looked_through": [
+   "SCHD",
+   "VNQ",
+   "VTI",
+   "VXUS"
+  ],
+  "missing_data": []
+ },
+ "asset_classes": {
+  "stock": {
+   "value": 92245.0,
+   "weight": 0.2361,
+   "count": 4
+  },
+  "fund": {
+   "value": 298540.0,
+   "weight": 0.7639,
+   "count": 5
+  },
+  "other": {
+   "value": 0.0,
+   "weight": 0.0,
+   "count": 0
+  }
+ },
+ "allocation": {
+  "buckets": {
+   "us_equity": {
+    "value": 265885.0,
+    "weight": 0.6446,
+    "count": 6,
+    "symbols": [
+     "AAPL",
+     "COST",
+     "JNJ",
+     "MSFT",
+     "SCHD",
+     "VTI"
+    ]
+   },
+   "intl_equity": {
+    "value": 40800.0,
+    "weight": 0.0989,
+    "count": 1,
+    "symbols": [
+     "VXUS"
+    ]
+   },
+   "bonds": {
+    "value": 70300.0,
+    "weight": 0.1704,
+    "count": 1,
+    "symbols": [
+     "BND"
+    ]
+   },
+   "cash": {
+    "value": 21715.0,
+    "weight": 0.0526,
+    "count": 0,
+    "symbols": []
+   },
+   "other": {
+    "value": 13800.0,
+    "weight": 0.0335,
+    "count": 1,
+    "symbols": [
+     "VNQ"
+    ]
+   }
+  },
+  "unclassified": [],
+  "note": "funds are bucketed by category and name, not looked through; account cash counts as cash"
+ },
+ "movers": {
+  "up": [
+   {
+    "symbol": "AAPL",
+    "day_change_pct": 0.018,
+    "day_change": 492.26
+   },
+   {
+    "symbol": "VTI",
+    "day_change_pct": 0.006,
+    "day_change": 967.63
+   },
+   {
+    "symbol": "COST",
+    "day_change_pct": 0.004,
+    "day_change": 80.2
+   }
+  ],
+  "down": [
+   {
+    "symbol": "JNJ",
+    "day_change_pct": -0.014,
+    "day_change": -234.28
+   },
+   {
+    "symbol": "MSFT",
+    "day_change_pct": -0.009,
+    "day_change": -252.25
+   },
+   {
+    "symbol": "VNQ",
+    "day_change_pct": -0.007,
+    "day_change": -97.28
+   }
+  ]
+ },
+ "events": [
+  {
+   "symbol": "SCHD",
+   "type": "ex_dividend",
+   "date": "2026-09-21"
+  },
+  {
+   "symbol": "COST",
+   "type": "earnings",
+   "date": "2026-09-22"
+  }
+ ],
+ "flags": [
+  {
+   "code": "NEWS_UNAVAILABLE",
+   "message": "Yahoo news failed for VNQ (HTTPError: 429 Too Many Requests)"
+  }
+ ],
+ "news": {
+  "AAPL": [
+   {
+    "title": "Sample story: Apple shares climb as early reviews of the fall lineup land",
+    "publisher": "Sample Wire",
+    "published": "2026-09-15T14:32:00+00:00",
+    "url": "https://example.com/news/apple-fall-lineup-reviews",
+    "summary": ""
+   },
+   {
+    "title": "Sample story: What analysts are watching in Apple's services growth",
+    "publisher": "Sample Wire",
+    "published": "2026-09-12T11:05:00+00:00",
+    "url": "https://example.com/news/apple-services-watch",
+    "summary": ""
+   }
+  ],
+  "VTI": [
+   {
+    "title": "Sample story: Broad US stocks edge higher ahead of next week's rate decision",
+    "publisher": "Sample Wire",
+    "published": "2026-09-15T20:10:00+00:00",
+    "url": "https://example.com/news/us-stocks-edge-higher",
+    "summary": ""
+   }
+  ],
+  "COST": [
+   {
+    "title": "Sample story: Costco August sales preview ahead of fiscal fourth-quarter results",
+    "publisher": "Sample Wire",
+    "published": "2026-09-14T16:45:00+00:00",
+    "url": "https://example.com/news/costco-results-preview",
+    "summary": ""
+   }
+  ],
+  "JNJ": [
+   {
+    "title": "Sample story: Johnson & Johnson slips as a drug trial readout is pushed to next year",
+    "publisher": "Sample Wire",
+    "published": "2026-09-15T15:20:00+00:00",
+    "url": "https://example.com/news/jnj-trial-readout-delay",
+    "summary": ""
+   },
+   {
+    "title": "Sample story: Health-care stocks lag the market for a third session",
+    "publisher": "Sample Wire",
+    "published": "2026-09-13T13:00:00+00:00",
+    "url": "https://example.com/news/healthcare-lags",
+    "summary": ""
+   }
+  ],
+  "MSFT": [
+   {
+    "title": "Sample story: Microsoft dips as cloud spending questions resurface",
+    "publisher": "Sample Wire",
+    "published": "2026-09-15T17:02:00+00:00",
+    "url": "https://example.com/news/microsoft-cloud-spending",
+    "summary": ""
+   }
+  ],
+  "VNQ": []
+ },
+ "price_history": {
+  "VTI": [
+   {
+    "date": "2025-09-15",
+    "close": 277.5857
+   },
+   {
+    "date": "2025-09-22",
+    "close": 276.5387
+   },
+   {
+    "date": "2025-09-29",
+    "close": 274.0208
+   },
+   {
+    "date": "2025-10-06",
+    "close": 270.6726
+   },
+   {
+    "date": "2025-10-13",
+    "close": 267.3037
+   },
+   {
+    "date": "2025-10-20",
+    "close": 264.7326
+   },
+   {
+    "date": "2025-10-27",
+    "close": 263.6243
+   },
+   {
+    "date": "2025-11-03",
+    "close": 264.3576
+   },
+   {
+    "date": "2025-11-10",
+    "close": 266.9479
+   },
+   {
+    "date": "2025-11-17",
+    "close": 271.0421
+   },
+   {
+    "date": "2025-11-24",
+    "close": 275.9872
+   },
+   {
+    "date": "2025-12-01",
+    "close": 280.9577
+   },
+   {
+    "date": "2025-12-08",
+    "close": 285.1189
+   },
+   {
+    "date": "2025-12-15",
+    "close": 287.7929
+   },
+   {
+    "date": "2025-12-22",
+    "close": 288.5934
+   },
+   {
+    "date": "2025-12-29",
+    "close": 287.5049
+   },
+   {
+    "date": "2026-01-05",
+    "close": 284.8871
+   },
+   {
+    "date": "2026-01-12",
+    "close": 281.4061
+   },
+   {
+    "date": "2026-01-19",
+    "close": 277.9036
+   },
+   {
+    "date": "2026-01-26",
+    "close": 275.2305
+   },
+   {
+    "date": "2026-02-02",
+    "close": 274.0783
+   },
+   {
+    "date": "2026-02-09",
+    "close": 274.8407
+   },
+   {
+    "date": "2026-02-16",
+    "close": 277.5337
+   },
+   {
+    "date": "2026-02-23",
+    "close": 281.7903
+   },
+   {
+    "date": "2026-03-02",
+    "close": 286.9315
+   },
+   {
+    "date": "2026-03-09",
+    "close": 292.099
+   },
+   {
+    "date": "2026-03-16",
+    "close": 296.4253
+   },
+   {
+    "date": "2026-03-23",
+    "close": 299.2053
+   },
+   {
+    "date": "2026-03-30",
+    "close": 300.0376
+   },
+   {
+    "date": "2026-04-06",
+    "close": 298.9058
+   },
+   {
+    "date": "2026-04-13",
+    "close": 296.1843
+   },
+   {
+    "date": "2026-04-20",
+    "close": 292.5653
+   },
+   {
+    "date": "2026-04-27",
+    "close": 288.9238
+   },
+   {
+    "date": "2026-05-04",
+    "close": 286.1448
+   },
+   {
+    "date": "2026-05-11",
+    "close": 284.9469
+   },
+   {
+    "date": "2026-05-18",
+    "close": 285.7395
+   },
+   {
+    "date": "2026-05-25",
+    "close": 288.5393
+   },
+   {
+    "date": "2026-06-01",
+    "close": 292.9647
+   },
+   {
+    "date": "2026-06-08",
+    "close": 298.3097
+   },
+   {
+    "date": "2026-06-15",
+    "close": 303.6822
+   },
+   {
+    "date": "2026-06-22",
+    "close": 308.18
+   },
+   {
+    "date": "2026-06-29",
+    "close": 311.0703
+   },
+   {
+    "date": "2026-07-06",
+    "close": 311.9355
+   },
+   {
+    "date": "2026-07-13",
+    "close": 310.7589
+   },
+   {
+    "date": "2026-07-20",
+    "close": 307.9294
+   },
+   {
+    "date": "2026-07-27",
+    "close": 304.1669
+   },
+   {
+    "date": "2026-08-03",
+    "close": 300.3811
+   },
+   {
+    "date": "2026-08-10",
+    "close": 297.4918
+   },
+   {
+    "date": "2026-08-17",
+    "close": 296.2465
+   },
+   {
+    "date": "2026-08-24",
+    "close": 297.0705
+   },
+   {
+    "date": "2026-08-31",
+    "close": 299.9813
+   },
+   {
+    "date": "2026-09-07",
+    "close": 304.5822
+   },
+   {
+    "date": "2026-09-14",
+    "close": 310.1392
+   },
+   {
+    "date": "2026-09-15",
+    "close": 312.0
+   }
+  ],
+  "AAPL": [
+   {
+    "date": "2025-09-15",
+    "close": 219.7994
+   },
+   {
+    "date": "2025-09-22",
+    "close": 216.8612
+   },
+   {
+    "date": "2025-09-29",
+    "close": 210.4442
+   },
+   {
+    "date": "2025-10-06",
+    "close": 202.706
+   },
+   {
+    "date": "2025-10-13",
+    "close": 196.2337
+   },
+   {
+    "date": "2025-10-20",
+    "close": 193.2218
+   },
+   {
+    "date": "2025-10-27",
+    "close": 194.7732
+   },
+   {
+    "date": "2025-11-03",
+    "close": 200.5437
+   },
+   {
+    "date": "2025-11-10",
+    "close": 208.8457
+   },
+   {
+    "date": "2025-11-17",
+    "close": 217.18
+   },
+   {
+    "date": "2025-11-24",
+    "close": 223.0271
+   },
+   {
+    "date": "2025-12-01",
+    "close": 224.6494
+   },
+   {
+    "date": "2025-12-08",
+    "close": 221.6463
+   },
+   {
+    "date": "2025-12-15",
+    "close": 215.0877
+   },
+   {
+    "date": "2025-12-22",
+    "close": 207.1788
+   },
+   {
+    "date": "2025-12-29",
+    "close": 200.5636
+   },
+   {
+    "date": "2026-01-05",
+    "close": 197.4853
+   },
+   {
+    "date": "2026-01-12",
+    "close": 199.0709
+   },
+   {
+    "date": "2026-01-19",
+    "close": 204.9688
+   },
+   {
+    "date": "2026-01-26",
+    "close": 213.454
+   },
+   {
+    "date": "2026-02-02",
+    "close": 221.9721
+   },
+   {
+    "date": "2026-02-09",
+    "close": 227.9483
+   },
+   {
+    "date": "2026-02-16",
+    "close": 229.6063
+   },
+   {
+    "date": "2026-02-23",
+    "close": 226.537
+   },
+   {
+    "date": "2026-03-02",
+    "close": 219.8337
+   },
+   {
+    "date": "2026-03-09",
+    "close": 211.7503
+   },
+   {
+    "date": "2026-03-16",
+    "close": 204.9891
+   },
+   {
+    "date": "2026-03-23",
+    "close": 201.8428
+   },
+   {
+    "date": "2026-03-30",
+    "close": 203.4635
+   },
+   {
+    "date": "2026-04-06",
+    "close": 209.4915
+   },
+   {
+    "date": "2026-04-13",
+    "close": 218.1639
+   },
+   {
+    "date": "2026-04-20",
+    "close": 226.87
+   },
+   {
+    "date": "2026-04-27",
+    "close": 232.978
+   },
+   {
+    "date": "2026-05-04",
+    "close": 234.6727
+   },
+   {
+    "date": "2026-05-11",
+    "close": 231.5356
+   },
+   {
+    "date": "2026-05-18",
+    "close": 224.6844
+   },
+   {
+    "date": "2026-05-25",
+    "close": 216.4226
+   },
+   {
+    "date": "2026-06-01",
+    "close": 209.5123
+   },
+   {
+    "date": "2026-06-08",
+    "close": 206.2966
+   },
+   {
+    "date": "2026-06-15",
+    "close": 207.953
+   },
+   {
+    "date": "2026-06-22",
+    "close": 214.114
+   },
+   {
+    "date": "2026-06-29",
+    "close": 222.9778
+   },
+   {
+    "date": "2026-07-06",
+    "close": 231.8759
+   },
+   {
+    "date": "2026-07-13",
+    "close": 238.1187
+   },
+   {
+    "date": "2026-07-20",
+    "close": 239.8508
+   },
+   {
+    "date": "2026-07-27",
+    "close": 236.6445
+   },
+   {
+    "date": "2026-08-03",
+    "close": 229.6421
+   },
+   {
+    "date": "2026-08-10",
+    "close": 221.1981
+   },
+   {
+    "date": "2026-08-17",
+    "close": 214.1352
+   },
+   {
+    "date": "2026-08-24",
+    "close": 210.8486
+   },
+   {
+    "date": "2026-08-31",
+    "close": 212.5415
+   },
+   {
+    "date": "2026-09-07",
+    "close": 218.8384
+   },
+   {
+    "date": "2026-09-14",
+    "close": 227.8978
+   },
+   {
+    "date": "2026-09-15",
+    "close": 232.0
+   }
+  ],
+  "MSFT": [
+   {
+    "date": "2025-09-15",
+    "close": 450.7486
+   },
+   {
+    "date": "2025-09-22",
+    "close": 455.0852
+   },
+   {
+    "date": "2025-09-29",
+    "close": 453.6196
+   },
+   {
+    "date": "2025-10-06",
+    "close": 447.0794
+   },
+   {
+    "date": "2025-10-13",
+    "close": 437.5619
+   },
+   {
+    "date": "2025-10-20",
+    "close": 427.9794
+   },
+   {
+    "date": "2025-10-27",
+    "close": 421.2813
+   },
+   {
+    "date": "2025-11-03",
+    "close": 419.6616
+   },
+   {
+    "date": "2025-11-10",
+    "close": 423.9646
+   },
+   {
+    "date": "2025-11-17",
+    "close": 433.4487
+   },
+   {
+    "date": "2025-11-24",
+    "close": 445.9763
+   },
+   {
+    "date": "2025-12-01",
+    "close": 458.5792
+   },
+   {
+    "date": "2025-12-08",
+    "close": 468.2513
+   },
+   {
+    "date": "2025-12-15",
+    "close": 472.7562
+   },
+   {
+    "date": "2025-12-22",
+    "close": 471.2337
+   },
+   {
+    "date": "2025-12-29",
+    "close": 464.4396
+   },
+   {
+    "date": "2026-01-05",
+    "close": 454.5525
+   },
+   {
+    "date": "2026-01-12",
+    "close": 444.5979
+   },
+   {
+    "date": "2026-01-19",
+    "close": 437.6397
+   },
+   {
+    "date": "2026-01-26",
+    "close": 435.9572
+   },
+   {
+    "date": "2026-02-02",
+    "close": 440.4272
+   },
+   {
+    "date": "2026-02-09",
+    "close": 450.2796
+   },
+   {
+    "date": "2026-02-16",
+    "close": 463.2936
+   },
+   {
+    "date": "2026-02-23",
+    "close": 476.3859
+   },
+   {
+    "date": "2026-03-02",
+    "close": 486.4335
+   },
+   {
+    "date": "2026-03-09",
+    "close": 491.1134
+   },
+   {
+    "date": "2026-03-16",
+    "close": 489.5318
+   },
+   {
+    "date": "2026-03-23",
+    "close": 482.4738
+   },
+   {
+    "date": "2026-03-30",
+    "close": 472.2029
+   },
+   {
+    "date": "2026-04-06",
+    "close": 461.8617
+   },
+   {
+    "date": "2026-04-13",
+    "close": 454.6333
+   },
+   {
+    "date": "2026-04-20",
+    "close": 452.8854
+   },
+   {
+    "date": "2026-04-27",
+    "close": 457.529
+   },
+   {
+    "date": "2026-05-04",
+    "close": 467.764
+   },
+   {
+    "date": "2026-05-11",
+    "close": 481.2834
+   },
+   {
+    "date": "2026-05-18",
+    "close": 494.8841
+   },
+   {
+    "date": "2026-05-25",
+    "close": 505.3218
+   },
+   {
+    "date": "2026-06-01",
+    "close": 510.1834
+   },
+   {
+    "date": "2026-06-08",
+    "close": 508.5404
+   },
+   {
+    "date": "2026-06-15",
+    "close": 501.2084
+   },
+   {
+    "date": "2026-06-22",
+    "close": 490.5386
+   },
+   {
+    "date": "2026-06-29",
+    "close": 479.7959
+   },
+   {
+    "date": "2026-07-06",
+    "close": 472.2868
+   },
+   {
+    "date": "2026-07-13",
+    "close": 470.4711
+   },
+   {
+    "date": "2026-07-20",
+    "close": 475.295
+   },
+   {
+    "date": "2026-07-27",
+    "close": 485.9274
+   },
+   {
+    "date": "2026-08-03",
+    "close": 499.9717
+   },
+   {
+    "date": "2026-08-10",
+    "close": 514.1005
+   },
+   {
+    "date": "2026-08-17",
+    "close": 524.9436
+   },
+   {
+    "date": "2026-08-24",
+    "close": 529.9939
+   },
+   {
+    "date": "2026-08-31",
+    "close": 528.2871
+   },
+   {
+    "date": "2026-09-07",
+    "close": 520.6704
+   },
+   {
+    "date": "2026-09-14",
+    "close": 509.5863
+   },
+   {
+    "date": "2026-09-15",
+    "close": 505.0
+   }
+  ],
+  "COST": [
+   {
+    "date": "2025-09-15",
+    "close": 801.3906
+   },
+   {
+    "date": "2025-09-22",
+    "close": 805.5426
+   },
+   {
+    "date": "2025-09-29",
+    "close": 815.0341
+   },
+   {
+    "date": "2025-10-06",
+    "close": 828.6381
+   },
+   {
+    "date": "2025-10-13",
+    "close": 844.4973
+   },
+   {
+    "date": "2025-10-20",
+    "close": 860.4048
+   },
+   {
+    "date": "2025-10-27",
+    "close": 874.1397
+   },
+   {
+    "date": "2025-11-03",
+    "close": 883.8055
+   },
+   {
+    "date": "2025-11-10",
+    "close": 888.1207
+   },
+   {
+    "date": "2025-11-17",
+    "close": 886.6157
+   },
+   {
+    "date": "2025-11-24",
+    "close": 879.7075
+   },
+   {
+    "date": "2025-12-01",
+    "close": 868.6383
+   },
+   {
+    "date": "2025-12-08",
+    "close": 855.2895
+   },
+   {
+    "date": "2025-12-15",
+    "close": 841.896
+   },
+   {
+    "date": "2025-12-22",
+    "close": 830.7073
+   },
+   {
+    "date": "2025-12-29",
+    "close": 823.644
+   },
+   {
+    "date": "2026-01-05",
+    "close": 822.004
+   },
+   {
+    "date": "2026-01-12",
+    "close": 826.2629
+   },
+   {
+    "date": "2026-01-19",
+    "close": 835.9984
+   },
+   {
+    "date": "2026-01-26",
+    "close": 849.9524
+   },
+   {
+    "date": "2026-02-02",
+    "close": 866.2195
+   },
+   {
+    "date": "2026-02-09",
+    "close": 882.5362
+   },
+   {
+    "date": "2026-02-16",
+    "close": 896.6244
+   },
+   {
+    "date": "2026-02-23",
+    "close": 906.5388
+   },
+   {
+    "date": "2026-03-02",
+    "close": 910.965
+   },
+   {
+    "date": "2026-03-09",
+    "close": 909.4213
+   },
+   {
+    "date": "2026-03-16",
+    "close": 902.3354
+   },
+   {
+    "date": "2026-03-23",
+    "close": 890.9815
+   },
+   {
+    "date": "2026-03-30",
+    "close": 877.2893
+   },
+   {
+    "date": "2026-04-06",
+    "close": 863.5513
+   },
+   {
+    "date": "2026-04-13",
+    "close": 852.0748
+   },
+   {
+    "date": "2026-04-20",
+    "close": 844.8298
+   },
+   {
+    "date": "2026-04-27",
+    "close": 843.1476
+   },
+   {
+    "date": "2026-05-04",
+    "close": 847.5161
+   },
+   {
+    "date": "2026-05-11",
+    "close": 857.502
+   },
+   {
+    "date": "2026-05-18",
+    "close": 871.8149
+   },
+   {
+    "date": "2026-05-25",
+    "close": 888.5005
+   },
+   {
+    "date": "2026-06-01",
+    "close": 905.2369
+   },
+   {
+    "date": "2026-06-08",
+    "close": 919.6874
+   },
+   {
+    "date": "2026-06-15",
+    "close": 929.8569
+   },
+   {
+    "date": "2026-06-22",
+    "close": 934.3969
+   },
+   {
+    "date": "2026-06-29",
+    "close": 932.8135
+   },
+   {
+    "date": "2026-07-06",
+    "close": 925.5453
+   },
+   {
+    "date": "2026-07-13",
+    "close": 913.8994
+   },
+   {
+    "date": "2026-07-20",
+    "close": 899.855
+   },
+   {
+    "date": "2026-07-27",
+    "close": 885.7637
+   },
+   {
+    "date": "2026-08-03",
+    "close": 873.992
+   },
+   {
+    "date": "2026-08-10",
+    "close": 866.5606
+   },
+   {
+    "date": "2026-08-17",
+    "close": 864.8351
+   },
+   {
+    "date": "2026-08-24",
+    "close": 869.3159
+   },
+   {
+    "date": "2026-08-31",
+    "close": 879.5588
+   },
+   {
+    "date": "2026-09-07",
+    "close": 894.2398
+   },
+   {
+    "date": "2026-09-14",
+    "close": 911.3546
+   },
+   {
+    "date": "2026-09-15",
+    "close": 915.0
+   }
+  ],
+  "SCHD": [
+   {
+    "date": "2025-09-15",
+    "close": 27.5065
+   },
+   {
+    "date": "2025-09-22",
+    "close": 27.7147
+   },
+   {
+    "date": "2025-09-29",
+    "close": 27.8385
+   },
+   {
+    "date": "2025-10-06",
+    "close": 27.8662
+   },
+   {
+    "date": "2025-10-13",
+    "close": 27.7973
+   },
+   {
+    "date": "2025-10-20",
+    "close": 27.6433
+   },
+   {
+    "date": "2025-10-27",
+    "close": 27.4257
+   },
+   {
+    "date": "2025-11-03",
+    "close": 27.1741
+   },
+   {
+    "date": "2025-11-10",
+    "close": 26.922
+   },
+   {
+    "date": "2025-11-17",
+    "close": 26.7031
+   },
+   {
+    "date": "2025-11-24",
+    "close": 26.547
+   },
+   {
+    "date": "2025-12-01",
+    "close": 26.4762
+   },
+   {
+    "date": "2025-12-08",
+    "close": 26.5024
+   },
+   {
+    "date": "2025-12-15",
+    "close": 26.6262
+   },
+   {
+    "date": "2025-12-22",
+    "close": 26.8358
+   },
+   {
+    "date": "2025-12-29",
+    "close": 27.1096
+   },
+   {
+    "date": "2026-01-05",
+    "close": 27.4179
+   },
+   {
+    "date": "2026-01-12",
+    "close": 27.7267
+   },
+   {
+    "date": "2026-01-19",
+    "close": 28.0021
+   },
+   {
+    "date": "2026-01-26",
+    "close": 28.214
+   },
+   {
+    "date": "2026-02-02",
+    "close": 28.3401
+   },
+   {
+    "date": "2026-02-09",
+    "close": 28.3683
+   },
+   {
+    "date": "2026-02-16",
+    "close": 28.2981
+   },
+   {
+    "date": "2026-02-23",
+    "close": 28.1413
+   },
+   {
+    "date": "2026-03-02",
+    "close": 27.9199
+   },
+   {
+    "date": "2026-03-09",
+    "close": 27.6637
+   },
+   {
+    "date": "2026-03-16",
+    "close": 27.4071
+   },
+   {
+    "date": "2026-03-23",
+    "close": 27.1842
+   },
+   {
+    "date": "2026-03-30",
+    "close": 27.0253
+   },
+   {
+    "date": "2026-04-06",
+    "close": 26.9532
+   },
+   {
+    "date": "2026-04-13",
+    "close": 26.9799
+   },
+   {
+    "date": "2026-04-20",
+    "close": 27.1059
+   },
+   {
+    "date": "2026-04-27",
+    "close": 27.3194
+   },
+   {
+    "date": "2026-05-04",
+    "close": 27.5981
+   },
+   {
+    "date": "2026-05-11",
+    "close": 27.9119
+   },
+   {
+    "date": "2026-05-18",
+    "close": 28.2262
+   },
+   {
+    "date": "2026-05-25",
+    "close": 28.5066
+   },
+   {
+    "date": "2026-06-01",
+    "close": 28.7224
+   },
+   {
+    "date": "2026-06-08",
+    "close": 28.8507
+   },
+   {
+    "date": "2026-06-15",
+    "close": 28.8794
+   },
+   {
+    "date": "2026-06-22",
+    "close": 28.808
+   },
+   {
+    "date": "2026-06-29",
+    "close": 28.6484
+   },
+   {
+    "date": "2026-07-06",
+    "close": 28.4229
+   },
+   {
+    "date": "2026-07-13",
+    "close": 28.1622
+   },
+   {
+    "date": "2026-07-20",
+    "close": 27.9009
+   },
+   {
+    "date": "2026-07-27",
+    "close": 27.674
+   },
+   {
+    "date": "2026-08-03",
+    "close": 27.5123
+   },
+   {
+    "date": "2026-08-10",
+    "close": 27.4388
+   },
+   {
+    "date": "2026-08-17",
+    "close": 27.4661
+   },
+   {
+    "date": "2026-08-24",
+    "close": 27.5943
+   },
+   {
+    "date": "2026-08-31",
+    "close": 27.8116
+   },
+   {
+    "date": "2026-09-07",
+    "close": 28.0953
+   },
+   {
+    "date": "2026-09-14",
+    "close": 28.4148
+   },
+   {
+    "date": "2026-09-15",
+    "close": 28.5
+   }
+  ],
+  "VXUS": [
+   {
+    "date": "2025-09-15",
+    "close": 56.5913
+   },
+   {
+    "date": "2025-09-22",
+    "close": 56.1314
+   },
+   {
+    "date": "2025-09-29",
+    "close": 55.8425
+   },
+   {
+    "date": "2025-10-06",
+    "close": 55.8094
+   },
+   {
+    "date": "2025-10-13",
+    "close": 56.0732
+   },
+   {
+    "date": "2025-10-20",
+    "close": 56.6239
+   },
+   {
+    "date": "2025-10-27",
+    "close": 57.4017
+   },
+   {
+    "date": "2025-11-03",
+    "close": 58.3071
+   },
+   {
+    "date": "2025-11-10",
+    "close": 59.218
+   },
+   {
+    "date": "2025-11-17",
+    "close": 60.0105
+   },
+   {
+    "date": "2025-11-24",
+    "close": 60.5806
+   },
+   {
+    "date": "2025-12-01",
+    "close": 60.8624
+   },
+   {
+    "date": "2025-12-08",
+    "close": 60.8394
+   },
+   {
+    "date": "2025-12-15",
+    "close": 60.5483
+   },
+   {
+    "date": "2025-12-22",
+    "close": 60.0726
+   },
+   {
+    "date": "2025-12-29",
+    "close": 59.5283
+   },
+   {
+    "date": "2026-01-05",
+    "close": 59.0444
+   },
+   {
+    "date": "2026-01-12",
+    "close": 58.7405
+   },
+   {
+    "date": "2026-01-19",
+    "close": 58.7057
+   },
+   {
+    "date": "2026-01-26",
+    "close": 58.9833
+   },
+   {
+    "date": "2026-02-02",
+    "close": 59.5625
+   },
+   {
+    "date": "2026-02-09",
+    "close": 60.3807
+   },
+   {
+    "date": "2026-02-16",
+    "close": 61.3331
+   },
+   {
+    "date": "2026-02-23",
+    "close": 62.2912
+   },
+   {
+    "date": "2026-03-02",
+    "close": 63.1249
+   },
+   {
+    "date": "2026-03-09",
+    "close": 63.7246
+   },
+   {
+    "date": "2026-03-16",
+    "close": 64.021
+   },
+   {
+    "date": "2026-03-23",
+    "close": 63.9968
+   },
+   {
+    "date": "2026-03-30",
+    "close": 63.6906
+   },
+   {
+    "date": "2026-04-06",
+    "close": 63.1901
+   },
+   {
+    "date": "2026-04-13",
+    "close": 62.6176
+   },
+   {
+    "date": "2026-04-20",
+    "close": 62.1087
+   },
+   {
+    "date": "2026-04-27",
+    "close": 61.789
+   },
+   {
+    "date": "2026-05-04",
+    "close": 61.7524
+   },
+   {
+    "date": "2026-05-11",
+    "close": 62.0443
+   },
+   {
+    "date": "2026-05-18",
+    "close": 62.6536
+   },
+   {
+    "date": "2026-05-25",
+    "close": 63.5143
+   },
+   {
+    "date": "2026-06-01",
+    "close": 64.5161
+   },
+   {
+    "date": "2026-06-08",
+    "close": 65.524
+   },
+   {
+    "date": "2026-06-15",
+    "close": 66.4009
+   },
+   {
+    "date": "2026-06-22",
+    "close": 67.0317
+   },
+   {
+    "date": "2026-06-29",
+    "close": 67.3435
+   },
+   {
+    "date": "2026-07-06",
+    "close": 67.3181
+   },
+   {
+    "date": "2026-07-13",
+    "close": 66.996
+   },
+   {
+    "date": "2026-07-20",
+    "close": 66.4695
+   },
+   {
+    "date": "2026-07-27",
+    "close": 65.8673
+   },
+   {
+    "date": "2026-08-03",
+    "close": 65.3319
+   },
+   {
+    "date": "2026-08-10",
+    "close": 64.9957
+   },
+   {
+    "date": "2026-08-17",
+    "close": 64.9572
+   },
+   {
+    "date": "2026-08-24",
+    "close": 65.2642
+   },
+   {
+    "date": "2026-08-31",
+    "close": 65.9052
+   },
+   {
+    "date": "2026-09-07",
+    "close": 66.8105
+   },
+   {
+    "date": "2026-09-14",
+    "close": 67.8643
+   },
+   {
+    "date": "2026-09-15",
+    "close": 68.0
+   }
+  ],
+  "JNJ": [
+   {
+    "date": "2025-09-15",
+    "close": 152.5035
+   },
+   {
+    "date": "2025-09-22",
+    "close": 149.9361
+   },
+   {
+    "date": "2025-09-29",
+    "close": 148.0108
+   },
+   {
+    "date": "2025-10-06",
+    "close": 147.2344
+   },
+   {
+    "date": "2025-10-13",
+    "close": 147.8521
+   },
+   {
+    "date": "2025-10-20",
+    "close": 149.7898
+   },
+   {
+    "date": "2025-10-27",
+    "close": 152.6706
+   },
+   {
+    "date": "2025-11-03",
+    "close": 155.8999
+   },
+   {
+    "date": "2025-11-10",
+    "close": 158.8011
+   },
+   {
+    "date": "2025-11-17",
+    "close": 160.7703
+   },
+   {
+    "date": "2025-11-24",
+    "close": 161.416
+   },
+   {
+    "date": "2025-12-01",
+    "close": 160.6486
+   },
+   {
+    "date": "2025-12-08",
+    "close": 158.7029
+   },
+   {
+    "date": "2025-12-15",
+    "close": 156.0851
+   },
+   {
+    "date": "2025-12-22",
+    "close": 153.4575
+   },
+   {
+    "date": "2025-12-29",
+    "close": 151.487
+   },
+   {
+    "date": "2026-01-05",
+    "close": 150.6924
+   },
+   {
+    "date": "2026-01-12",
+    "close": 151.3245
+   },
+   {
+    "date": "2026-01-19",
+    "close": 153.3077
+   },
+   {
+    "date": "2026-01-26",
+    "close": 156.2562
+   },
+   {
+    "date": "2026-02-02",
+    "close": 159.5614
+   },
+   {
+    "date": "2026-02-09",
+    "close": 162.5306
+   },
+   {
+    "date": "2026-02-16",
+    "close": 164.5462
+   },
+   {
+    "date": "2026-02-23",
+    "close": 165.2069
+   },
+   {
+    "date": "2026-03-02",
+    "close": 164.4215
+   },
+   {
+    "date": "2026-03-09",
+    "close": 162.4302
+   },
+   {
+    "date": "2026-03-16",
+    "close": 159.7509
+   },
+   {
+    "date": "2026-03-23",
+    "close": 157.0615
+   },
+   {
+    "date": "2026-03-30",
+    "close": 155.0448
+   },
+   {
+    "date": "2026-04-06",
+    "close": 154.2315
+   },
+   {
+    "date": "2026-04-13",
+    "close": 154.8785
+   },
+   {
+    "date": "2026-04-20",
+    "close": 156.9083
+   },
+   {
+    "date": "2026-04-27",
+    "close": 159.926
+   },
+   {
+    "date": "2026-05-04",
+    "close": 163.3088
+   },
+   {
+    "date": "2026-05-11",
+    "close": 166.3478
+   },
+   {
+    "date": "2026-05-18",
+    "close": 168.4107
+   },
+   {
+    "date": "2026-05-25",
+    "close": 169.087
+   },
+   {
+    "date": "2026-06-01",
+    "close": 168.2831
+   },
+   {
+    "date": "2026-06-08",
+    "close": 166.245
+   },
+   {
+    "date": "2026-06-15",
+    "close": 163.5028
+   },
+   {
+    "date": "2026-06-22",
+    "close": 160.7503
+   },
+   {
+    "date": "2026-06-29",
+    "close": 158.6861
+   },
+   {
+    "date": "2026-07-06",
+    "close": 157.8538
+   },
+   {
+    "date": "2026-07-13",
+    "close": 158.5159
+   },
+   {
+    "date": "2026-07-20",
+    "close": 160.5934
+   },
+   {
+    "date": "2026-07-27",
+    "close": 163.682
+   },
+   {
+    "date": "2026-08-03",
+    "close": 167.1442
+   },
+   {
+    "date": "2026-08-10",
+    "close": 170.2546
+   },
+   {
+    "date": "2026-08-17",
+    "close": 172.3659
+   },
+   {
+    "date": "2026-08-24",
+    "close": 173.0581
+   },
+   {
+    "date": "2026-08-31",
+    "close": 172.2354
+   },
+   {
+    "date": "2026-09-07",
+    "close": 170.1494
+   },
+   {
+    "date": "2026-09-14",
+    "close": 167.3428
+   },
+   {
+    "date": "2026-09-15",
+    "close": 165.0
+   }
+  ],
+  "VNQ": [
+   {
+    "date": "2025-09-15",
+    "close": 91.1227
+   },
+   {
+    "date": "2025-09-22",
+    "close": 89.8783
+   },
+   {
+    "date": "2025-09-29",
+    "close": 88.6323
+   },
+   {
+    "date": "2025-10-06",
+    "close": 87.5604
+   },
+   {
+    "date": "2025-10-13",
+    "close": 86.8149
+   },
+   {
+    "date": "2025-10-20",
+    "close": 86.5042
+   },
+   {
+    "date": "2025-10-27",
+    "close": 86.678
+   },
+   {
+    "date": "2025-11-03",
+    "close": 87.3206
+   },
+   {
+    "date": "2025-11-10",
+    "close": 88.353
+   },
+   {
+    "date": "2025-11-17",
+    "close": 89.6435
+   },
+   {
+    "date": "2025-11-24",
+    "close": 91.0252
+   },
+   {
+    "date": "2025-12-01",
+    "close": 92.3187
+   },
+   {
+    "date": "2025-12-08",
+    "close": 93.3565
+   },
+   {
+    "date": "2025-12-15",
+    "close": 94.0052
+   },
+   {
+    "date": "2025-12-22",
+    "close": 94.184
+   },
+   {
+    "date": "2025-12-29",
+    "close": 93.8755
+   },
+   {
+    "date": "2026-01-05",
+    "close": 93.1281
+   },
+   {
+    "date": "2026-01-12",
+    "close": 92.0495
+   },
+   {
+    "date": "2026-01-19",
+    "close": 90.7924
+   },
+   {
+    "date": "2026-01-26",
+    "close": 89.5337
+   },
+   {
+    "date": "2026-02-02",
+    "close": 88.4509
+   },
+   {
+    "date": "2026-02-09",
+    "close": 87.6979
+   },
+   {
+    "date": "2026-02-16",
+    "close": 87.384
+   },
+   {
+    "date": "2026-02-23",
+    "close": 87.5595
+   },
+   {
+    "date": "2026-03-02",
+    "close": 88.2087
+   },
+   {
+    "date": "2026-03-09",
+    "close": 89.2516
+   },
+   {
+    "date": "2026-03-16",
+    "close": 90.5552
+   },
+   {
+    "date": "2026-03-23",
+    "close": 91.951
+   },
+   {
+    "date": "2026-03-30",
+    "close": 93.2577
+   },
+   {
+    "date": "2026-04-06",
+    "close": 94.306
+   },
+   {
+    "date": "2026-04-13",
+    "close": 94.9613
+   },
+   {
+    "date": "2026-04-20",
+    "close": 95.1419
+   },
+   {
+    "date": "2026-04-27",
+    "close": 94.8303
+   },
+   {
+    "date": "2026-05-04",
+    "close": 94.0752
+   },
+   {
+    "date": "2026-05-11",
+    "close": 92.9856
+   },
+   {
+    "date": "2026-05-18",
+    "close": 91.7158
+   },
+   {
+    "date": "2026-05-25",
+    "close": 90.4443
+   },
+   {
+    "date": "2026-06-01",
+    "close": 89.3505
+   },
+   {
+    "date": "2026-06-08",
+    "close": 88.5898
+   },
+   {
+    "date": "2026-06-15",
+    "close": 88.2727
+   },
+   {
+    "date": "2026-06-22",
+    "close": 88.45
+   },
+   {
+    "date": "2026-06-29",
+    "close": 89.1058
+   },
+   {
+    "date": "2026-07-06",
+    "close": 90.1593
+   },
+   {
+    "date": "2026-07-13",
+    "close": 91.4762
+   },
+   {
+    "date": "2026-07-20",
+    "close": 92.8861
+   },
+   {
+    "date": "2026-07-27",
+    "close": 94.2061
+   },
+   {
+    "date": "2026-08-03",
+    "close": 95.2651
+   },
+   {
+    "date": "2026-08-10",
+    "close": 95.9271
+   },
+   {
+    "date": "2026-08-17",
+    "close": 96.1096
+   },
+   {
+    "date": "2026-08-24",
+    "close": 95.7947
+   },
+   {
+    "date": "2026-08-31",
+    "close": 95.032
+   },
+   {
+    "date": "2026-09-07",
+    "close": 93.9314
+   },
+   {
+    "date": "2026-09-14",
+    "close": 92.6485
+   },
+   {
+    "date": "2026-09-15",
+    "close": 92.0
+   }
+  ],
+  "BND": [
+   {
+    "date": "2025-09-15",
+    "close": 72.927
+   },
+   {
+    "date": "2025-09-22",
+    "close": 72.7136
+   },
+   {
+    "date": "2025-09-29",
+    "close": 72.4737
+   },
+   {
+    "date": "2025-10-06",
+    "close": 72.2337
+   },
+   {
+    "date": "2025-10-13",
+    "close": 72.0197
+   },
+   {
+    "date": "2025-10-20",
+    "close": 71.8556
+   },
+   {
+    "date": "2025-10-27",
+    "close": 71.7604
+   },
+   {
+    "date": "2025-11-03",
+    "close": 71.7463
+   },
+   {
+    "date": "2025-11-10",
+    "close": 71.8174
+   },
+   {
+    "date": "2025-11-17",
+    "close": 71.9698
+   },
+   {
+    "date": "2025-11-24",
+    "close": 72.1914
+   },
+   {
+    "date": "2025-12-01",
+    "close": 72.4633
+   },
+   {
+    "date": "2025-12-08",
+    "close": 72.7619
+   },
+   {
+    "date": "2025-12-15",
+    "close": 73.0607
+   },
+   {
+    "date": "2025-12-22",
+    "close": 73.3333
+   },
+   {
+    "date": "2025-12-29",
+    "close": 73.5558
+   },
+   {
+    "date": "2026-01-05",
+    "close": 73.7092
+   },
+   {
+    "date": "2026-01-12",
+    "close": 73.7813
+   },
+   {
+    "date": "2026-01-19",
+    "close": 73.7677
+   },
+   {
+    "date": "2026-01-26",
+    "close": 73.6727
+   },
+   {
+    "date": "2026-02-02",
+    "close": 73.5081
+   },
+   {
+    "date": "2026-02-09",
+    "close": 73.293
+   },
+   {
+    "date": "2026-02-16",
+    "close": 73.0512
+   },
+   {
+    "date": "2026-02-23",
+    "close": 72.8092
+   },
+   {
+    "date": "2026-03-02",
+    "close": 72.5935
+   },
+   {
+    "date": "2026-03-09",
+    "close": 72.4282
+   },
+   {
+    "date": "2026-03-16",
+    "close": 72.3322
+   },
+   {
+    "date": "2026-03-23",
+    "close": 72.318
+   },
+   {
+    "date": "2026-03-30",
+    "close": 72.3897
+   },
+   {
+    "date": "2026-04-06",
+    "close": 72.5433
+   },
+   {
+    "date": "2026-04-13",
+    "close": 72.7666
+   },
+   {
+    "date": "2026-04-20",
+    "close": 73.0407
+   },
+   {
+    "date": "2026-04-27",
+    "close": 73.3417
+   },
+   {
+    "date": "2026-05-04",
+    "close": 73.6429
+   },
+   {
+    "date": "2026-05-11",
+    "close": 73.9176
+   },
+   {
+    "date": "2026-05-18",
+    "close": 74.1419
+   },
+   {
+    "date": "2026-05-25",
+    "close": 74.2965
+   },
+   {
+    "date": "2026-06-01",
+    "close": 74.3692
+   },
+   {
+    "date": "2026-06-08",
+    "close": 74.3555
+   },
+   {
+    "date": "2026-06-15",
+    "close": 74.2597
+   },
+   {
+    "date": "2026-06-22",
+    "close": 74.0938
+   },
+   {
+    "date": "2026-06-29",
+    "close": 73.877
+   },
+   {
+    "date": "2026-07-06",
+    "close": 73.6333
+   },
+   {
+    "date": "2026-07-13",
+    "close": 73.3894
+   },
+   {
+    "date": "2026-07-20",
+    "close": 73.172
+   },
+   {
+    "date": "2026-07-27",
+    "close": 73.0053
+   },
+   {
+    "date": "2026-08-03",
+    "close": 72.9086
+   },
+   {
+    "date": "2026-08-10",
+    "close": 72.8942
+   },
+   {
+    "date": "2026-08-17",
+    "close": 72.9665
+   },
+   {
+    "date": "2026-08-24",
+    "close": 73.1213
+   },
+   {
+    "date": "2026-08-31",
+    "close": 73.3464
+   },
+   {
+    "date": "2026-09-07",
+    "close": 73.6227
+   },
+   {
+    "date": "2026-09-14",
+    "close": 73.9261
+   },
+   {
+    "date": "2026-09-15",
+    "close": 74.0
+   }
+  ]
+ },
+ "profiles": {
+  "VTI": {
+   "name": "Vanguard Total Stock Market ETF",
+   "quote_type": "ETF",
+   "category": "Large Blend",
+   "country": "United States",
+   "sector": null,
+   "summary": "Sample description: an index fund that holds nearly every publicly traded US company, large and small, in one ETF.",
+   "website": null,
+   "bucket": "us_equity"
+  },
+  "AAPL": {
+   "name": "Apple Inc.",
+   "quote_type": "EQUITY",
+   "category": null,
+   "country": "United States",
+   "sector": "Technology",
+   "summary": "Sample description: designs and sells phones, computers, tablets, wearables and the services that run on them.",
+   "website": null,
+   "bucket": "us_equity"
+  },
+  "MSFT": {
+   "name": "Microsoft Corp.",
+   "quote_type": "EQUITY",
+   "category": null,
+   "country": "United States",
+   "sector": "Technology",
+   "summary": "Sample description: makes operating systems, productivity software and cloud computing services.",
+   "website": null,
+   "bucket": "us_equity"
+  },
+  "COST": {
+   "name": "Costco Wholesale Corp.",
+   "quote_type": "EQUITY",
+   "category": null,
+   "country": "United States",
+   "sector": "Consumer Defensive",
+   "summary": "Sample description: runs membership warehouse stores selling groceries and general merchandise in bulk.",
+   "website": null,
+   "bucket": "us_equity"
+  },
+  "SCHD": {
+   "name": "Schwab US Dividend Equity ETF",
+   "quote_type": "ETF",
+   "category": "Large Value",
+   "country": "United States",
+   "sector": null,
+   "summary": "Sample description: an index fund of about 100 US companies screened for a record of paying and growing dividends.",
+   "website": null,
+   "bucket": "us_equity"
+  },
+  "VXUS": {
+   "name": "Vanguard Total International Stock ETF",
+   "quote_type": "ETF",
+   "category": "Foreign Large Blend",
+   "country": "United States",
+   "sector": null,
+   "summary": "Sample description: an index fund holding stocks of companies outside the United States, developed and emerging markets.",
+   "website": null,
+   "bucket": "intl_equity"
+  },
+  "JNJ": {
+   "name": "Johnson & Johnson",
+   "quote_type": "EQUITY",
+   "category": null,
+   "country": "United States",
+   "sector": "Healthcare",
+   "summary": "Sample description: develops pharmaceuticals and medical devices.",
+   "website": null,
+   "bucket": "us_equity"
+  },
+  "VNQ": {
+   "name": "Vanguard Real Estate ETF",
+   "quote_type": "ETF",
+   "category": "Real Estate",
+   "country": "United States",
+   "sector": null,
+   "summary": "Sample description: an index fund of US real estate investment trusts that own offices, apartments, warehouses and towers.",
+   "website": null,
+   "bucket": "other"
+  },
+  "BND": {
+   "name": "Vanguard Total Bond Market ETF",
+   "quote_type": "ETF",
+   "category": "Intermediate Core Bond",
+   "country": "United States",
+   "sector": null,
+   "summary": "Sample description: an index fund of investment-grade US bonds: Treasuries, mortgage-backed and corporate debt.",
+   "website": null,
+   "bucket": "bonds"
+  }
+ },
+ "comparison": {
+  "since": "2026-09-08T21:02:11+00:00",
+  "days": 7,
+  "total_value": {
+   "before": 407866.23,
+   "after": 412500.0,
+   "delta": 4633.77,
+   "delta_pct": 0.0114
+  },
+  "symbols": [
+   {
+    "symbol": "VTI",
+    "before": 158935.44,
+    "after": 162240.0,
+    "delta": 3304.56,
+    "delta_pct": 0.0208
+   },
+   {
+    "symbol": "AAPL",
+    "before": 26461.06,
+    "after": 27840.0,
+    "delta": 1378.94,
+    "delta_pct": 0.0521
+   },
+   {
+    "symbol": "MSFT",
+    "before": 28524.69,
+    "after": 27775.0,
+    "delta": -749.69,
+    "delta_pct": -0.0263
+   },
+   {
+    "symbol": "VXUS",
+    "before": 40208.19,
+    "after": 40800.0,
+    "delta": 591.81,
+    "delta_pct": 0.0147
+   },
+   {
+    "symbol": "JNJ",
+    "before": 16962.45,
+    "after": 16500.0,
+    "delta": -462.45,
+    "delta_pct": -0.0273
+   },
+   {
+    "symbol": "COST",
+    "before": 19745.9,
+    "after": 20130.0,
+    "delta": 384.1,
+    "delta_pct": 0.0195
+   },
+   {
+    "symbol": "BND",
+    "before": 69997.96,
+    "after": 70300.0,
+    "delta": 302.04,
+    "delta_pct": 0.0043
+   },
+   {
+    "symbol": "VNQ",
+    "before": 14052.57,
+    "after": 13800.0,
+    "delta": -252.57,
+    "delta_pct": -0.018
+   },
+   {
+    "symbol": "SCHD",
+    "before": 11262.97,
+    "after": 11400.0,
+    "delta": 137.03,
+    "delta_pct": 0.0122
+   }
+  ]
+ },
+ "headlines": [
+  {
+   "key": "watchlist:price_below:MSFT:2026-09-15",
+   "code": "price_below",
+   "skill": "watchlist",
+   "severity": "alert",
+   "symbol": "MSFT",
+   "title": "MSFT 505.00 is below 510.00",
+   "detail": "",
+   "as_of": "2026-09-15",
+   "status": "new",
+   "ask": "What on my watchlist moved?",
+   "url": "https://finance.yahoo.com/quote/MSFT",
+   "answer": "Now 505.00; rule price_below at 510.0; -3.2% since added, 8.4% below the 52-week high",
+   "why": "A price rule you set on your watchlist fired on today's quote."
+  },
+  {
+   "key": "portfolio-snapshot:EARNINGS:COST:2026-09-22",
+   "code": "EARNINGS",
+   "skill": "portfolio-snapshot",
+   "severity": "alert",
+   "symbol": "COST",
+   "title": "COST reports earnings on 2026-09-22",
+   "detail": "",
+   "as_of": "2026-09-15",
+   "status": "new",
+   "ask": "What is COST's expected move through earnings?",
+   "url": "https://finance.yahoo.com/quote/COST",
+   "answer": "Options price a ±$38.43 (±4.2%) move by 2026-09-25 (ATM IV 27%)",
+   "why": "Earnings days bring the largest single-day moves; the options market prices how large."
+  },
+  {
+   "key": "market-analysis:CASH_RECORD:-:2026-09-10",
+   "code": "CASH_RECORD",
+   "skill": "market-analysis",
+   "severity": "notice",
+   "symbol": null,
+   "title": "Money-fund cash 7412.35 Billions of Dollars is a one-year high (2026-09-10)",
+   "detail": "52-week change 11.4",
+   "as_of": "2026-09-10",
+   "status": "new",
+   "ask": "How is the market positioned this week?",
+   "url": "https://fred.stlouisfed.org/series/WRMFNS",
+   "answer": "+62 billion over four weeks, +11.4% over a year",
+   "why": "Cash parked in money-market funds; a high level is dry powder that has not been put into stocks or bonds."
+  },
+  {
+   "key": "market-analysis:DAY:-:2026-09-15",
+   "code": "DAY",
+   "skill": "market-analysis",
+   "severity": "info",
+   "symbol": null,
+   "title": "S&P 500 +0.5% · Nasdaq +0.8% · 10y 4.12% · VIX 15.8",
+   "detail": "",
+   "as_of": "2026-09-15",
+   "status": "new",
+   "ask": "How is the market positioned this week?",
+   "url": "",
+   "answer": "",
+   "why": ""
+  },
+  {
+   "key": "portfolio-snapshot:EX_DIVIDEND:SCHD:2026-09-21",
+   "code": "EX_DIVIDEND",
+   "skill": "portfolio-snapshot",
+   "severity": "alert",
+   "symbol": "SCHD",
+   "title": "SCHD goes ex-dividend on 2026-09-21",
+   "detail": "",
+   "as_of": "2026-09-15",
+   "status": "still",
+   "ask": "What is SCHD's next dividend worth to me?",
+   "url": "https://finance.yahoo.com/quote/SCHD",
+   "answer": "About $104.00 for your 400 shares (last $0.2600 per share)",
+   "why": "You must hold the shares before the ex-dividend date to receive the next payment."
+  },
+  {
+   "key": "rebalancing:BAND_BREACH:-:US equities,bonds,international",
+   "code": "BAND_BREACH",
+   "skill": "rebalancing",
+   "severity": "alert",
+   "symbol": null,
+   "title": "Allocation outside its bands: US equities +12.8 pts, bonds -8.0 pts, international -5.1 pts",
+   "detail": "outside the 5% / 25% bands: US equities (+12.8%), bonds (-8.0%), international (-5.1%)",
+   "as_of": "2026-09-15",
+   "status": "still",
+   "ask": "What trades bring me back inside my bands?",
+   "url": "",
+   "answer": "Plan: SELL 98 VTI $30,576.00; SELL 22 AAPL $5,104.00; SELL 10 MSFT $5,050.00 — turnover 12.8%",
+   "why": "Your allocation drifted past the tolerance band you set around each target weight."
+  }
+ ],
+ "coverage": [
+  {
+   "skill": "watchlist",
+   "script": "scripts/watchlist.py",
+   "status": "ok",
+   "reason": "",
+   "hint": "",
+   "seconds": 3.1,
+   "headlines": 1
+  },
+  {
+   "skill": "market-analysis",
+   "script": "scripts/indices.py",
+   "status": "ok",
+   "reason": "",
+   "hint": "",
+   "seconds": 11.4,
+   "headlines": 2
+  },
+  {
+   "skill": "portfolio-snapshot",
+   "script": "",
+   "status": "ok",
+   "reason": "",
+   "hint": "",
+   "seconds": 0.0,
+   "headlines": 2
+  },
+  {
+   "skill": "fundamental-research",
+   "script": "scripts/edgar.py",
+   "status": "ok",
+   "reason": "",
+   "hint": "",
+   "seconds": 6.8,
+   "headlines": 0
+  },
+  {
+   "skill": "rebalancing",
+   "script": "scripts/plan.py",
+   "status": "ok",
+   "reason": "",
+   "hint": "",
+   "seconds": 4.2,
+   "headlines": 1
+  },
+  {
+   "skill": "tax-aware",
+   "script": "scripts/tax-report.py",
+   "status": "skipped",
+   "reason": "the ledger is empty",
+   "hint": "import statements with the statement-import skill",
+   "seconds": 0.0,
+   "headlines": 0
+  },
+  {
+   "skill": "dividend-income",
+   "script": "scripts/dividends.py",
+   "status": "ok",
+   "reason": "",
+   "hint": "",
+   "seconds": 7.9,
+   "headlines": 0
+  },
+  {
+   "skill": "risk-analysis",
+   "script": "scripts/stress.py",
+   "status": "failed",
+   "reason": "timed out after 90s",
+   "hint": "",
+   "seconds": 90.0,
+   "headlines": 0
+  },
+  {
+   "skill": "trade-journal",
+   "script": "scripts/journal.py",
+   "status": "skipped",
+   "reason": "the journal is empty",
+   "hint": "journal a trade with the trade-journal skill",
+   "seconds": 0.0,
+   "headlines": 0
+  },
+  {
+   "skill": "debt-tracker",
+   "script": "scripts/debts.py",
+   "status": "skipped",
+   "reason": "no statements.json",
+   "hint": "record a statement with the debt-tracker skill",
+   "seconds": 0.0,
+   "headlines": 0
+  },
+  {
+   "skill": "spending",
+   "script": "scripts/spend.py",
+   "status": "ok",
+   "reason": "",
+   "hint": "",
+   "seconds": 1.6,
+   "headlines": 0
+  },
+  {
+   "skill": "statement-import",
+   "script": "scripts/ledger.py",
+   "status": "skipped",
+   "reason": "the ledger is empty",
+   "hint": "import statements with the statement-import skill",
+   "seconds": 0.0,
+   "headlines": 0
+  }
+ ],
+ "brief_as_of": "2026-09-15T21:05:12+00:00",
+ "brief_seconds": 94.6
+}

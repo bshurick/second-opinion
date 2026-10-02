@@ -1,0 +1,55 @@
+{
+ "symbol": "TREASURY",
+ "horizon": {
+  "horizon_years": 9.0,
+  "duration_years": 6.158,
+  "modified_duration_years": 5.9987,
+  "matched": false,
+  "locked_in_return_pct": 5.3805,
+  "scenarios": [
+   {
+    "delta_yield_bp": -200,
+    "total_return_pct": 51.6828,
+    "annualised_pct": 4.7379
+   },
+   {
+    "delta_yield_bp": -100,
+    "total_return_pct": 55.9029,
+    "annualised_pct": 5.0578
+   },
+   {
+    "delta_yield_bp": 0,
+    "total_return_pct": 60.2662,
+    "annualised_pct": 5.3805
+   },
+   {
+    "delta_yield_bp": 100,
+    "total_return_pct": 64.7792,
+    "annualised_pct": 5.7062
+   },
+   {
+    "delta_yield_bp": 200,
+    "total_return_pct": 69.4489,
+    "annualised_pct": 6.0349
+   }
+  ],
+  "spread_pct": 1.297,
+  "mismatch_cost_note": "The horizon of 9 years is 2.84 years past the Macaulay duration (6.16 years), so the return is not locked in: a parallel move of +/-200 bp moves the annualised outcome by 1.30 percentage points, and that spread is the cost of the mismatch.",
+  "assumptions": {
+   "input_shape": "bond",
+   "frequency": 2,
+   "horizon_years": 9.0,
+   "shock_grid_bp": [
+    -200,
+    -100,
+    0,
+    100,
+    200
+   ],
+   "match_tolerance": 0.2,
+   "headline_is_not_a_forecast": "The locked-in return is implied by today's price and is not a forecast: at a matched horizon it reproduces the market's own yield because the price already reflects it. The scenarios show how far the outcome moves if rates CHANGE by up to 200 basis points \u2014 a sensitivity, not a prediction that they will. Nothing here is a fair value, and nothing here is a view on whether the bond or the fund is cheap or expensive.",
+   "duration_meanings": "Three durations appear in this output and only the first is the hold-to-horizon answer. duration_years is the MACAULAY duration of the cash flows above: the horizon at which the price loss from a rate move and the higher reinvestment rate cancel, so it is the figure the matched flag is measured against. modified_duration_years is price sensitivity per unit of yield \u2014 a first-order price change, not a holding-period return. A fund's published EFFECTIVE duration (reported as published_effective_duration_years when the input carries one) describes its actual portfolio and is not expected to equal the Macaulay figure.",
+   "reinvestment": "The shock lands immediately, is parallel across the curve, and every coupon received after it is reinvested at the shocked yield; whatever is left is sold at the horizon at the shocked price. No default, no credit migration, no change in the coupon."
+  }
+ }
+}

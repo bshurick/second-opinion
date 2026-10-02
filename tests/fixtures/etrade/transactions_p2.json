@@ -1,0 +1,5 @@
+{"TransactionListResponse": {"moreTransactions": false, "Transaction": [
+  {"transactionId": 9004, "accountId": "10000001", "transactionDate": 1788616800000, "amount": -25.0, "description": "WIRE OUT", "transactionType": "Transfer", "brokerage": {"product": {}, "quantity": 0, "price": 0, "fee": 0}},
+  {"transactionId": 9005, "accountId": "10000001", "transactionDate": 1788530400000, "amount": 0.75, "description": "INTEREST", "transactionType": "Interest", "brokerage": {"product": {}, "quantity": 0, "price": 0, "fee": 0}},
+  {"transactionId": 9006, "accountId": "10000001", "transactionDate": 1788444000000, "amount": -1.5, "description": "ADR FEE", "transactionType": "Adjustment", "brokerage": {"product": {"symbol": "BABA"}, "quantity": 0, "price": 0, "fee": 1.5}}
+]}}

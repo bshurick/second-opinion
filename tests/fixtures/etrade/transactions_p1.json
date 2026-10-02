@@ -1,0 +1,7 @@
+{"TransactionListResponse": {"marker": "m2", "moreTransactions": true, "Transaction": [
+  {"transactionId": 9001, "accountId": "10000001", "transactionDate": 1788876000000, "postDate": 1788962400000, "amount": -2005.0, "description": "BUY AAPL", "transactionType": "Bought",
+   "brokerage": {"product": {"symbol": "AAPL", "securityType": "EQ"}, "quantity": 10, "price": 200.5, "settlementDate": 1789048800000, "fee": 0, "displaySymbol": "AAPL"}},
+  {"transactionId": 9002, "accountId": "10000001", "transactionDate": 1788789600000, "amount": 12.5, "description": "DIVIDEND MSFT", "transactionType": "Dividend",
+   "brokerage": {"product": {"symbol": "MSFT", "securityType": "EQ"}, "quantity": 0, "price": 0, "fee": 0, "displaySymbol": "MSFT"}},
+  {"transactionId": 9003, "accountId": "10000001", "transactionDate": 1788703200000, "amount": 5000.0, "description": "ACH DEPOSIT", "transactionType": "Transfer", "brokerage": {"product": {}, "quantity": 0, "price": 0, "fee": 0}}
+]}}

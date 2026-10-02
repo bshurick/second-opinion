@@ -1,0 +1,54 @@
+{
+ "horizon": {
+  "horizon_years": 5.75,
+  "duration_years": 6.158,
+  "modified_duration_years": 5.9987,
+  "matched": true,
+  "locked_in_return_pct": 5.3805,
+  "scenarios": [
+   {
+    "delta_yield_bp": -200,
+    "total_return_pct": 36.3325,
+    "annualised_pct": 5.5379
+   },
+   {
+    "delta_yield_bp": -100,
+    "total_return_pct": 35.7272,
+    "annualised_pct": 5.4563
+   },
+   {
+    "delta_yield_bp": 0,
+    "total_return_pct": 35.1672,
+    "annualised_pct": 5.3805
+   },
+   {
+    "delta_yield_bp": 100,
+    "total_return_pct": 34.6528,
+    "annualised_pct": 5.3106
+   },
+   {
+    "delta_yield_bp": 200,
+    "total_return_pct": 34.1844,
+    "annualised_pct": 5.2468
+   }
+  ],
+  "spread_pct": 0.2911,
+  "mismatch_cost_note": "The horizon of 5.75 years is within 20% of the Macaulay duration (6.16 years), so the return is largely locked in: a parallel move of +/-200 bp moves the annualised outcome by only 0.29 percentage points.",
+  "assumptions": {
+   "input_shape": "bond",
+   "frequency": 2,
+   "horizon_years": 5.75,
+   "shock_grid_bp": [
+    -200,
+    -100,
+    0,
+    100,
+    200
+   ],
+   "match_tolerance": 0.2,
+   "headline_is_not_a_forecast": "The locked-in return is implied by today's price and is not a forecast: at a matched horizon it reproduces the market's own yield because the price already reflects it. The scenarios show how far the outcome moves if rates CHANGE by up to 200 basis points \u2014 a sensitivity, not a prediction that they will. Nothing here is a fair value, and nothing here is a view on whether the bond or the fund is cheap or expensive.",
+   "duration_meanings": "Three durations appear in this output and only the first is the hold-to-horizon answer. duration_years is the MACAULAY duration of the cash flows above: the horizon at which the price loss from a rate move and the higher reinvestment rate cancel, so it is the figure the matched flag is measured against. modified_duration_years is price sensitivity per unit of yield \u2014 a first-order price change, not a holding-period return. A fund's published EFFECTIVE duration (reported as published_effective_duration_years when the input carries one) describes its actual portfolio and is not expected to equal the Macaulay figure.",
+   "reinvestment": "The shock lands immediately, is parallel across the curve, and every coupon received after it is reinvested at the shocked yield; whatever is left is sold at the horizon at the shocked price. No default, no credit migration, no change in the coupon."
+  }
+ }
+}

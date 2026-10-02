@@ -1,0 +1,640 @@
+{
+  "symbol": "COST",
+  "price": 915.0,
+  "dcf": {
+    "pv_stage1": 101268456397.27,
+    "pv_terminal": 234206672369.97,
+    "enterprise_value": 335475128767.25,
+    "equity_value": 343875128767.25,
+    "fair_value_per_share": 775.37,
+    "terminal_value_share_of_ev": 0.6981,
+    "inputs_echo": {
+      "fcf0": 8100000000.0,
+      "growth_rate": 0.1,
+      "stage1_growth": [
+        0.16,
+        0.15,
+        0.13,
+        0.12,
+        0.1,
+        0.09,
+        0.08,
+        0.07,
+        0.06,
+        0.05
+      ],
+      "years": 10,
+      "terminal_growth": 0.03,
+      "wacc": 0.075,
+      "net_debt": -8399999999.999999,
+      "shares_outstanding": 443500000.0,
+      "sensitivity": {
+        "wacc_step": 0.005,
+        "growth_step": 0.005,
+        "steps": 2
+      }
+    },
+    "sensitivity_grid": {
+      "wacc_values": [
+        0.065,
+        0.07,
+        0.075,
+        0.08,
+        0.085
+      ],
+      "terminal_growth_values": [
+        0.02,
+        0.025,
+        0.03,
+        0.035,
+        0.04
+      ],
+      "fair_value_per_share": [
+        [
+          833.9,
+          908.84,
+          1005.19,
+          1133.66,
+          1313.52
+        ],
+        [
+          746.5,
+          803.98,
+          875.83,
+          968.2,
+          1091.37
+        ],
+        [
+          675.16,
+          720.25,
+          775.37,
+          844.26,
+          932.84
+        ],
+        [
+          615.84,
+          651.89,
+          695.14,
+          748.0,
+          814.07
+        ],
+        [
+          565.78,
+          595.04,
+          629.61,
+          671.1,
+          721.81
+        ]
+      ]
+    },
+    "implied": {
+      "current_share_price": 915.0,
+      "stage1_growth": 0.125124,
+      "terminal_growth": 0.039096
+    }
+  },
+  "dcf_owner_earnings": {
+    "pv_stage1": 61100000000.0,
+    "pv_terminal": 103870000000.0,
+    "enterprise_value": 164970000000.0,
+    "equity_value": 173370000000.0,
+    "fair_value_per_share": 390.91,
+    "terminal_value_share_of_ev": 0.6296,
+    "inputs_echo": {
+      "fcf0": 6110000000.0,
+      "growth_rate": 0.08,
+      "stage1_growth": null,
+      "years": 10,
+      "terminal_growth": 0.02,
+      "wacc": 0.08,
+      "net_debt": -8400000000.0,
+      "shares_outstanding": 443500000.0,
+      "sensitivity": {
+        "wacc_step": 0.005,
+        "growth_step": 0.005,
+        "steps": 2
+      }
+    },
+    "sensitivity_grid": {
+      "wacc_values": [
+        0.07,
+        0.075,
+        0.08,
+        0.085,
+        0.09
+      ],
+      "terminal_growth_values": [
+        0.01,
+        0.015,
+        0.02,
+        0.025,
+        0.03
+      ],
+      "fair_value_per_share": [
+        [
+          418.51,
+          443.02,
+          472.44,
+          508.39,
+          553.33
+        ],
+        [
+          384.52,
+          404.41,
+          427.91,
+          456.12,
+          490.59
+        ],
+        [
+          355.49,
+          371.84,
+          390.91,
+          413.46,
+          440.51
+        ],
+        [
+          330.42,
+          344.01,
+          359.69,
+          377.99,
+          399.62
+        ],
+        [
+          308.56,
+          319.97,
+          333.02,
+          348.07,
+          365.62
+        ]
+      ]
+    },
+    "implied": {
+      "current_share_price": 915.0,
+      "stage1_growth": 0.19518,
+      "terminal_growth": 0.060729
+    }
+  },
+  "dcf_mid_cycle": {
+    "pv_stage1": 31455462461.24,
+    "pv_terminal": 40794537538.76,
+    "enterprise_value": 72250000000.0,
+    "equity_value": 80650000000.0,
+    "fair_value_per_share": 181.85,
+    "terminal_value_share_of_ev": 0.5646,
+    "inputs_echo": {
+      "fcf0": 4250000000.0,
+      "growth_rate": 0.02,
+      "stage1_growth": null,
+      "years": 10,
+      "terminal_growth": 0.02,
+      "wacc": 0.08,
+      "net_debt": -8400000000.0,
+      "shares_outstanding": 443500000.0,
+      "sensitivity": {
+        "wacc_step": 0.005,
+        "growth_step": 0.005,
+        "steps": 2
+      }
+    },
+    "sensitivity_grid": {
+      "wacc_values": [
+        0.07,
+        0.075,
+        0.08,
+        0.085,
+        0.09
+      ],
+      "terminal_growth_values": [
+        0.01,
+        0.015,
+        0.02,
+        0.025,
+        0.03
+      ],
+      "fair_value_per_share": [
+        [
+          193.25,
+          202.88,
+          214.43,
+          228.55,
+          246.2
+        ],
+        [
+          179.62,
+          187.43,
+          196.66,
+          207.74,
+          221.28
+        ],
+        [
+          167.94,
+          174.36,
+          181.85,
+          190.7,
+          201.33
+        ],
+        [
+          157.82,
+          163.16,
+          169.32,
+          176.5,
+          185.0
+        ],
+        [
+          148.97,
+          153.45,
+          158.58,
+          164.49,
+          171.38
+        ]
+      ]
+    },
+    "implied": {
+      "current_share_price": 915.0,
+      "stage1_growth": 0.244025,
+      "terminal_growth": 0.072964
+    }
+  },
+  "intrinsic": {
+    "fiscal_year": 2025,
+    "years_covered": 5,
+    "inputs": {
+      "price": 915.0,
+      "shares_outstanding": 443500000.0,
+      "aaa_yield": 0.054,
+      "treasury_10y": 0.043,
+      "business_type": "industrial",
+      "discount_rate": {
+        "value": 0.08,
+        "source": "max(treasury_10y 0.043, discount_rate_floor 0.08)"
+      },
+      "growth_rate": {
+        "value": 0.08,
+        "source": "min(EPS CAGR 0.1247, revenue CAGR 0.0846) = 0.0846, clipped to [0, 0.08]"
+      },
+      "growth_alternatives": {
+        "eps_cagr": 0.1247,
+        "revenue_cagr": 0.0846,
+        "span_years": 4,
+        "growth_formula_at": {
+          "0.05": 244.95,
+          "0.10": 377.36,
+          "0.15": 509.77
+        }
+      }
+    },
+    "per_share": {
+      "eps_latest": 18.03,
+      "eps_3y_avg": 16.25,
+      "book_value": 64.0361,
+      "dividends": 5.186,
+      "owner_earnings": 13.7768
+    },
+    "graham": {
+      "graham_number": 153.01,
+      "growth_formula": {
+        "value": 324.4,
+        "growth_used": 0.08,
+        "aaa_yield": 0.054
+      },
+      "ncav_per_share": -22.7734,
+      "net_net": {
+        "two_thirds_ncav": null,
+        "price_below": false
+      },
+      "defensive_checklist": {
+        "score": 3,
+        "out_of": 7,
+        "checks": [
+          {
+            "check": "adequate_size",
+            "passed": true,
+            "value": 271200000000.0,
+            "threshold": "revenue >= 700,000,000"
+          },
+          {
+            "check": "financial_condition",
+            "passed": false,
+            "value": {
+              "current_ratio": 0.9794,
+              "long_term_debt": 5700000000.0,
+              "net_current_assets": -800000000.0
+            },
+            "threshold": "current ratio >= 2 and long-term debt <= net current assets"
+          },
+          {
+            "check": "earnings_stability",
+            "passed": true,
+            "value": {
+              "years": 5,
+              "positive_years": 5
+            },
+            "threshold": "positive net income every year (Graham: 10 years)"
+          },
+          {
+            "check": "dividend_record",
+            "passed": true,
+            "value": {
+              "years": 5,
+              "paying_years": 5
+            },
+            "threshold": "dividends paid every year (Graham: 20 years)"
+          },
+          {
+            "check": "earnings_growth",
+            "passed": false,
+            "value": 0.2639,
+            "threshold": "three-year average EPS up at least one third across the table (Graham: 10 years)"
+          },
+          {
+            "check": "moderate_pe",
+            "passed": false,
+            "value": 56.3077,
+            "threshold": "price <= 15 x three-year average EPS"
+          },
+          {
+            "check": "moderate_pb",
+            "passed": false,
+            "value": {
+              "price_to_book": 14.2888,
+              "pe_times_pb": 804.5705
+            },
+            "threshold": "price <= 1.5 x book value, or P/E x P/B <= 22.5"
+          }
+        ],
+        "years_covered": 5
+      }
+    },
+    "buffett": {
+      "owner_earnings": {
+        "net_income": 8020000000.0,
+        "depreciation_amortization": 2430000000.0,
+        "capex": 5200000000.0,
+        "maintenance_capex": 4340000000.0,
+        "maintenance_capex_method": "max(depreciation_amortization, average_capex)",
+        "estimates": {
+          "depreciation_amortization": 2430000000.0,
+          "average_capex": 4340000000.0,
+          "one_percent_of_revenue": 2712000000.0
+        },
+        "value": 6110000000.0,
+        "per_share": 13.7768,
+        "by_year": [
+          {
+            "fiscal_year": 2021,
+            "value": 2440000000.0
+          },
+          {
+            "fiscal_year": 2022,
+            "value": 3400000000.0
+          },
+          {
+            "fiscal_year": 2023,
+            "value": 4030000000.0
+          },
+          {
+            "fiscal_year": 2024,
+            "value": 5270000000.0
+          },
+          {
+            "fiscal_year": 2025,
+            "value": 6110000000.0
+          }
+        ]
+      },
+      "dcf_input": {
+        "fcf0": 6110000000.0,
+        "growth_rate": 0.08,
+        "years": 10,
+        "terminal_growth": 0.02,
+        "wacc": 0.08,
+        "net_debt": -8400000000.0,
+        "shares_outstanding": 443500000.0,
+        "current_share_price": 915.0
+      },
+      "tenets": {
+        "score": 6,
+        "out_of": 7,
+        "checks": [
+          {
+            "check": "consistent_high_roe",
+            "passed": true,
+            "value": {
+              "years_at_or_above_15pct": 1.0,
+              "latest": 0.2824
+            },
+            "threshold": "ROE >= 15% in at least 80% of years"
+          },
+          {
+            "check": "low_leverage",
+            "passed": true,
+            "value": 0.2007,
+            "threshold": "long-term debt / equity <= 0.5"
+          },
+          {
+            "check": "high_net_margin",
+            "passed": false,
+            "value": 0.0296,
+            "threshold": "net margin >= 10%"
+          },
+          {
+            "check": "consistent_operating_profit",
+            "passed": true,
+            "value": {
+              "years": 5,
+              "positive_years": 5
+            },
+            "threshold": "positive operating income every year"
+          },
+          {
+            "check": "positive_owner_earnings",
+            "passed": true,
+            "value": {
+              "years": 5,
+              "positive_years": 5
+            },
+            "threshold": "positive owner earnings every year"
+          },
+          {
+            "check": "cash_conversion",
+            "passed": true,
+            "value": 1.01,
+            "threshold": "free cash flow / net income >= 0.8"
+          },
+          {
+            "check": "share_count_not_rising",
+            "passed": true,
+            "value": {
+              "first": 443900000.0,
+              "latest": 443500000.0
+            },
+            "threshold": "diluted shares not above the first year's"
+          }
+        ]
+      },
+      "book_value_tests": null,
+      "reit_tests": null
+    },
+    "normalized": {
+      "years": {
+        "owner_earnings": 5,
+        "eps": 5
+      },
+      "owner_earnings_10y_avg": 4250000000.0,
+      "owner_earnings_10y_avg_per_share": 9.5829,
+      "eps_10y_avg": 14.632,
+      "graham_number_10y": 145.2,
+      "dcf_input_mid_cycle": {
+        "fcf0": 4250000000.0,
+        "growth_rate": 0.02,
+        "years": 10,
+        "terminal_growth": 0.02,
+        "wacc": 0.08,
+        "net_debt": -8400000000.0,
+        "shares_outstanding": 443500000.0,
+        "current_share_price": 915.0
+      }
+    },
+    "margin_of_safety": [
+      {
+        "method": "graham_number",
+        "value": 153.01,
+        "price_to_value": 5.9799,
+        "discount": -4.9799,
+        "band": "premium"
+      },
+      {
+        "method": "graham_number_10y",
+        "value": 145.2,
+        "price_to_value": 6.3018,
+        "discount": -5.3018,
+        "band": "premium"
+      },
+      {
+        "method": "graham_growth_formula",
+        "value": 324.4,
+        "price_to_value": 2.8206,
+        "discount": -1.8206,
+        "band": "premium"
+      }
+    ],
+    "flags": [
+      {
+        "code": "NEGATIVE_NCAV",
+        "message": "current assets do not cover total liabilities; the net-net test does not apply"
+      },
+      {
+        "code": "SHORT_HISTORY",
+        "message": "5 fiscal years in the table; Graham's stability, dividend, and growth tests want 10 to 20"
+      },
+      {
+        "code": "MAINTENANCE_CAPEX_ESTIMATED",
+        "message": "maintenance capex is estimated as the larger of D&A and average capex; pass maintenance_capex to override"
+      }
+    ]
+  },
+  "comps": {
+    "metrics": {
+      "pe": {
+        "peer_median": 18.5,
+        "implied_value_per_share": 333.56,
+        "premium_discount_vs_peers": 1.7405
+      },
+      "ev_ebitda": {
+        "peer_median": 11.2,
+        "implied_value_per_share": 335.34,
+        "premium_discount_vs_peers": 1.8304
+      },
+      "ps": {
+        "peer_median": 0.62,
+        "implied_value_per_share": 379.13,
+        "premium_discount_vs_peers": 1.4194
+      },
+      "pb": {
+        "peer_median": 4.1,
+        "implied_value_per_share": 262.56,
+        "premium_discount_vs_peers": 2.4878
+      },
+      "fcf_yield": {
+        "peer_median": 0.045,
+        "implied_value_per_share": 405.78,
+        "premium_discount_vs_peers": -0.5556
+      }
+    },
+    "summary": {
+      "min": 262.56,
+      "max": 405.78,
+      "median": 335.34
+    }
+  },
+  "ddm": {
+    "model": "two_stage",
+    "fair_value_per_share": 325.69,
+    "inputs_echo": {
+      "model": "two_stage",
+      "dividend0": 5.2,
+      "required_return": 0.08,
+      "terminal_growth": 0.05,
+      "sensitivity": {
+        "required_return_step": 0.005,
+        "growth_step": 0.005,
+        "steps": 2
+      },
+      "growth_rate": 0.12,
+      "years": 10
+    },
+    "sensitivity_grid": {
+      "required_return_values": [
+        0.07,
+        0.075,
+        0.08,
+        0.085,
+        0.09
+      ],
+      "terminal_growth_values": [
+        0.04,
+        0.045,
+        0.05,
+        0.055,
+        0.06
+      ],
+      "fair_value_per_share": [
+        [
+          352.04,
+          410.61,
+          498.45,
+          644.87,
+          937.69
+        ],
+        [
+          298.45,
+          338.57,
+          394.72,
+          478.96,
+          619.36
+        ],
+        [
+          258.36,
+          287.22,
+          325.69,
+          379.55,
+          460.34
+        ],
+        [
+          227.26,
+          248.79,
+          276.47,
+          313.38,
+          365.05
+        ],
+        [
+          202.46,
+          218.98,
+          239.64,
+          266.2,
+          301.61
+        ]
+      ]
+    }
+  }
+}

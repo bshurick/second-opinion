@@ -1,0 +1,628 @@
+{
+  "as_of": "2026-09-15",
+  "sources": {
+    "holdings": "snaptrade",
+    "prices": "yahoo",
+    "benchmark": "SPY",
+    "factors": [
+      "HYG",
+      "IJR",
+      "MTUM",
+      "VLUE"
+    ],
+    "proxies": {},
+    "cash_like": [],
+    "tracking_references": {
+      "AAPL": "SPY",
+      "BND": "BND",
+      "COST": "SPY",
+      "JNJ": "SPY",
+      "MSFT": "SPY",
+      "SCHD": "SPY",
+      "VNQ": "SPY",
+      "VTI": "SPY",
+      "VXUS": "VXUS"
+    }
+  },
+  "portfolio": {
+    "total_value": 412500.0,
+    "cash_weight": 0.0526,
+    "coverage": 1.0,
+    "observations": 1760,
+    "start": "2019-09-16",
+    "end": "2026-09-15",
+    "benchmark": "SPY",
+    "volatility": 0.1222,
+    "beta": 0.7588,
+    "correlation_to_benchmark": 0.9622,
+    "tracking_error": 0.0501,
+    "sharpe": 0.91,
+    "max_drawdown": 0.273,
+    "var_95": 0.0125,
+    "cvar_95": 0.0183,
+    "upside_capture": 0.77,
+    "downside_capture": 0.72,
+    "sortino": 1.24,
+    "crisis_correlation": 0.96,
+    "parametric_var_95": 0.0127,
+    "var_99": 0.0186,
+    "diversification_ratio": 1.2481,
+    "avg_pairwise_correlation": 0.4222
+  },
+  "positions": [
+    {
+      "symbol": "AAPL",
+      "value": 27840.0,
+      "weight": 0.0675,
+      "observations": 1760,
+      "volatility": 0.268,
+      "beta": 1.2103,
+      "correlation_to_benchmark": 0.7,
+      "tracking_error": 0.1941,
+      "tracking_benchmark": "SPY",
+      "sharpe": 0.74,
+      "max_drawdown": 0.4228,
+      "var_95": 0.0273,
+      "cvar_95": 0.0399,
+      "upside_capture": 1.12,
+      "downside_capture": 1.18,
+      "sortino": 1.02,
+      "crisis_correlation": 0.78
+    },
+    {
+      "symbol": "BND",
+      "value": 70300.0,
+      "weight": 0.1704,
+      "observations": 1760,
+      "volatility": 0.061,
+      "beta": 0.0236,
+      "correlation_to_benchmark": 0.06,
+      "tracking_error": 0.0,
+      "tracking_benchmark": "BND",
+      "sharpe": 0.21,
+      "max_drawdown": 0.1667,
+      "var_95": 0.0062,
+      "cvar_95": 0.0091,
+      "upside_capture": 0.08,
+      "downside_capture": 0.03,
+      "sortino": 0.29,
+      "crisis_correlation": 0.12
+    },
+    {
+      "symbol": "COST",
+      "value": 20130.0,
+      "weight": 0.0488,
+      "observations": 1760,
+      "volatility": 0.214,
+      "beta": 0.8284,
+      "correlation_to_benchmark": 0.6,
+      "tracking_error": 0.1733,
+      "tracking_benchmark": "SPY",
+      "sharpe": 1.02,
+      "max_drawdown": 0.2894,
+      "var_95": 0.0218,
+      "cvar_95": 0.0319,
+      "upside_capture": 0.92,
+      "downside_capture": 0.74,
+      "sortino": 1.41,
+      "crisis_correlation": 0.66
+    },
+    {
+      "symbol": "JNJ",
+      "value": 16500.0,
+      "weight": 0.04,
+      "observations": 1760,
+      "volatility": 0.168,
+      "beta": 0.3685,
+      "correlation_to_benchmark": 0.34,
+      "tracking_error": 0.1859,
+      "tracking_benchmark": "SPY",
+      "sharpe": 0.28,
+      "max_drawdown": 0.198,
+      "var_95": 0.0171,
+      "cvar_95": 0.025,
+      "upside_capture": 0.46,
+      "downside_capture": 0.38,
+      "sortino": 0.39,
+      "crisis_correlation": 0.42
+    },
+    {
+      "symbol": "MSFT",
+      "value": 27775.0,
+      "weight": 0.0673,
+      "observations": 1760,
+      "volatility": 0.246,
+      "beta": 1.1745,
+      "correlation_to_benchmark": 0.74,
+      "tracking_error": 0.1677,
+      "tracking_benchmark": "SPY",
+      "sharpe": 0.81,
+      "max_drawdown": 0.4104,
+      "var_95": 0.0251,
+      "cvar_95": 0.0367,
+      "upside_capture": 1.14,
+      "downside_capture": 1.1,
+      "sortino": 1.12,
+      "crisis_correlation": 0.81
+    },
+    {
+      "symbol": "SCHD",
+      "value": 11400.0,
+      "weight": 0.0276,
+      "observations": 1760,
+      "volatility": 0.152,
+      "beta": 0.7453,
+      "correlation_to_benchmark": 0.76,
+      "tracking_error": 0.1064,
+      "tracking_benchmark": "SPY",
+      "sharpe": 0.52,
+      "max_drawdown": 0.2604,
+      "var_95": 0.0155,
+      "cvar_95": 0.0226,
+      "upside_capture": 0.72,
+      "downside_capture": 0.7,
+      "sortino": 0.72,
+      "crisis_correlation": 0.8
+    },
+    {
+      "symbol": "VNQ",
+      "value": 13800.0,
+      "weight": 0.0335,
+      "observations": 1760,
+      "volatility": 0.198,
+      "beta": 0.8431,
+      "correlation_to_benchmark": 0.66,
+      "tracking_error": 0.1507,
+      "tracking_benchmark": "SPY",
+      "sharpe": 0.19,
+      "max_drawdown": 0.3195,
+      "var_95": 0.0202,
+      "cvar_95": 0.0295,
+      "upside_capture": 0.84,
+      "downside_capture": 0.92,
+      "sortino": 0.26,
+      "crisis_correlation": 0.72
+    },
+    {
+      "symbol": "VTI",
+      "value": 162240.0,
+      "weight": 0.3933,
+      "observations": 1760,
+      "volatility": 0.165,
+      "beta": 1.0539,
+      "correlation_to_benchmark": 0.99,
+      "tracking_error": 0.0247,
+      "tracking_benchmark": "SPY",
+      "sharpe": 0.96,
+      "max_drawdown": 0.3627,
+      "var_95": 0.0168,
+      "cvar_95": 0.0246,
+      "upside_capture": 1.03,
+      "downside_capture": 1.02,
+      "sortino": 1.32,
+      "crisis_correlation": 0.99
+    },
+    {
+      "symbol": "VXUS",
+      "value": 40800.0,
+      "weight": 0.0989,
+      "observations": 1760,
+      "volatility": 0.148,
+      "beta": 0.7639,
+      "correlation_to_benchmark": 0.8,
+      "tracking_error": 0.0,
+      "tracking_benchmark": "VXUS",
+      "sharpe": 0.64,
+      "max_drawdown": 0.3489,
+      "var_95": 0.0151,
+      "cvar_95": 0.0221,
+      "upside_capture": 0.78,
+      "downside_capture": 0.76,
+      "sortino": 0.88,
+      "crisis_correlation": 0.86
+    }
+  ],
+  "risk_contributions": [
+    {
+      "symbol": "AAPL",
+      "weight": 0.0675,
+      "contribution": 0.0017,
+      "share": 0.1149
+    },
+    {
+      "symbol": "BND",
+      "weight": 0.1704,
+      "contribution": 0.0002,
+      "share": 0.014
+    },
+    {
+      "symbol": "COST",
+      "weight": 0.0488,
+      "contribution": 0.0008,
+      "share": 0.0559
+    },
+    {
+      "symbol": "JNJ",
+      "weight": 0.04,
+      "contribution": 0.0003,
+      "share": 0.0227
+    },
+    {
+      "symbol": "MSFT",
+      "weight": 0.0673,
+      "contribution": 0.0016,
+      "share": 0.1079
+    },
+    {
+      "symbol": "SCHD",
+      "weight": 0.0276,
+      "contribution": 0.0004,
+      "share": 0.027
+    },
+    {
+      "symbol": "VNQ",
+      "weight": 0.0335,
+      "contribution": 0.0006,
+      "share": 0.0384
+    },
+    {
+      "symbol": "VTI",
+      "weight": 0.3933,
+      "contribution": 0.0078,
+      "share": 0.5191
+    },
+    {
+      "symbol": "VXUS",
+      "weight": 0.0989,
+      "contribution": 0.0015,
+      "share": 0.1
+    }
+  ],
+  "correlation": {
+    "symbols": [
+      "AAPL",
+      "BND",
+      "COST",
+      "JNJ",
+      "MSFT",
+      "SCHD",
+      "VNQ",
+      "VTI",
+      "VXUS"
+    ],
+    "matrix": [
+      [
+        1.0,
+        0.04,
+        0.46,
+        0.22,
+        0.64,
+        0.49,
+        0.41,
+        0.72,
+        0.55
+      ],
+      [
+        0.04,
+        1.0,
+        0.03,
+        0.11,
+        0.02,
+        0.08,
+        0.29,
+        0.06,
+        0.1
+      ],
+      [
+        0.46,
+        0.03,
+        1.0,
+        0.31,
+        0.48,
+        0.45,
+        0.39,
+        0.61,
+        0.47
+      ],
+      [
+        0.22,
+        0.11,
+        0.31,
+        1.0,
+        0.2,
+        0.52,
+        0.34,
+        0.35,
+        0.33
+      ],
+      [
+        0.64,
+        0.02,
+        0.48,
+        0.2,
+        1.0,
+        0.47,
+        0.43,
+        0.76,
+        0.58
+      ],
+      [
+        0.49,
+        0.08,
+        0.45,
+        0.52,
+        0.47,
+        1.0,
+        0.66,
+        0.79,
+        0.72
+      ],
+      [
+        0.41,
+        0.29,
+        0.39,
+        0.34,
+        0.43,
+        0.66,
+        1.0,
+        0.68,
+        0.63
+      ],
+      [
+        0.72,
+        0.06,
+        0.61,
+        0.35,
+        0.76,
+        0.79,
+        0.68,
+        1.0,
+        0.81
+      ],
+      [
+        0.55,
+        0.1,
+        0.47,
+        0.33,
+        0.58,
+        0.72,
+        0.63,
+        0.81,
+        1.0
+      ]
+    ]
+  },
+  "concentration": {
+    "hhi": 0.2085,
+    "hhi_interpretation": "concentrated",
+    "top_5_concentration": 0.7975,
+    "largest_position": 0.3933,
+    "position_count": 9
+  },
+  "scenarios": [
+    {
+      "name": "2008 financial crisis",
+      "start": "2007-10-09",
+      "end": "2009-03-09",
+      "mode": "beta_scaled",
+      "benchmark_return": -0.5678,
+      "positions": {
+        "AAPL": -0.6872,
+        "BND": -0.0134,
+        "COST": -0.4704,
+        "JNJ": -0.2092,
+        "MSFT": -0.6669,
+        "SCHD": -0.4232,
+        "VNQ": -0.4787,
+        "VTI": -0.5984,
+        "VXUS": -0.4337
+      },
+      "portfolio_return": -0.4309,
+      "portfolio_loss": -177726.35,
+      "note": "window is outside the price history; loss estimated as beta x benchmark return",
+      "replayed": [],
+      "beta_scaled": [
+        "AAPL",
+        "BND",
+        "COST",
+        "JNJ",
+        "MSFT",
+        "SCHD",
+        "VNQ",
+        "VTI",
+        "VXUS"
+      ]
+    },
+    {
+      "name": "2018 Q4 selloff",
+      "start": "2018-09-20",
+      "end": "2018-12-24",
+      "mode": "beta_scaled",
+      "benchmark_return": -0.1978,
+      "positions": {
+        "AAPL": -0.2394,
+        "BND": -0.0047,
+        "COST": -0.1639,
+        "JNJ": -0.0729,
+        "MSFT": -0.2323,
+        "SCHD": -0.1474,
+        "VNQ": -0.1668,
+        "VTI": -0.2085,
+        "VXUS": -0.1511
+      },
+      "portfolio_return": -0.1501,
+      "portfolio_loss": -61913.12,
+      "note": "window is outside the price history; loss estimated as beta x benchmark return",
+      "replayed": [],
+      "beta_scaled": [
+        "AAPL",
+        "BND",
+        "COST",
+        "JNJ",
+        "MSFT",
+        "SCHD",
+        "VNQ",
+        "VTI",
+        "VXUS"
+      ]
+    },
+    {
+      "name": "2020 COVID crash",
+      "start": "2020-02-19",
+      "end": "2020-03-23",
+      "mode": "replay",
+      "benchmark_return": -0.3392,
+      "positions": {
+        "AAPL": -0.4105,
+        "BND": -0.0187,
+        "COST": -0.281,
+        "JNJ": -0.125,
+        "MSFT": -0.3984,
+        "SCHD": -0.2528,
+        "VNQ": -0.286,
+        "VTI": -0.3521,
+        "VXUS": -0.3387
+      },
+      "portfolio_return": -0.265,
+      "portfolio_loss": -109299.85,
+      "note": null,
+      "replayed": [
+        "AAPL",
+        "BND",
+        "COST",
+        "JNJ",
+        "MSFT",
+        "SCHD",
+        "VNQ",
+        "VTI",
+        "VXUS"
+      ],
+      "beta_scaled": []
+    },
+    {
+      "name": "2022 rate shock",
+      "start": "2022-01-03",
+      "end": "2022-10-12",
+      "mode": "replay",
+      "benchmark_return": -0.2451,
+      "positions": {
+        "AAPL": -0.2403,
+        "BND": -0.1618,
+        "COST": -0.1497,
+        "JNJ": -0.0143,
+        "MSFT": -0.3284,
+        "SCHD": -0.1566,
+        "VNQ": -0.3102,
+        "VTI": -0.2562,
+        "VXUS": -0.2741
+      },
+      "portfolio_return": -0.2164,
+      "portfolio_loss": -89250.38,
+      "note": null,
+      "replayed": [
+        "AAPL",
+        "BND",
+        "COST",
+        "JNJ",
+        "MSFT",
+        "SCHD",
+        "VNQ",
+        "VTI",
+        "VXUS"
+      ],
+      "beta_scaled": []
+    }
+  ],
+  "what_if": {
+    "shocks": {
+      "AAPL": -0.3
+    },
+    "positions": {
+      "AAPL": -8352.0
+    },
+    "portfolio_return": -0.0202,
+    "portfolio_loss": -8352.0
+  },
+  "missing_prices": [],
+  "flags": [
+    {
+      "code": "CONCENTRATED",
+      "message": "largest position 39.3% of value, HHI 0.2085"
+    }
+  ],
+  "factors": {
+    "HYG": {
+      "beta": 1.2424,
+      "explained_variance": 0.3844
+    },
+    "IJR": {
+      "beta": 0.4786,
+      "explained_variance": 0.6889
+    },
+    "MTUM": {
+      "beta": 0.6078,
+      "explained_variance": 0.81
+    },
+    "VLUE": {
+      "beta": 0.6525,
+      "explained_variance": 0.7569
+    }
+  },
+  "factors_total_explained_variance": 2.6402,
+  "liquidity": [
+    {
+      "symbol": "AAPL",
+      "avg_dollar_volume": 11000000000.0,
+      "position_value": 27840.0,
+      "pct_of_adv": 0.0
+    },
+    {
+      "symbol": "BND",
+      "avg_dollar_volume": 440000000.0,
+      "position_value": 70300.0,
+      "pct_of_adv": 0.0002
+    },
+    {
+      "symbol": "COST",
+      "avg_dollar_volume": 1600000000.0,
+      "position_value": 20130.0,
+      "pct_of_adv": 0.0
+    },
+    {
+      "symbol": "JNJ",
+      "avg_dollar_volume": 1200000000.0,
+      "position_value": 16500.0,
+      "pct_of_adv": 0.0
+    },
+    {
+      "symbol": "MSFT",
+      "avg_dollar_volume": 9500000000.0,
+      "position_value": 27775.0,
+      "pct_of_adv": 0.0
+    },
+    {
+      "symbol": "SCHD",
+      "avg_dollar_volume": 360000000.0,
+      "position_value": 11400.0,
+      "pct_of_adv": 0.0
+    },
+    {
+      "symbol": "VNQ",
+      "avg_dollar_volume": 410000000.0,
+      "position_value": 13800.0,
+      "pct_of_adv": 0.0
+    },
+    {
+      "symbol": "VTI",
+      "avg_dollar_volume": 1300000000.0,
+      "position_value": 162240.0,
+      "pct_of_adv": 0.0001
+    },
+    {
+      "symbol": "VXUS",
+      "avg_dollar_volume": 290000000.0,
+      "position_value": 40800.0,
+      "pct_of_adv": 0.0001
+    }
+  ]
+}

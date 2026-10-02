@@ -1,0 +1,499 @@
+{
+  "sources": {
+    "holdings": "snaptrade",
+    "prices": "yahoo",
+    "targets": "targets.json",
+    "lots": "ledger"
+  },
+  "accounts": [
+    "Sample Brokerage",
+    "Sample Roth IRA",
+    "Sample 401(k)"
+  ],
+  "holdings_by_account": {
+    "Sample 401(k)": [
+      "BND",
+      "VTI"
+    ],
+    "Sample Brokerage": [
+      "AAPL",
+      "COST",
+      "MSFT",
+      "SCHD",
+      "VTI"
+    ],
+    "Sample Roth IRA": [
+      "JNJ",
+      "VNQ",
+      "VXUS"
+    ]
+  },
+  "lot_sources": {
+    "AAPL": "ledger",
+    "BND": "ledger",
+    "COST": "ledger",
+    "JNJ": "ledger",
+    "MSFT": "ledger",
+    "SCHD": "ledger",
+    "VNQ": "ledger",
+    "VTI": "ledger",
+    "VXUS": "ledger"
+  },
+  "mode": "full",
+  "total_value": 417500.0,
+  "frozen_value": 0.0,
+  "contribution": 5000.0,
+  "withdrawal": 0.0,
+  "bands": {
+    "absolute": 0.05,
+    "relative": 0.25
+  },
+  "max_drift": 0.1199,
+  "allocation": [
+    {
+      "key": "US equities",
+      "members": [
+        "AAPL",
+        "COST",
+        "JNJ",
+        "MSFT",
+        "SCHD",
+        "VNQ",
+        "VTI"
+      ],
+      "value": 279685.0,
+      "weight": 0.6699,
+      "target": 0.55,
+      "drift": 0.1199,
+      "relative_drift": 0.218,
+      "breach": true,
+      "target_value": 229625.0,
+      "delta_value": -50060.0
+    },
+    {
+      "key": "international",
+      "members": [
+        "VXUS"
+      ],
+      "value": 40800.0,
+      "weight": 0.0977,
+      "target": 0.15,
+      "drift": -0.0523,
+      "relative_drift": -0.3485,
+      "breach": true,
+      "target_value": 62625.0,
+      "delta_value": 21825.0
+    },
+    {
+      "key": "bonds",
+      "members": [
+        "BND"
+      ],
+      "value": 70300.0,
+      "weight": 0.1684,
+      "target": 0.25,
+      "drift": -0.0816,
+      "relative_drift": -0.3265,
+      "breach": true,
+      "target_value": 104375.0,
+      "delta_value": 34075.0
+    },
+    {
+      "key": "CASH",
+      "members": [],
+      "value": 26715.0,
+      "weight": 0.064,
+      "target": 0.05,
+      "drift": 0.014,
+      "relative_drift": 0.2798,
+      "breach": true,
+      "target_value": 20875.0,
+      "delta_value": -5840.0
+    }
+  ],
+  "trades": [
+    {
+      "symbol": "VTI",
+      "side": "SELL",
+      "units": 93.0,
+      "price": 312.0,
+      "value": 29016.0,
+      "reason": "overweight by 12.0%",
+      "account": "Sample 401(k)",
+      "lots": [
+        {
+          "units": 93.0,
+          "cost_per_unit": 220.0,
+          "term": "long",
+          "gain": 8556.0
+        }
+      ],
+      "est_gain": 8556.0,
+      "est_tax": 0.0
+    },
+    {
+      "symbol": "AAPL",
+      "side": "SELL",
+      "units": 21.0,
+      "price": 232.0,
+      "value": 4872.0,
+      "reason": "overweight by 12.0%",
+      "account": "Sample Brokerage",
+      "lots": [
+        {
+          "units": 21.0,
+          "cost_per_unit": 160.0,
+          "term": "long",
+          "gain": 1512.0
+        }
+      ],
+      "est_gain": 1512.0,
+      "est_tax": 226.8
+    },
+    {
+      "symbol": "MSFT",
+      "side": "SELL",
+      "units": 9.0,
+      "price": 505.0,
+      "value": 4545.0,
+      "reason": "overweight by 12.0%",
+      "account": "Sample Brokerage",
+      "lots": [
+        {
+          "units": 9.0,
+          "cost_per_unit": 330.0,
+          "term": "long",
+          "gain": 1575.0
+        }
+      ],
+      "est_gain": 1575.0,
+      "est_tax": 236.25
+    },
+    {
+      "symbol": "JNJ",
+      "side": "SELL",
+      "units": 17.0,
+      "price": 165.0,
+      "value": 2805.0,
+      "reason": "overweight by 12.0%",
+      "account": "Sample Roth IRA",
+      "lots": [
+        {
+          "units": 17.0,
+          "cost_per_unit": 158.0,
+          "term": "long",
+          "gain": 119.0
+        }
+      ],
+      "est_gain": 119.0,
+      "est_tax": 0.0
+    },
+    {
+      "symbol": "COST",
+      "side": "SELL",
+      "units": 3.0,
+      "price": 915.0,
+      "value": 2745.0,
+      "reason": "overweight by 12.0%",
+      "account": "Sample Brokerage",
+      "lots": [
+        {
+          "units": 3.0,
+          "cost_per_unit": 700.0,
+          "term": "long",
+          "gain": 645.0
+        }
+      ],
+      "est_gain": 645.0,
+      "est_tax": 96.75
+    },
+    {
+      "symbol": "VNQ",
+      "side": "SELL",
+      "units": 26.0,
+      "price": 92.0,
+      "value": 2392.0,
+      "reason": "overweight by 12.0%",
+      "account": "Sample Roth IRA",
+      "lots": [
+        {
+          "units": 26.0,
+          "cost_per_unit": 87.0,
+          "term": "long",
+          "gain": 130.0
+        }
+      ],
+      "est_gain": 130.0,
+      "est_tax": 0.0
+    },
+    {
+      "symbol": "SCHD",
+      "side": "SELL",
+      "units": 71.0,
+      "price": 28.5,
+      "value": 2023.5,
+      "reason": "overweight by 12.0%",
+      "account": "Sample Brokerage",
+      "lots": [
+        {
+          "units": 71.0,
+          "cost_per_unit": 26.0,
+          "term": "long",
+          "gain": 177.5
+        }
+      ],
+      "est_gain": 177.5,
+      "est_tax": 26.62
+    },
+    {
+      "symbol": "BND",
+      "side": "BUY",
+      "units": 460.0,
+      "price": 74.0,
+      "value": 34040.0,
+      "reason": "underweight by 8.2%",
+      "account": "Sample 401(k)",
+      "lots": null,
+      "est_gain": null,
+      "est_tax": null
+    },
+    {
+      "symbol": "VXUS",
+      "side": "BUY",
+      "units": 320.0,
+      "price": 68.0,
+      "value": 21760.0,
+      "reason": "underweight by 5.2%",
+      "account": "Sample Roth IRA",
+      "lots": null,
+      "est_gain": null,
+      "est_tax": null
+    }
+  ],
+  "post_trade": [
+    {
+      "key": "US equities",
+      "value": 231286.5,
+      "weight": 0.554,
+      "target": 0.55,
+      "drift": 0.004
+    },
+    {
+      "key": "international",
+      "value": 62560.0,
+      "weight": 0.1498,
+      "target": 0.15,
+      "drift": -0.0002
+    },
+    {
+      "key": "bonds",
+      "value": 104340.0,
+      "weight": 0.2499,
+      "target": 0.25,
+      "drift": -0.0001
+    },
+    {
+      "key": "CASH",
+      "value": 19313.5,
+      "weight": 0.0463,
+      "target": 0.05,
+      "drift": -0.0037
+    }
+  ],
+  "cash_after": 19313.5,
+  "buys_total": 55800.0,
+  "sells_total": 48398.5,
+  "turnover": 0.1248,
+  "est_realized_gain": 12714.5,
+  "est_tax": 586.42,
+  "routing": {
+    "accounts": {
+      "Sample 401(k)": "tax_advantaged",
+      "Sample Brokerage": "taxable",
+      "Sample Roth IRA": "tax_advantaged"
+    },
+    "neutral": [
+      {
+        "symbol": "AAPL",
+        "side": "SELL",
+        "units": 21.4784,
+        "price": 232.0,
+        "value": 4983.0,
+        "account": "Sample Brokerage",
+        "est_gain": 1546.45,
+        "est_tax": 231.97
+      },
+      {
+        "symbol": "COST",
+        "side": "SELL",
+        "units": 3.9377,
+        "price": 915.0,
+        "value": 3603.01,
+        "account": "Sample Brokerage",
+        "est_gain": 846.61,
+        "est_tax": 126.99
+      },
+      {
+        "symbol": "JNJ",
+        "side": "SELL",
+        "units": 17.8987,
+        "price": 165.0,
+        "value": 2953.29,
+        "account": "Sample Roth IRA",
+        "est_gain": 125.29,
+        "est_tax": 0.0
+      },
+      {
+        "symbol": "MSFT",
+        "side": "SELL",
+        "units": 9.8443,
+        "price": 505.0,
+        "value": 4971.37,
+        "account": "Sample Brokerage",
+        "est_gain": 1722.75,
+        "est_tax": 258.41
+      },
+      {
+        "symbol": "SCHD",
+        "side": "SELL",
+        "units": 71.5948,
+        "price": 28.5,
+        "value": 2040.45,
+        "account": "Sample Brokerage",
+        "est_gain": 178.99,
+        "est_tax": 26.85
+      },
+      {
+        "symbol": "VNQ",
+        "side": "SELL",
+        "units": 26.8481,
+        "price": 92.0,
+        "value": 2470.02,
+        "account": "Sample Roth IRA",
+        "est_gain": 134.24,
+        "est_tax": 0.0
+      },
+      {
+        "symbol": "VTI",
+        "side": "SELL",
+        "units": 53.6961,
+        "price": 312.0,
+        "value": 16753.19,
+        "account": "Sample 401(k)",
+        "est_gain": 4940.04,
+        "est_tax": 0.0
+      },
+      {
+        "symbol": "VTI",
+        "side": "SELL",
+        "units": 39.3772,
+        "price": 312.0,
+        "value": 12285.67,
+        "account": "Sample Brokerage",
+        "est_gain": 2126.37,
+        "est_tax": 318.95
+      }
+    ],
+    "tax_preferred": [
+      {
+        "symbol": "VTI",
+        "side": "SELL",
+        "units": 93.0,
+        "price": 312.0,
+        "value": 29016.0,
+        "account": "Sample 401(k)",
+        "est_gain": 8556.0,
+        "est_tax": 0.0
+      },
+      {
+        "symbol": "AAPL",
+        "side": "SELL",
+        "units": 21.0,
+        "price": 232.0,
+        "value": 4872.0,
+        "account": "Sample Brokerage",
+        "est_gain": 1512.0,
+        "est_tax": 226.8
+      },
+      {
+        "symbol": "MSFT",
+        "side": "SELL",
+        "units": 9.0,
+        "price": 505.0,
+        "value": 4545.0,
+        "account": "Sample Brokerage",
+        "est_gain": 1575.0,
+        "est_tax": 236.25
+      },
+      {
+        "symbol": "JNJ",
+        "side": "SELL",
+        "units": 17.0,
+        "price": 165.0,
+        "value": 2805.0,
+        "account": "Sample Roth IRA",
+        "est_gain": 119.0,
+        "est_tax": 0.0
+      },
+      {
+        "symbol": "COST",
+        "side": "SELL",
+        "units": 3.0,
+        "price": 915.0,
+        "value": 2745.0,
+        "account": "Sample Brokerage",
+        "est_gain": 645.0,
+        "est_tax": 96.75
+      },
+      {
+        "symbol": "VNQ",
+        "side": "SELL",
+        "units": 26.0,
+        "price": 92.0,
+        "value": 2392.0,
+        "account": "Sample Roth IRA",
+        "est_gain": 130.0,
+        "est_tax": 0.0
+      },
+      {
+        "symbol": "SCHD",
+        "side": "SELL",
+        "units": 71.0,
+        "price": 28.5,
+        "value": 2023.5,
+        "account": "Sample Brokerage",
+        "est_gain": 177.5,
+        "est_tax": 26.62
+      }
+    ],
+    "est_tax": 586.42,
+    "est_tax_pro_rata": 963.17
+  },
+  "frozen": [],
+  "flags": [
+    {
+      "code": "BAND_BREACH",
+      "message": "outside the 5% / 25% bands: CASH (+1.4%), US equities (+12.0%), bonds (-8.2%), international (-5.2%)"
+    }
+  ],
+  "suggested_bands": [
+    {
+      "key": "US equities",
+      "vol_annual": 0.1624,
+      "absolute": 0.04,
+      "relative": 0.24
+    },
+    {
+      "key": "bonds",
+      "vol_annual": 0.0581,
+      "absolute": 0.01,
+      "relative": 0.1
+    },
+    {
+      "key": "international",
+      "vol_annual": 0.1482,
+      "absolute": 0.04,
+      "relative": 0.22
+    }
+  ]
+}

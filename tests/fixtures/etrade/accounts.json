@@ -1,0 +1,5 @@
+{"AccountListResponse": {"Accounts": {"Account": [
+  {"accountId": "10000001", "accountIdKey": "SampleAcctKey0000001", "accountMode": "MARGIN", "accountDesc": "Brokerage", "accountName": "Individual Brokerage", "accountType": "INDIVIDUAL", "institutionType": "BROKERAGE", "accountStatus": "ACTIVE"},
+  {"accountId": "10000002", "accountIdKey": "SampleAcctKey0000002", "accountMode": "CASH", "accountDesc": "IRA", "accountName": "", "accountType": "IRA", "institutionType": "BROKERAGE", "accountStatus": "ACTIVE"},
+  {"accountId": "10000003", "accountIdKey": "closedKey00000000000", "accountMode": "CASH", "accountDesc": "Old", "accountName": "Old", "accountType": "INDIVIDUAL", "institutionType": "BROKERAGE", "accountStatus": "CLOSED"}
+]}}}

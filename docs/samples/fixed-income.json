@@ -1,0 +1,604 @@
+{
+  "symbol": "BND",
+  "horizon": {
+    "horizon_years": 8.0,
+    "duration_years": 7.2567,
+    "modified_duration_years": 7.0628,
+    "published_effective_duration_years": 5.721,
+    "matched": true,
+    "locked_in_return_pct": 5.5654,
+    "scenarios": [
+      {
+        "delta_yield_bp": -200,
+        "immediate_price_change_pct": 15.3707,
+        "total_return_pct": 52.1615,
+        "annualised_pct": 5.3873
+      },
+      {
+        "delta_yield_bp": -100,
+        "immediate_price_change_pct": 7.3646,
+        "total_return_pct": 53.1562,
+        "annualised_pct": 5.4731
+      },
+      {
+        "delta_yield_bp": 0,
+        "immediate_price_change_pct": 0.0,
+        "total_return_pct": 54.2308,
+        "annualised_pct": 5.5654
+      },
+      {
+        "delta_yield_bp": 100,
+        "immediate_price_change_pct": -6.7786,
+        "total_return_pct": 55.389,
+        "annualised_pct": 5.6641
+      },
+      {
+        "delta_yield_bp": 200,
+        "immediate_price_change_pct": -13.0213,
+        "total_return_pct": 56.6345,
+        "annualised_pct": 5.7696
+      }
+    ],
+    "spread_pct": 0.3823,
+    "value_paths": [
+      {
+        "delta_yield_bp": -100,
+        "points": [
+          {
+            "years": 0,
+            "value": 1.073646
+          },
+          {
+            "years": 0.5,
+            "value": 1.09775
+          },
+          {
+            "years": 1.0,
+            "value": 1.122394
+          },
+          {
+            "years": 1.5,
+            "value": 1.147592
+          },
+          {
+            "years": 2.0,
+            "value": 1.173355
+          },
+          {
+            "years": 2.5,
+            "value": 1.199697
+          },
+          {
+            "years": 3.0,
+            "value": 1.22663
+          },
+          {
+            "years": 3.5,
+            "value": 1.254168
+          },
+          {
+            "years": 4.0,
+            "value": 1.282324
+          },
+          {
+            "years": 4.5,
+            "value": 1.311113
+          },
+          {
+            "years": 5.0,
+            "value": 1.340547
+          },
+          {
+            "years": 5.5,
+            "value": 1.370642
+          },
+          {
+            "years": 6.0,
+            "value": 1.401413
+          },
+          {
+            "years": 6.5,
+            "value": 1.432875
+          },
+          {
+            "years": 7.0,
+            "value": 1.465043
+          },
+          {
+            "years": 7.5,
+            "value": 1.497933
+          },
+          {
+            "years": 8.0,
+            "value": 1.531562
+          }
+        ]
+      },
+      {
+        "delta_yield_bp": 0,
+        "points": [
+          {
+            "years": 0,
+            "value": 1.0
+          },
+          {
+            "years": 0.5,
+            "value": 1.02745
+          },
+          {
+            "years": 1.0,
+            "value": 1.055654
+          },
+          {
+            "years": 1.5,
+            "value": 1.084631
+          },
+          {
+            "years": 2.0,
+            "value": 1.114404
+          },
+          {
+            "years": 2.5,
+            "value": 1.144995
+          },
+          {
+            "years": 3.0,
+            "value": 1.176425
+          },
+          {
+            "years": 3.5,
+            "value": 1.208718
+          },
+          {
+            "years": 4.0,
+            "value": 1.241897
+          },
+          {
+            "years": 4.5,
+            "value": 1.275987
+          },
+          {
+            "years": 5.0,
+            "value": 1.311013
+          },
+          {
+            "years": 5.5,
+            "value": 1.347
+          },
+          {
+            "years": 6.0,
+            "value": 1.383975
+          },
+          {
+            "years": 6.5,
+            "value": 1.421965
+          },
+          {
+            "years": 7.0,
+            "value": 1.460998
+          },
+          {
+            "years": 7.5,
+            "value": 1.501103
+          },
+          {
+            "years": 8.0,
+            "value": 1.542308
+          }
+        ]
+      },
+      {
+        "delta_yield_bp": 100,
+        "points": [
+          {
+            "years": 0,
+            "value": 0.932214
+          },
+          {
+            "years": 0.5,
+            "value": 0.962465
+          },
+          {
+            "years": 1.0,
+            "value": 0.993697
+          },
+          {
+            "years": 1.5,
+            "value": 1.025942
+          },
+          {
+            "years": 2.0,
+            "value": 1.059234
+          },
+          {
+            "years": 2.5,
+            "value": 1.093606
+          },
+          {
+            "years": 3.0,
+            "value": 1.129094
+          },
+          {
+            "years": 3.5,
+            "value": 1.165733
+          },
+          {
+            "years": 4.0,
+            "value": 1.203561
+          },
+          {
+            "years": 4.5,
+            "value": 1.242616
+          },
+          {
+            "years": 5.0,
+            "value": 1.282939
+          },
+          {
+            "years": 5.5,
+            "value": 1.324571
+          },
+          {
+            "years": 6.0,
+            "value": 1.367553
+          },
+          {
+            "years": 6.5,
+            "value": 1.41193
+          },
+          {
+            "years": 7.0,
+            "value": 1.457747
+          },
+          {
+            "years": 7.5,
+            "value": 1.505051
+          },
+          {
+            "years": 8.0,
+            "value": 1.55389
+          }
+        ]
+      }
+    ],
+    "mismatch_cost_note": "The horizon of 8 years is within 20% of the Macaulay duration (7.26 years), so the return is largely locked in: a parallel move of +/-200 bp moves the annualised outcome by only 0.38 percentage points.",
+    "assumptions": {
+      "input_shape": "fund",
+      "frequency": 2,
+      "horizon_years": 8.0,
+      "shock_grid_bp": [
+        -200,
+        -100,
+        0,
+        100,
+        200
+      ],
+      "match_tolerance": 0.2,
+      "headline_is_not_a_forecast": "The locked-in return is implied by today's price and is not a forecast: at a matched horizon it reproduces the market's own yield because the price already reflects it. The scenarios show how far the outcome moves if rates CHANGE by up to 200 basis points \u2014 a sensitivity, not a prediction that they will. Nothing here is a fair value, and nothing here is a view on whether the bond or the fund is cheap or expensive.",
+      "duration_meanings": "Three durations appear in this output and only the first is the hold-to-horizon answer. duration_years is the MACAULAY duration of the cash flows above: the horizon at which the price loss from a rate move and the higher reinvestment rate cancel, so it is the figure the matched flag is measured against. modified_duration_years is price sensitivity per unit of yield \u2014 a first-order price change, not a holding-period return. A fund's published EFFECTIVE duration (reported as published_effective_duration_years when the input carries one) describes its actual portfolio and is not expected to equal the Macaulay figure.",
+      "reinvestment": "The shock lands immediately, is parallel across the curve, and every coupon received after it is reinvested at the shocked yield; whatever is left is sold at the horizon at the shocked price. No default, no credit migration, no change in the coupon.",
+      "single_bond_approximation": "The fund path models the whole fund as ONE bond: the average coupon as the coupon rate, the weighted average life as the maturity, and the published yield to maturity as the yield. That is an approximation \u2014 a fund is not a bond and a weighted average life is not a maturity, so the cash-flow timing here stands in for a portfolio that actually rolls.",
+      "published_effective_duration_meaning": "The input's characteristics.duration_years is the fund's published effective duration (5.721 years) and is passed through unchanged as published_effective_duration_years. This script's duration_years is the Macaulay duration of the single-bond approximation above (7.26 years). They are different quantities and are not expected to match: here they differ by 27% by design."
+    },
+    "circularity_note": "The calculated yield is built from today's Treasury curve and today's credit spreads, which are themselves market prices. It reproduces the published yield by construction and is NOT evidence of mispricing. Use it to check the arithmetic, not to disagree with the market."
+  },
+  "rates": {
+    "as_of": {
+      "curve": "2026-09-24"
+    },
+    "par_curve": {
+      "0.0833": 4.01,
+      "0.25": 4.24,
+      "0.5": 4.34,
+      "1.0": 4.51,
+      "2.0": 4.87,
+      "3.0": 4.99,
+      "5.0": 5.03,
+      "7.0": 5.1,
+      "10.0": 5.18,
+      "20.0": 5.53,
+      "30.0": 5.47
+    },
+    "zero_rates": {
+      "1": 4.512,
+      "2": 4.881,
+      "3": 5.004,
+      "5": 5.042,
+      "7": 5.119,
+      "10": 5.211,
+      "20": 5.706,
+      "30": 5.525
+    },
+    "forwards": {
+      "1y1y": 5.251,
+      "2y1y": 5.25,
+      "5y1y": 5.27,
+      "10y1y": 5.689
+    },
+    "implied_short_rate_path": [
+      {
+        "start": 0,
+        "end": 1,
+        "rate_pct": 4.684
+      },
+      {
+        "start": 1,
+        "end": 2,
+        "rate_pct": 5.251
+      },
+      {
+        "start": 2,
+        "end": 3,
+        "rate_pct": 5.25
+      },
+      {
+        "start": 3,
+        "end": 4,
+        "rate_pct": 5.077
+      },
+      {
+        "start": 4,
+        "end": 5,
+        "rate_pct": 5.121
+      },
+      {
+        "start": 5,
+        "end": 6,
+        "rate_pct": 5.27
+      }
+    ],
+    "implied_average_short_rate_pct": 5.109,
+    "fomc_projection": {
+      "longer_run_pct": 3.2,
+      "as_of": "2026-09-16",
+      "path": [
+        {
+          "year": "2026",
+          "median_pct": 4.1
+        },
+        {
+          "year": "2027",
+          "median_pct": 4.1
+        },
+        {
+          "year": "2028",
+          "median_pct": 3.9
+        },
+        {
+          "year": "2029",
+          "median_pct": 3.6
+        }
+      ]
+    },
+    "percentiles": {
+      "treasury_10y": {
+        "label": "10-year Treasury yield",
+        "value": 5.18,
+        "percentile": 48,
+        "median": 5.4,
+        "series": "DGS10",
+        "history_from": "1962-01-02"
+      },
+      "real_yield_10y": {
+        "label": "10-year real yield (TIPS)",
+        "value": 2.85,
+        "percentile": 100,
+        "median": 1.06,
+        "series": "DFII10",
+        "history_from": "2003-01-02"
+      },
+      "breakeven_10y": {
+        "label": "10-year breakeven inflation",
+        "value": 2.34,
+        "percentile": 69,
+        "median": 2.23,
+        "series": "T10YIE",
+        "history_from": "2003-01-02"
+      },
+      "term_premium_10y": {
+        "label": "10-year term premium",
+        "value": 0.9595,
+        "percentile": 61,
+        "median": 0.742,
+        "series": "THREEFYTP10",
+        "history_from": "1990-01-02"
+      },
+      "credit_spread_baa": {
+        "label": "Baa corporate spread over Treasuries",
+        "value": 1.39,
+        "percentile": 1,
+        "median": 2.13,
+        "series": "BAA10Y",
+        "history_from": "1986-01-02"
+      }
+    },
+    "benchmarks": {
+      "fed_funds_pct": 3.88,
+      "bill_3m_pct": 4.24
+    },
+    "assumptions": {
+      "frequency": 2,
+      "max_years": 30.0,
+      "path_starts_at_years": 0.5,
+      "note": "Par yields bootstrap to a semi-annual zero curve out to 30 years. The implied path's first row is labelled 0-1y but is priced from the first grid point (0.5y): a forward from exactly t=0 is the curve's constant short-rate extension, not an observed market forward. Nothing is queried beyond 30 years, where the curve's flat extrapolation would silently misprice.",
+      "breakeven_meaning": "percentiles.real_yield_10y is the 10-year TIPS yield and percentiles.breakeven_10y is the 10-year breakeven, which is the difference between the nominal 10-year yield and that real yield: nominal is approximately real plus breakeven. The breakeven is the inflation rate at which a TIPS and a nominal Treasury come out even, so inflation realised above it favours the TIPS and below it favours the nominal. It is a market price rather than a forecast, and it carries an inflation risk premium as well as an expectation, so it is not the market's central estimate of inflation. Neither figure is a view on whether either instrument is cheap or expensive."
+    },
+    "note": "A high percentile on a yield means you are paid more than usual \u2014 cheap. A low percentile on a spread means you are paid less than usual \u2014 rich. These rank today against history; they are not a forecast."
+  },
+  "fund": {
+    "symbol": "BND",
+    "as_of": {
+      "fund": "2026-09-24",
+      "curve": "2026-09-24",
+      "nav": "2026-09-25",
+      "retrieved": "2026-09-26"
+    },
+    "characteristics": {
+      "ytm_pct": 5.49,
+      "coupon_pct": 3.79,
+      "duration_years": 5.721,
+      "wal_years": 8.27,
+      "wal_source": "wal_years is the bucket model's weighted average of the index's static maturity bands, the static weights assumptions.maturity_buckets lists, not the fund's own portfolio's weighted average life; it is the model's input, so read it as the assumption behind the yield, and assumptions.wal_check for how it compares with the published figure.",
+      "sec_yield_pct": 4.952,
+      "distribution_yield_pct": 4.168,
+      "expense_ratio_pct": 0.03,
+      "source": "iShares AGG product page (index proxy for BND)"
+    },
+    "yield_decomposition": {
+      "treasury_equivalent_pct": 5.23,
+      "blended_spread_bp": 31.2,
+      "expense_pct": 0.03,
+      "calculated_ytm_pct": 5.515,
+      "published_ytm_pct": 5.49,
+      "gap_bp": 2.5
+    },
+    "par_per_share": 105.53,
+    "price_map": [
+      {
+        "ytm": 0.0299,
+        "price": 105.3715
+      },
+      {
+        "ytm": 0.0324,
+        "price": 103.6348
+      },
+      {
+        "ytm": 0.0349,
+        "price": 101.9509
+      },
+      {
+        "ytm": 0.0374,
+        "price": 100.3177
+      },
+      {
+        "ytm": 0.0399,
+        "price": 98.7328
+      },
+      {
+        "ytm": 0.0424,
+        "price": 97.1941
+      },
+      {
+        "ytm": 0.0449,
+        "price": 95.6996
+      },
+      {
+        "ytm": 0.0474,
+        "price": 94.2474
+      },
+      {
+        "ytm": 0.0499,
+        "price": 92.8356
+      },
+      {
+        "ytm": 0.0524,
+        "price": 91.4627
+      },
+      {
+        "ytm": 0.0549,
+        "price": 90.127
+      },
+      {
+        "ytm": 0.0574,
+        "price": 88.8269
+      },
+      {
+        "ytm": 0.0599,
+        "price": 87.561
+      },
+      {
+        "ytm": 0.0624,
+        "price": 86.328
+      },
+      {
+        "ytm": 0.0649,
+        "price": 85.1265
+      },
+      {
+        "ytm": 0.0674,
+        "price": 83.9553
+      },
+      {
+        "ytm": 0.0699,
+        "price": 82.8132
+      },
+      {
+        "ytm": 0.0724,
+        "price": 81.6991
+      },
+      {
+        "ytm": 0.0749,
+        "price": 80.6119
+      },
+      {
+        "ytm": 0.0774,
+        "price": 79.5507
+      },
+      {
+        "ytm": 0.0799,
+        "price": 78.5145
+      }
+    ],
+    "assumptions": {
+      "frequency": 2,
+      "max_years": 30.0,
+      "proxy": "AGG",
+      "proxy_url": "https://www.ishares.com/us/products/239458/ishares-core-total-us-bond-market-etf",
+      "sector_spreads_bp": {
+        "Treasury/Agency": 0.0,
+        "Gov Mortgage-Backed": 35.0,
+        "Industrial": 78.0,
+        "Finance": 78.0,
+        "Foreign": 78.0,
+        "Utilities": 78.0,
+        "CMBS": 80.0,
+        "ABS": 60.0,
+        "Other": 60.0
+      },
+      "maturity_buckets": [
+        {
+          "weight_pct": 0.2,
+          "midpoint_years": 0.5
+        },
+        {
+          "weight_pct": 44.8,
+          "midpoint_years": 3.0
+        },
+        {
+          "weight_pct": 34.5,
+          "midpoint_years": 7.5
+        },
+        {
+          "weight_pct": 3.7,
+          "midpoint_years": 12.5
+        },
+        {
+          "weight_pct": 5.5,
+          "midpoint_years": 17.5
+        },
+        {
+          "weight_pct": 4.3,
+          "midpoint_years": 22.5
+        },
+        {
+          "weight_pct": 6.9,
+          "midpoint_years": 28.0
+        }
+      ],
+      "spread_convention": "The blended spread is a discount margin over the Treasury zero curve, quoted as an annualised rate: each cash flow is divided by (1 + spread/freq)^(t*freq), not shifted along the curve. The two agree to first order, the residual being the cross term curve_rate * spread / freq \u2014 about 2 bp at a 4% curve and a 1% spread \u2014 so the spread discounts a little harder than the parallel shift a reader may expect.",
+      "comparison": "treasury_equivalent_pct is the flat yield of these same cash flows priced on the Treasury curve alone. calculated_ytm_pct adds the blended spread and subtracts the expense ratio, so it is net of fees while the published yield to maturity is gross. The expense ratio is therefore one component of the gap between them \u2014 but only one, and on its own it is not what the gap should be: the bucket model reproduces a published yield to maturity to roughly \u00b125 bp, and that residual is model error, not the fee. See gap_expectation for what a gap of a given size means.",
+      "gap_expectation": "gap_bp is signed calculated_ytm_pct minus published_ytm_pct, in basis points: negative means the model produced less yield than the fund publishes, positive means more. The part of it with a reason is the fee \u2014 calculated is net of it, published is gross \u2014 and that is 3 to 7 bp. The rest is the bucket model's own error: measured over the seven funds this skill covers on 2026-09-17, the gap ran from -23.9 bp to +22.6 bp. So the bucket model reproduces a published YTM to roughly \u00b125 bp, and a gap of that size is model error, not the fee, and not a discrepancy \u2014 which is not to say the model is right. The model's own construction implies a centre of about minus the expense ratio, not a boundary, and that is a statement about the construction rather than about the data: over those same seven funds the measured gaps centred on +0.57 bp, so read the construction's centre as where the model would sit if it were exact, not as where yields are. A gap outside that \u00b125 bp band is where the model stops explaining it, which still does not make it the market's error.",
+      "expense_source": "The expense ratio is the proxy's (AGG) published figure, read from the page's fund header. Unlike the NAV and the daily figures, that field carries no as-of date on the page, so it cannot be dated: it is the current prospectus fee, which changes when the fund reprices rather than daily.",
+      "nav_source": "The NAV is the proxy's (AGG), not the fund's own: iShares is the only publisher whose figures are fetchable, and the two funds' share prices differ. It carries its own as-of date (as_of.nav), which is often a day newer than the figures it is paired with (as_of.fund). par_per_share scales with the proxy's NAV, and that scaling is exact only where the fund tracks the proxy's index (BND); elsewhere it is the proxy's share price applied to the proxy's cash flows, so read par_per_share as an approximation of the same kind.",
+      "index_proxy": "The iShares AGG page is the index proxy this skill fetches for BND, and the figures characteristics carries from it are the page's: its yield to maturity, average coupon, published duration and SEC yield \u2014 index figures, not the fund's own holding-level figures. characteristics.wal_years is not one of them: it is the bucket model's own weighted average of the static index bands, as characteristics.wal_source says, which is why assumptions.wal_check sets it beside the page's published figure. Everything else the model reports is this script's own arithmetic on the proxy's figures \u2014 the treasury-equivalent yield, the blended spread, the calculated yield, the gap, par_per_share and price_map \u2014 and as_of.curve is the Treasury curve, not the page's. BND tracks the same Bloomberg US Aggregate index as AGG, so the figures are the fund's index's own.",
+      "price_map_note": "price_map re-prices the same model cash flows at 21 flat yields 25 bp apart, centred on the published yield to maturity, so there is one row per 25 bp of yield from -250 bp to +250 bp. The price is per 100 of par of the model portfolio, not per share and not the fund's share price: only on the row centred on the published yield does par_per_share times that row over 100 come back to the fund's NAV per share, and even there only to the model's own error and rounding. On the other twenty rows the relation does not hold at all, so a NAV recomputed from one of them is simply wrong. The rows come from the same circular construction as calculated_ytm_pct \u2014 today's curve and today's spreads \u2014 so no row is a fair value, a target or a forecast; each is what these cash flows would be worth if the whole portfolio yielded that much.",
+      "wal_check": {
+        "model_years": 8.27,
+        "proxy_published_years": 8.21
+      },
+      "note": "The bucket model prices one par bond per maturity band, weighted by the band's share of the index. It is an approximation of a real portfolio's cash flows, which is why the reproduced yield is compared with a tolerance rather than asserted equal. Buckets and sector weights are static structural inputs, not live holdings: they are refreshed with the skill, not with every run."
+    },
+    "warnings": [],
+    "circularity_note": "The calculated yield is built from today's Treasury curve and today's credit spreads, which are themselves market prices. It reproduces the published yield by construction and is NOT evidence of mispricing. Use it to check the arithmetic, not to disagree with the market."
+  }
+}

@@ -1,0 +1,4 @@
+{"OrdersResponse": {"Order": [
+  {"orderId": 530, "orderType": "EQ", "OrderDetail": [{"placedTime": 1788879600000, "status": "OPEN", "orderTerm": "GOOD_UNTIL_CANCEL", "priceType": "STOP_LIMIT", "limitPrice": 240.0, "stopPrice": 245.0,
+    "Instrument": [{"Product": {"symbol": "TSLA", "securityType": "EQ"}, "orderAction": "SELL_SHORT", "orderedQuantity": 5, "filledQuantity": 0}]}]}
+]}}

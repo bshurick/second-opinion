@@ -1,0 +1,2 @@
+{"PreviewOrderResponse": {"orderType": "EQ", "PreviewIds": [{"previewId": 1234567890}], "Order": [{"estimatedCommission": 0, "estimatedTotalAmount": 2010.0, "priceType": "LIMIT", "orderTerm": "GOOD_FOR_DAY", "limitPrice": 201.0,
+  "Instrument": [{"Product": {"symbol": "AAPL", "securityType": "EQ"}, "orderAction": "BUY", "quantity": 10, "quantityType": "QUANTITY"}]}]}}

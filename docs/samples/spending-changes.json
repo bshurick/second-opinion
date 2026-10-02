@@ -1,0 +1,321 @@
+{
+  "month": "2026-08",
+  "threshold": 0.25,
+  "compare_months": 3,
+  "categories": [
+    {
+      "category": "Shopping",
+      "amount": 520.11,
+      "avg_prior": 798.53,
+      "delta": -278.42,
+      "new": false,
+      "delta_pct": -0.3487,
+      "explained_by": [
+        {
+          "date": "2026-08-24",
+          "merchant": "Sample Outfitters",
+          "amount": 142.0,
+          "description": "SAMPLE OUTFITTERS"
+        },
+        {
+          "date": "2026-08-10",
+          "merchant": "Hardware Depot",
+          "amount": 88.2,
+          "description": "HARDWARE DEPOT"
+        },
+        {
+          "date": "2026-08-27",
+          "merchant": "Garden Supply",
+          "amount": 76.4,
+          "description": "GARDEN SUPPLY CO"
+        },
+        {
+          "date": "2026-08-07",
+          "merchant": "Online Megastore",
+          "amount": 42.99,
+          "description": "ONLINE MEGASTORE ORDER 114-0001"
+        },
+        {
+          "date": "2026-08-28",
+          "merchant": "Online Megastore",
+          "amount": 42.18,
+          "description": "ONLINE MEGASTORE ORDER 114-0003"
+        }
+      ]
+    },
+    {
+      "category": "Dining",
+      "amount": 404.9,
+      "avg_prior": 237.17,
+      "delta": 167.73,
+      "new": false,
+      "delta_pct": 0.7072,
+      "explained_by": [
+        {
+          "date": "2026-08-04",
+          "merchant": "Bistro 42",
+          "amount": 92.4,
+          "description": "BISTRO 42"
+        },
+        {
+          "date": "2026-08-14",
+          "merchant": "Bistro 42",
+          "amount": 78.5,
+          "description": "BISTRO 42"
+        },
+        {
+          "date": "2026-08-21",
+          "merchant": "Bistro 42",
+          "amount": 64.2,
+          "description": "BISTRO 42"
+        },
+        {
+          "date": "2026-08-22",
+          "merchant": "Sunday Brunch Co",
+          "amount": 58.4,
+          "description": "SUNDAY BRUNCH CO"
+        },
+        {
+          "date": "2026-08-08",
+          "merchant": "Noodle House",
+          "amount": 46.8,
+          "description": "NOODLE HOUSE"
+        }
+      ]
+    },
+    {
+      "category": "Travel",
+      "amount": 160.0,
+      "avg_prior": null,
+      "delta": null,
+      "new": true,
+      "delta_pct": null,
+      "explained_by": [
+        {
+          "date": "2026-08-21",
+          "merchant": "Harbor Inn",
+          "amount": 124.0,
+          "description": "HARBOR INN ONE NIGHT"
+        },
+        {
+          "date": "2026-08-21",
+          "merchant": "Sample Rail",
+          "amount": 36.0,
+          "description": "SAMPLE RAIL ROUND TRIP"
+        }
+      ]
+    }
+  ],
+  "merchants": [
+    {
+      "merchant": "Online Megastore",
+      "amount": 263.59,
+      "avg_prior": 445.83,
+      "delta": -182.24,
+      "new": false,
+      "delta_pct": -0.4088,
+      "explained_by": [
+        {
+          "date": "2026-08-07",
+          "merchant": "Online Megastore",
+          "amount": 42.99,
+          "description": "ONLINE MEGASTORE ORDER 114-0001"
+        },
+        {
+          "date": "2026-08-28",
+          "merchant": "Online Megastore",
+          "amount": 42.18,
+          "description": "ONLINE MEGASTORE ORDER 114-0003"
+        },
+        {
+          "date": "2026-08-07",
+          "merchant": "Online Megastore",
+          "amount": 34.95,
+          "description": "ONLINE MEGASTORE ORDER 114-0001"
+        },
+        {
+          "date": "2026-08-07",
+          "merchant": "Online Megastore",
+          "amount": 31.42,
+          "description": "ONLINE MEGASTORE ORDER 114-0001"
+        },
+        {
+          "date": "2026-08-17",
+          "merchant": "Online Megastore",
+          "amount": 29.98,
+          "description": "ONLINE MEGASTORE ORDER 114-0002"
+        }
+      ]
+    },
+    {
+      "merchant": "Harbor Inn",
+      "amount": 124.0,
+      "avg_prior": null,
+      "delta": null,
+      "new": true,
+      "delta_pct": null,
+      "explained_by": [
+        {
+          "date": "2026-08-21",
+          "merchant": "Harbor Inn",
+          "amount": 124.0,
+          "description": "HARBOR INN ONE NIGHT"
+        }
+      ]
+    },
+    {
+      "merchant": "Bistro 42",
+      "amount": 235.1,
+      "avg_prior": 156.53,
+      "delta": 78.57,
+      "new": false,
+      "delta_pct": 0.5019,
+      "explained_by": [
+        {
+          "date": "2026-08-04",
+          "merchant": "Bistro 42",
+          "amount": 92.4,
+          "description": "BISTRO 42"
+        },
+        {
+          "date": "2026-08-14",
+          "merchant": "Bistro 42",
+          "amount": 78.5,
+          "description": "BISTRO 42"
+        },
+        {
+          "date": "2026-08-21",
+          "merchant": "Bistro 42",
+          "amount": 64.2,
+          "description": "BISTRO 42"
+        }
+      ]
+    },
+    {
+      "merchant": "Garden Supply",
+      "amount": 76.4,
+      "avg_prior": null,
+      "delta": null,
+      "new": true,
+      "delta_pct": null,
+      "explained_by": [
+        {
+          "date": "2026-08-27",
+          "merchant": "Garden Supply",
+          "amount": 76.4,
+          "description": "GARDEN SUPPLY CO"
+        }
+      ]
+    },
+    {
+      "merchant": "Sample Outfitters",
+      "amount": 142.0,
+      "avg_prior": 210.83,
+      "delta": -68.83,
+      "new": false,
+      "delta_pct": -0.3265,
+      "explained_by": [
+        {
+          "date": "2026-08-24",
+          "merchant": "Sample Outfitters",
+          "amount": 142.0,
+          "description": "SAMPLE OUTFITTERS"
+        }
+      ]
+    },
+    {
+      "merchant": "Sunday Brunch Co",
+      "amount": 58.4,
+      "avg_prior": null,
+      "delta": null,
+      "new": true,
+      "delta_pct": null,
+      "explained_by": [
+        {
+          "date": "2026-08-22",
+          "merchant": "Sunday Brunch Co",
+          "amount": 58.4,
+          "description": "SUNDAY BRUNCH CO"
+        }
+      ]
+    },
+    {
+      "merchant": "Hardware Depot",
+      "amount": 88.2,
+      "avg_prior": 141.87,
+      "delta": -53.67,
+      "new": false,
+      "delta_pct": -0.3783,
+      "explained_by": [
+        {
+          "date": "2026-08-10",
+          "merchant": "Hardware Depot",
+          "amount": 88.2,
+          "description": "HARDWARE DEPOT"
+        }
+      ]
+    },
+    {
+      "merchant": "Sample Rail",
+      "amount": 36.0,
+      "avg_prior": null,
+      "delta": null,
+      "new": true,
+      "delta_pct": null,
+      "explained_by": [
+        {
+          "date": "2026-08-21",
+          "merchant": "Sample Rail",
+          "amount": 36.0,
+          "description": "SAMPLE RAIL ROUND TRIP"
+        }
+      ]
+    }
+  ],
+  "missing_recurring": [
+    {
+      "merchant": "Sample Magazine",
+      "expected": "2026-08-20",
+      "typical_amount": 8.99,
+      "cadence": "monthly"
+    }
+  ],
+  "new_recurring": [
+    {
+      "merchant": "Sample Cloud",
+      "category": "Subscriptions",
+      "cadence": "monthly",
+      "count": 3,
+      "first_date": "2026-06-24",
+      "last_date": "2026-08-24",
+      "first_amount": 9.99,
+      "last_amount": 9.99,
+      "typical_amount": 9.99,
+      "creep_pct": 0.0,
+      "annual_cost": 119.88,
+      "next_expected": "2026-09-23",
+      "account_ids": [
+        "sample-visa"
+      ]
+    }
+  ],
+  "flags": [],
+  "accounts": {
+    "sample-visa": {
+      "id": "sample-visa",
+      "name": "Sample Visa",
+      "kind": "card"
+    },
+    "sample-amex": {
+      "id": "sample-amex",
+      "name": "Sample Amex",
+      "kind": "card"
+    },
+    "sample-checking": {
+      "id": "sample-checking",
+      "name": "Sample Checking",
+      "kind": "checking"
+    }
+  },
+  "spending_path": "/home/sample/second-opinion/spending.json"
+}

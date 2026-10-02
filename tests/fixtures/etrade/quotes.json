@@ -1,0 +1,4 @@
+{"QuoteResponse": {"QuoteData": [
+  {"dateTimeUTC": 1788879600, "quoteStatus": "REALTIME", "Product": {"symbol": "AAPL", "securityType": "EQ"}, "All": {"lastTrade": 201.25, "previousClose": 200.0, "changeClose": 1.25, "changeClosePercentage": 0.625, "bid": 201.2, "ask": 201.3, "totalVolume": 1000}},
+  {"dateTimeUTC": 1788879600, "quoteStatus": "DELAYED", "Product": {"symbol": "MSFT", "securityType": "EQ"}, "All": {"lastTrade": 500.0, "previousClose": 490.0, "changeClosePercentage": 2.0408}}
+], "Messages": {"Message": [{"code": 1002, "description": "Invalid symbol: BADSYM", "type": "ERROR"}]}}}

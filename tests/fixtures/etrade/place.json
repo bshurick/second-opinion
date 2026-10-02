@@ -1,0 +1,1 @@
+{"PlaceOrderResponse": {"orderType": "EQ", "OrderIds": [{"orderId": 531}], "Order": [{"status": "OPEN", "priceType": "LIMIT", "orderTerm": "GOOD_FOR_DAY", "limitPrice": 201.0, "Instrument": [{"Product": {"symbol": "AAPL"}, "orderAction": "BUY", "quantity": 10}]}]}}

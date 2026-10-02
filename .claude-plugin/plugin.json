@@ -1,0 +1,26 @@
+{
+  "name": "second-opinion",
+  "displayName": "Second Opinion - Finance",
+  "version": "1.0.0",
+  "description": "A brokerage-connected finance analyst for Claude Code: portfolio, risk, dividend, tax, rebalancing and retirement views of your own accounts, plus company research, valuation, options and market analysis, and gated order placement. Brokerage data comes from SnapTrade (your own free Personal API key) or a direct E*Trade login; market data from Yahoo Finance, SEC EDGAR and FRED.",
+  "author": {
+    "name": "bshurick",
+    "url": "https://github.com/bshurick"
+  },
+  "homepage": "https://github.com/bshurick/second-opinion",
+  "repository": "https://github.com/bshurick/second-opinion",
+  "license": "MIT",
+  "keywords": [
+    "finance",
+    "personal-finance",
+    "portfolio",
+    "investing",
+    "brokerage",
+    "snaptrade",
+    "etrade",
+    "sec-edgar",
+    "valuation",
+    "retirement",
+    "tax"
+  ]
+}

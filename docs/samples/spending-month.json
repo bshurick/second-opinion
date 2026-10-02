@@ -1,0 +1,1183 @@
+{
+  "month": "2026-08",
+  "spend_total": 5877.46,
+  "income_total": 9800.0,
+  "net": 3922.54,
+  "savings_rate": 0.4003,
+  "transfers_total": 5600.0,
+  "by_category": [
+    {
+      "category": "Housing",
+      "amount": 3200.0,
+      "share": 0.5445,
+      "avg_prior": 3200.0,
+      "delta": 0.0,
+      "transactions": 1,
+      "delta_pct": 0.0
+    },
+    {
+      "category": "Groceries",
+      "amount": 818.48,
+      "share": 0.1393,
+      "avg_prior": 762.83,
+      "delta": 55.65,
+      "transactions": 12,
+      "delta_pct": 0.0729
+    },
+    {
+      "category": "Shopping",
+      "amount": 520.11,
+      "share": 0.0885,
+      "avg_prior": 798.53,
+      "delta": -278.42,
+      "transactions": 13,
+      "delta_pct": -0.3487
+    },
+    {
+      "category": "Dining",
+      "amount": 404.9,
+      "share": 0.0689,
+      "avg_prior": 237.17,
+      "delta": 167.73,
+      "transactions": 12,
+      "delta_pct": 0.7072
+    },
+    {
+      "category": "Transport",
+      "amount": 260.0,
+      "share": 0.0442,
+      "avg_prior": 251.97,
+      "delta": 8.03,
+      "transactions": 6,
+      "delta_pct": 0.0319
+    },
+    {
+      "category": "Utilities",
+      "amount": 240.0,
+      "share": 0.0408,
+      "avg_prior": 233.98,
+      "delta": 6.02,
+      "transactions": 1,
+      "delta_pct": 0.0257
+    },
+    {
+      "category": "Health",
+      "amount": 180.0,
+      "share": 0.0306,
+      "avg_prior": 173.97,
+      "delta": 6.03,
+      "transactions": 4,
+      "delta_pct": 0.0347
+    },
+    {
+      "category": "Travel",
+      "amount": 160.0,
+      "share": 0.0272,
+      "avg_prior": null,
+      "delta": null,
+      "transactions": 2,
+      "delta_pct": null
+    },
+    {
+      "category": "Subscriptions",
+      "amount": 93.97,
+      "share": 0.016,
+      "avg_prior": 97.96,
+      "delta": -3.99,
+      "transactions": 4,
+      "delta_pct": -0.0407
+    }
+  ],
+  "top_merchants": [
+    {
+      "merchant": "Sample Mortgage",
+      "amount": 3200.0,
+      "count": 1,
+      "categories": [
+        "Housing"
+      ]
+    },
+    {
+      "merchant": "Neighborhood Grocer",
+      "amount": 557.72,
+      "count": 5,
+      "categories": [
+        "Groceries"
+      ]
+    },
+    {
+      "merchant": "Online Megastore",
+      "amount": 263.59,
+      "count": 4,
+      "categories": [
+        "Groceries",
+        "Health",
+        "Shopping"
+      ]
+    },
+    {
+      "merchant": "Sample Utilities",
+      "amount": 240.0,
+      "count": 1,
+      "categories": [
+        "Utilities"
+      ]
+    },
+    {
+      "merchant": "Bistro 42",
+      "amount": 235.1,
+      "count": 3,
+      "categories": [
+        "Dining"
+      ]
+    },
+    {
+      "merchant": "Corner Market",
+      "amount": 224.28,
+      "count": 5,
+      "categories": [
+        "Groceries"
+      ]
+    },
+    {
+      "merchant": "Corner Fuel",
+      "amount": 160.0,
+      "count": 3,
+      "categories": [
+        "Transport"
+      ]
+    },
+    {
+      "merchant": "Sample Outfitters",
+      "amount": 142.0,
+      "count": 1,
+      "categories": [
+        "Shopping"
+      ]
+    },
+    {
+      "merchant": "Harbor Inn",
+      "amount": 124.0,
+      "count": 1,
+      "categories": [
+        "Travel"
+      ]
+    },
+    {
+      "merchant": "City Transit",
+      "amount": 100.0,
+      "count": 3,
+      "categories": [
+        "Transport"
+      ]
+    }
+  ],
+  "largest": [
+    {
+      "date": "2026-08-01",
+      "merchant": "Sample Mortgage",
+      "amount": 3200.0,
+      "category": "Housing",
+      "account_id": "sample-checking",
+      "item_name": null
+    },
+    {
+      "date": "2026-08-12",
+      "merchant": "Sample Utilities",
+      "amount": 240.0,
+      "category": "Utilities",
+      "account_id": "sample-checking",
+      "item_name": null
+    },
+    {
+      "date": "2026-08-24",
+      "merchant": "Sample Outfitters",
+      "amount": 142.0,
+      "category": "Shopping",
+      "account_id": "sample-visa",
+      "item_name": null
+    },
+    {
+      "date": "2026-08-16",
+      "merchant": "Neighborhood Grocer",
+      "amount": 126.3,
+      "category": "Groceries",
+      "account_id": "sample-amex",
+      "item_name": null
+    },
+    {
+      "date": "2026-08-21",
+      "merchant": "Harbor Inn",
+      "amount": 124.0,
+      "category": "Travel",
+      "account_id": "sample-amex",
+      "item_name": null
+    },
+    {
+      "date": "2026-08-02",
+      "merchant": "Neighborhood Grocer",
+      "amount": 118.42,
+      "category": "Groceries",
+      "account_id": "sample-amex",
+      "item_name": null
+    },
+    {
+      "date": "2026-08-23",
+      "merchant": "Neighborhood Grocer",
+      "amount": 111.08,
+      "category": "Groceries",
+      "account_id": "sample-amex",
+      "item_name": null
+    },
+    {
+      "date": "2026-08-09",
+      "merchant": "Neighborhood Grocer",
+      "amount": 104.77,
+      "category": "Groceries",
+      "account_id": "sample-amex",
+      "item_name": null
+    },
+    {
+      "date": "2026-08-29",
+      "merchant": "Neighborhood Grocer",
+      "amount": 97.15,
+      "category": "Groceries",
+      "account_id": "sample-amex",
+      "item_name": null
+    },
+    {
+      "date": "2026-08-05",
+      "merchant": "Sample Insurance",
+      "amount": 95.0,
+      "category": "Health",
+      "account_id": "sample-checking",
+      "item_name": null
+    }
+  ],
+  "new_merchants": [
+    "Harbor Inn",
+    "Garden Supply",
+    "Sunday Brunch Co",
+    "Sample Rail"
+  ],
+  "refunds_total": 29.99,
+  "fees_and_interest": 0.0,
+  "uncategorized": {
+    "count": 0,
+    "amount": 0.0
+  },
+  "compare_months": 3,
+  "transactions": [
+    {
+      "id": "tx-0240",
+      "date": "2026-08-01",
+      "merchant": "Coffee Cart",
+      "description": "COFFEE CART",
+      "amount": 5.75,
+      "category": "Dining",
+      "detail": "Dining/Coffee",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0067",
+      "date": "2026-08-01",
+      "merchant": "Sample Mortgage",
+      "description": "SAMPLE MORTGAGE AUTOPAY",
+      "amount": 3200.0,
+      "category": "Housing",
+      "detail": "Housing/Mortgage",
+      "account_id": "sample-checking",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0068",
+      "date": "2026-08-02",
+      "merchant": "City Transit",
+      "description": "CITY TRANSIT FARE TOP-UP",
+      "amount": 40.0,
+      "category": "Transport",
+      "detail": "Transport/Transit",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0230",
+      "date": "2026-08-02",
+      "merchant": "Neighborhood Grocer",
+      "description": "NEIGHBORHOOD GROCER",
+      "amount": 118.42,
+      "category": "Groceries",
+      "detail": "Groceries/Neighborhood Grocer",
+      "account_id": "sample-amex",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0071",
+      "date": "2026-08-03",
+      "merchant": "Sample Gym",
+      "description": "SAMPLE GYM MEMBERSHIP",
+      "amount": 49.0,
+      "category": "Health",
+      "detail": "Health/Fitness",
+      "account_id": "sample-amex",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0241",
+      "date": "2026-08-04",
+      "merchant": "Bistro 42",
+      "description": "BISTRO 42",
+      "amount": 92.4,
+      "category": "Dining",
+      "detail": "Dining/Restaurants",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0231",
+      "date": "2026-08-05",
+      "merchant": "Corner Market",
+      "description": "CORNER MARKET",
+      "amount": 46.18,
+      "category": "Groceries",
+      "detail": "Groceries/Corner Market",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0072",
+      "date": "2026-08-05",
+      "merchant": "Sample Insurance",
+      "description": "SAMPLE INSURANCE PREMIUM",
+      "amount": 95.0,
+      "category": "Health",
+      "detail": "Health/Dental and vision",
+      "account_id": "sample-checking",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0242",
+      "date": "2026-08-06",
+      "merchant": "Coffee Cart",
+      "description": "COFFEE CART",
+      "amount": 6.25,
+      "category": "Dining",
+      "detail": "Dining/Coffee",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0259",
+      "date": "2026-08-06",
+      "merchant": "Corner Fuel",
+      "description": "CORNER FUEL",
+      "amount": 52.3,
+      "category": "Transport",
+      "detail": "Transport/Fuel",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0252",
+      "date": "2026-08-07",
+      "merchant": "Online Megastore",
+      "description": "ONLINE MEGASTORE ORDER 114-0001",
+      "amount": 42.99,
+      "category": "Shopping",
+      "detail": "Shopping/Home",
+      "account_id": "sample-amex",
+      "item_name": "Desk lamp",
+      "has_items": true,
+      "parent_id": "tx-0252"
+    },
+    {
+      "id": "tx-0252",
+      "date": "2026-08-07",
+      "merchant": "Online Megastore",
+      "description": "ONLINE MEGASTORE ORDER 114-0001",
+      "amount": 18.49,
+      "category": "Shopping",
+      "detail": "Shopping/Office",
+      "account_id": "sample-amex",
+      "item_name": "Printer paper, 2 reams",
+      "has_items": true,
+      "parent_id": "tx-0252"
+    },
+    {
+      "id": "tx-0252",
+      "date": "2026-08-07",
+      "merchant": "Online Megastore",
+      "description": "ONLINE MEGASTORE ORDER 114-0001",
+      "amount": 34.95,
+      "category": "Shopping",
+      "detail": "Shopping/Clothing",
+      "account_id": "sample-amex",
+      "item_name": "Kids' rain boots",
+      "has_items": true,
+      "parent_id": "tx-0252"
+    },
+    {
+      "id": "tx-0252",
+      "date": "2026-08-07",
+      "merchant": "Online Megastore",
+      "description": "ONLINE MEGASTORE ORDER 114-0001",
+      "amount": 13.6,
+      "category": "Health",
+      "detail": "Health/Pharmacy",
+      "account_id": "sample-amex",
+      "item_name": "Vitamin D, 180 ct",
+      "has_items": true,
+      "parent_id": "tx-0252"
+    },
+    {
+      "id": "tx-0252",
+      "date": "2026-08-07",
+      "merchant": "Online Megastore",
+      "description": "ONLINE MEGASTORE ORDER 114-0001",
+      "amount": 24.99,
+      "category": "Groceries",
+      "detail": "Groceries/Household",
+      "account_id": "sample-amex",
+      "item_name": "Laundry detergent",
+      "has_items": true,
+      "parent_id": "tx-0252"
+    },
+    {
+      "id": "tx-0252",
+      "date": "2026-08-07",
+      "merchant": "Online Megastore",
+      "description": "ONLINE MEGASTORE ORDER 114-0001",
+      "amount": 19.99,
+      "category": "Shopping",
+      "detail": "Shopping/Electronics",
+      "account_id": "sample-amex",
+      "item_name": "Phone charger",
+      "has_items": true,
+      "parent_id": "tx-0252"
+    },
+    {
+      "id": "tx-0252",
+      "date": "2026-08-07",
+      "merchant": "Online Megastore",
+      "description": "ONLINE MEGASTORE ORDER 114-0001",
+      "amount": 31.42,
+      "category": "Shopping",
+      "detail": "Shopping/Online",
+      "account_id": "sample-amex",
+      "item_name": null,
+      "has_items": true,
+      "parent_id": "tx-0252"
+    },
+    {
+      "id": "tx-0243",
+      "date": "2026-08-08",
+      "merchant": "Noodle House",
+      "description": "NOODLE HOUSE",
+      "amount": 46.8,
+      "category": "Dining",
+      "detail": "Dining/Restaurants",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0073",
+      "date": "2026-08-08",
+      "merchant": "Sample Streaming",
+      "description": "SAMPLE STREAMING MONTHLY",
+      "amount": 17.99,
+      "category": "Subscriptions",
+      "detail": "Subscriptions/Video",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0232",
+      "date": "2026-08-09",
+      "merchant": "Neighborhood Grocer",
+      "description": "NEIGHBORHOOD GROCER",
+      "amount": 104.77,
+      "category": "Groceries",
+      "detail": "Groceries/Neighborhood Grocer",
+      "account_id": "sample-amex",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0255",
+      "date": "2026-08-10",
+      "merchant": "Hardware Depot",
+      "description": "HARDWARE DEPOT",
+      "amount": 88.2,
+      "category": "Shopping",
+      "detail": null,
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0244",
+      "date": "2026-08-11",
+      "merchant": "Coffee Cart",
+      "description": "COFFEE CART",
+      "amount": 5.75,
+      "category": "Dining",
+      "detail": "Dining/Coffee",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0233",
+      "date": "2026-08-12",
+      "merchant": "Corner Market",
+      "description": "CORNER MARKET",
+      "amount": 38.95,
+      "category": "Groceries",
+      "detail": "Groceries/Corner Market",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0077",
+      "date": "2026-08-12",
+      "merchant": "Sample Utilities",
+      "description": "SAMPLE UTILITIES ELEC WATER",
+      "amount": 240.0,
+      "category": "Utilities",
+      "detail": "Utilities/Electric and water",
+      "account_id": "sample-checking",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0069",
+      "date": "2026-08-13",
+      "merchant": "City Transit",
+      "description": "CITY TRANSIT FARE TOP-UP",
+      "amount": 25.0,
+      "category": "Transport",
+      "detail": "Transport/Transit",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0245",
+      "date": "2026-08-14",
+      "merchant": "Bistro 42",
+      "description": "BISTRO 42",
+      "amount": 78.5,
+      "category": "Dining",
+      "detail": "Dining/Restaurants",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0074",
+      "date": "2026-08-14",
+      "merchant": "Sample App Store",
+      "description": "SAMPLE APP STORE PURCHASE",
+      "amount": 29.99,
+      "category": "Subscriptions",
+      "detail": "Subscriptions/Apps",
+      "account_id": "sample-amex",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0262",
+      "date": "2026-08-15",
+      "merchant": "Corner Pharmacy",
+      "description": "CORNER PHARMACY",
+      "amount": 22.4,
+      "category": "Health",
+      "detail": "Health/Pharmacy",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0246",
+      "date": "2026-08-15",
+      "merchant": "Taco Window",
+      "description": "TACO WINDOW",
+      "amount": 28.6,
+      "category": "Dining",
+      "detail": "Dining/Restaurants",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0260",
+      "date": "2026-08-16",
+      "merchant": "Corner Fuel",
+      "description": "CORNER FUEL",
+      "amount": 48.75,
+      "category": "Transport",
+      "detail": "Transport/Fuel",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0234",
+      "date": "2026-08-16",
+      "merchant": "Neighborhood Grocer",
+      "description": "NEIGHBORHOOD GROCER",
+      "amount": 126.3,
+      "category": "Groceries",
+      "detail": "Groceries/Neighborhood Grocer",
+      "account_id": "sample-amex",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0253",
+      "date": "2026-08-17",
+      "merchant": "Online Megastore",
+      "description": "ONLINE MEGASTORE ORDER 114-0002",
+      "amount": 29.98,
+      "category": "Shopping",
+      "detail": "Shopping/Home",
+      "account_id": "sample-amex",
+      "item_name": "Storage bins, set of 3",
+      "has_items": true,
+      "parent_id": "tx-0253"
+    },
+    {
+      "id": "tx-0253",
+      "date": "2026-08-17",
+      "merchant": "Online Megastore",
+      "description": "ONLINE MEGASTORE ORDER 114-0002",
+      "amount": 14.99,
+      "category": "Shopping",
+      "detail": "Shopping/Books",
+      "account_id": "sample-amex",
+      "item_name": "Paperback novel",
+      "has_items": true,
+      "parent_id": "tx-0253"
+    },
+    {
+      "id": "tx-0253",
+      "date": "2026-08-17",
+      "merchant": "Online Megastore",
+      "description": "ONLINE MEGASTORE ORDER 114-0002",
+      "amount": 11.49,
+      "category": "Groceries",
+      "detail": "Groceries/Household",
+      "account_id": "sample-amex",
+      "item_name": "Dish soap, 3 pack",
+      "has_items": true,
+      "parent_id": "tx-0253"
+    },
+    {
+      "id": "tx-0253",
+      "date": "2026-08-17",
+      "merchant": "Online Megastore",
+      "description": "ONLINE MEGASTORE ORDER 114-0002",
+      "amount": 8.51,
+      "category": "Shopping",
+      "detail": "Shopping/Online",
+      "account_id": "sample-amex",
+      "item_name": null,
+      "has_items": true,
+      "parent_id": "tx-0253"
+    },
+    {
+      "id": "tx-0247",
+      "date": "2026-08-18",
+      "merchant": "Coffee Cart",
+      "description": "COFFEE CART",
+      "amount": 6.25,
+      "category": "Dining",
+      "detail": "Dining/Coffee",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0235",
+      "date": "2026-08-19",
+      "merchant": "Corner Market",
+      "description": "CORNER MARKET",
+      "amount": 52.64,
+      "category": "Groceries",
+      "detail": "Groceries/Corner Market",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0254",
+      "date": "2026-08-20",
+      "merchant": "Online Megastore",
+      "description": "ONLINE MEGASTORE RETURN",
+      "amount": -29.99,
+      "category": "Shopping",
+      "detail": "Shopping/Online",
+      "account_id": "sample-amex",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0248",
+      "date": "2026-08-21",
+      "merchant": "Bistro 42",
+      "description": "BISTRO 42",
+      "amount": 64.2,
+      "category": "Dining",
+      "detail": "Dining/Restaurants",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0263",
+      "date": "2026-08-21",
+      "merchant": "Harbor Inn",
+      "description": "HARBOR INN ONE NIGHT",
+      "amount": 124.0,
+      "category": "Travel",
+      "detail": "Travel/Lodging",
+      "account_id": "sample-amex",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0264",
+      "date": "2026-08-21",
+      "merchant": "Sample Rail",
+      "description": "SAMPLE RAIL ROUND TRIP",
+      "amount": 36.0,
+      "category": "Travel",
+      "detail": "Travel/Rail",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0249",
+      "date": "2026-08-22",
+      "merchant": "Sunday Brunch Co",
+      "description": "SUNDAY BRUNCH CO",
+      "amount": 58.4,
+      "category": "Dining",
+      "detail": "Dining/Restaurants",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0236",
+      "date": "2026-08-23",
+      "merchant": "Neighborhood Grocer",
+      "description": "NEIGHBORHOOD GROCER",
+      "amount": 111.08,
+      "category": "Groceries",
+      "detail": "Groceries/Neighborhood Grocer",
+      "account_id": "sample-amex",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0070",
+      "date": "2026-08-24",
+      "merchant": "City Transit",
+      "description": "CITY TRANSIT FARE TOP-UP",
+      "amount": 35.0,
+      "category": "Transport",
+      "detail": "Transport/Transit",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0076",
+      "date": "2026-08-24",
+      "merchant": "Sample Cloud",
+      "description": "SAMPLE CLOUD STORAGE",
+      "amount": 9.99,
+      "category": "Subscriptions",
+      "detail": "Subscriptions/Storage",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0256",
+      "date": "2026-08-24",
+      "merchant": "Sample Outfitters",
+      "description": "SAMPLE OUTFITTERS",
+      "amount": 142.0,
+      "category": "Shopping",
+      "detail": null,
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0250",
+      "date": "2026-08-25",
+      "merchant": "Coffee Cart",
+      "description": "COFFEE CART",
+      "amount": 5.75,
+      "category": "Dining",
+      "detail": "Dining/Coffee",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0237",
+      "date": "2026-08-26",
+      "merchant": "Corner Market",
+      "description": "CORNER MARKET",
+      "amount": 44.21,
+      "category": "Groceries",
+      "detail": "Groceries/Corner Market",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0261",
+      "date": "2026-08-27",
+      "merchant": "Corner Fuel",
+      "description": "CORNER FUEL",
+      "amount": 58.95,
+      "category": "Transport",
+      "detail": "Transport/Fuel",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0257",
+      "date": "2026-08-27",
+      "merchant": "Garden Supply",
+      "description": "GARDEN SUPPLY CO",
+      "amount": 76.4,
+      "category": "Shopping",
+      "detail": null,
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0075",
+      "date": "2026-08-27",
+      "merchant": "Sample App Store",
+      "description": "SAMPLE APP STORE PURCHASE",
+      "amount": 36.0,
+      "category": "Subscriptions",
+      "detail": "Subscriptions/Apps",
+      "account_id": "sample-amex",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0258",
+      "date": "2026-08-28",
+      "merchant": "Online Megastore",
+      "description": "ONLINE MEGASTORE ORDER 114-0003",
+      "amount": 42.18,
+      "category": "Shopping",
+      "detail": "Shopping/Online",
+      "account_id": "sample-amex",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0238",
+      "date": "2026-08-29",
+      "merchant": "Neighborhood Grocer",
+      "description": "NEIGHBORHOOD GROCER",
+      "amount": 97.15,
+      "category": "Groceries",
+      "detail": "Groceries/Neighborhood Grocer",
+      "account_id": "sample-amex",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0251",
+      "date": "2026-08-30",
+      "merchant": "Coffee Cart",
+      "description": "COFFEE CART",
+      "amount": 6.25,
+      "category": "Dining",
+      "detail": "Dining/Coffee",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    },
+    {
+      "id": "tx-0239",
+      "date": "2026-08-31",
+      "merchant": "Corner Market",
+      "description": "CORNER MARKET",
+      "amount": 42.3,
+      "category": "Groceries",
+      "detail": "Groceries/Corner Market",
+      "account_id": "sample-visa",
+      "item_name": null,
+      "has_items": false,
+      "parent_id": null
+    }
+  ],
+  "months": [
+    {
+      "month": "2026-03",
+      "income": 9800.0,
+      "spend": 5500.96,
+      "transfers_out": 2650.0,
+      "transfers_in": 2650.0,
+      "net": 4299.04,
+      "savings_rate": 0.4387
+    },
+    {
+      "month": "2026-04",
+      "income": 9800.0,
+      "spend": 5499.86,
+      "transfers_out": 2650.0,
+      "transfers_in": 2650.0,
+      "net": 4300.14,
+      "savings_rate": 0.4388
+    },
+    {
+      "month": "2026-05",
+      "income": 9800.0,
+      "spend": 5764.96,
+      "transfers_out": 2650.0,
+      "transfers_in": 2650.0,
+      "net": 4035.04,
+      "savings_rate": 0.4117
+    },
+    {
+      "month": "2026-06",
+      "income": 9800.0,
+      "spend": 5698.15,
+      "transfers_out": 2650.0,
+      "transfers_in": 2650.0,
+      "net": 4101.85,
+      "savings_rate": 0.4186
+    },
+    {
+      "month": "2026-07",
+      "income": 9800.0,
+      "spend": 5806.11,
+      "transfers_out": 2650.0,
+      "transfers_in": 2650.0,
+      "net": 3993.89,
+      "savings_rate": 0.4075
+    },
+    {
+      "month": "2026-08",
+      "income": 9800.0,
+      "spend": 5877.46,
+      "transfers_out": 2800.0,
+      "transfers_in": 2800.0,
+      "net": 3922.54,
+      "savings_rate": 0.4003
+    }
+  ],
+  "recurring": [
+    {
+      "merchant": "Sample Mortgage",
+      "category": "Housing",
+      "cadence": "monthly",
+      "count": 6,
+      "first_date": "2026-03-01",
+      "last_date": "2026-08-01",
+      "first_amount": 3200.0,
+      "last_amount": 3200.0,
+      "typical_amount": 3200.0,
+      "creep_pct": 0.0,
+      "annual_cost": 38400.0,
+      "next_expected": "2026-09-01",
+      "account_ids": [
+        "sample-checking"
+      ]
+    },
+    {
+      "merchant": "Sample Utilities",
+      "category": "Utilities",
+      "cadence": "monthly",
+      "count": 6,
+      "first_date": "2026-03-12",
+      "last_date": "2026-08-12",
+      "first_amount": 251.3,
+      "last_amount": 240.0,
+      "typical_amount": 238.43,
+      "creep_pct": -0.045,
+      "annual_cost": 2861.1,
+      "next_expected": "2026-09-12",
+      "account_ids": [
+        "sample-checking"
+      ]
+    },
+    {
+      "merchant": "Sample Insurance",
+      "category": "Health",
+      "cadence": "monthly",
+      "count": 6,
+      "first_date": "2026-03-05",
+      "last_date": "2026-08-05",
+      "first_amount": 95.0,
+      "last_amount": 95.0,
+      "typical_amount": 95.0,
+      "creep_pct": 0.0,
+      "annual_cost": 1140.0,
+      "next_expected": "2026-09-05",
+      "account_ids": [
+        "sample-checking"
+      ]
+    },
+    {
+      "merchant": "Sample Gym",
+      "category": "Health",
+      "cadence": "monthly",
+      "count": 6,
+      "first_date": "2026-03-03",
+      "last_date": "2026-08-03",
+      "first_amount": 49.0,
+      "last_amount": 49.0,
+      "typical_amount": 49.0,
+      "creep_pct": 0.0,
+      "annual_cost": 588.0,
+      "next_expected": "2026-09-03",
+      "account_ids": [
+        "sample-amex"
+      ]
+    },
+    {
+      "merchant": "Sample Streaming",
+      "category": "Subscriptions",
+      "cadence": "monthly",
+      "count": 6,
+      "first_date": "2026-03-08",
+      "last_date": "2026-08-08",
+      "first_amount": 15.99,
+      "last_amount": 17.99,
+      "typical_amount": 16.99,
+      "creep_pct": 0.1251,
+      "annual_cost": 203.88,
+      "next_expected": "2026-09-08",
+      "account_ids": [
+        "sample-visa"
+      ]
+    },
+    {
+      "merchant": "Sample Cloud",
+      "category": "Subscriptions",
+      "cadence": "monthly",
+      "count": 3,
+      "first_date": "2026-06-24",
+      "last_date": "2026-08-24",
+      "first_amount": 9.99,
+      "last_amount": 9.99,
+      "typical_amount": 9.99,
+      "creep_pct": 0.0,
+      "annual_cost": 119.88,
+      "next_expected": "2026-09-23",
+      "account_ids": [
+        "sample-visa"
+      ]
+    },
+    {
+      "merchant": "Sample Magazine",
+      "category": "Subscriptions",
+      "cadence": "monthly",
+      "count": 5,
+      "first_date": "2026-03-21",
+      "last_date": "2026-07-21",
+      "first_amount": 8.99,
+      "last_amount": 8.99,
+      "typical_amount": 8.99,
+      "creep_pct": 0.0,
+      "annual_cost": 107.88,
+      "next_expected": "2026-08-20",
+      "account_ids": [
+        "sample-visa"
+      ]
+    }
+  ],
+  "flags": [],
+  "accounts": {
+    "sample-visa": {
+      "id": "sample-visa",
+      "name": "Sample Visa",
+      "kind": "card"
+    },
+    "sample-amex": {
+      "id": "sample-amex",
+      "name": "Sample Amex",
+      "kind": "card"
+    },
+    "sample-checking": {
+      "id": "sample-checking",
+      "name": "Sample Checking",
+      "kind": "checking"
+    }
+  },
+  "spending_path": "/home/sample/second-opinion/spending.json"
+}

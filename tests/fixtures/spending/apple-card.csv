@@ -1,0 +1,4 @@
+Transaction Date,Clearing Date,Description,Merchant,Category,Type,Amount (USD),Purchased By
+08/03/2026,08/04/2026,APPLE.COM/BILL 866-712-7753 CA,Apple,Other,Purchase,2.99,Alex Sample
+08/05/2026,08/06/2026,TST* TACO SPOT - 12 SPRINGFIELD IL,Taco Spot,Restaurants,Purchase,14.20,Alex Sample
+08/10/2026,08/10/2026,ACH DEPOSIT INTERNET TRANSFER FROM ACCOUNT ENDING IN 5678,Payment,Payment,Payment,-100.00,Alex Sample

@@ -1,0 +1,6 @@
+{"PortfolioResponse": {"AccountPortfolio": [{"accountId": "10000001", "totalPages": 2, "nextPageNo": "2", "Position": [
+  {"positionId": 1, "symbolDescription": "APPLE INC", "quantity": 10, "pricePaid": 150.0, "totalGain": 500.0, "positionType": "LONG", "marketValue": 2000.0,
+   "Product": {"symbol": "AAPL", "securityType": "EQ"}, "Quick": {"lastTrade": 200.0, "change": 2.0, "changePct": 1.0}},
+  {"positionId": 2, "symbolDescription": "TESLA INC", "quantity": 5, "pricePaid": 300.0, "totalGain": -250.0, "positionType": "SHORT", "marketValue": -1250.0,
+   "Product": {"symbol": "TSLA", "securityType": "EQ"}, "Quick": {"lastTrade": 250.0}}
+]}]}}

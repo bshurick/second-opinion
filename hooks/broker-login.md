@@ -1,0 +1,5 @@
+Second Opinion broker login (applies to every second-opinion skill in this session):
+- When any second-opinion script exits 4 with code ETRADE_REAUTH, E*Trade's daily token has expired and the user has already installed an E*Trade developer key. Open the response with the login, not with a partial result: show the `url` from the output, tell the user to sign in at E*Trade and paste the 5-character verifier code, then run the connect skill's `etrade-login.py --verifier CODE` and rerun the original command once. Give the reason in one line (E*Trade tokens expire at midnight Eastern).
+- If the user says to skip the login, rerun the original command with the flag named in the output's `partial` field (`--partial`), and open the response with one line saying E*Trade is excluded from this run.
+- The login turn is a handoff: no result tables and no follow-up questions block until the rerun has delivered the result.
+- A BROKER_UNAVAILABLE flag on a `--partial` run still belongs in the Flags section; do not turn it back into a login prompt in that same response.

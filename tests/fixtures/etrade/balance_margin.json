@@ -1,0 +1,4 @@
+{"BalanceResponse": {"accountId": "10000001", "accountType": "MARGIN", "accountMode": "MARGIN", "Computed": {
+  "cashAvailableForInvestment": 0.8, "cashAvailableForWithdrawal": 0.8, "totalAvailableForWithdrawal": 1500.5, "netCash": 1500.5, "cashBalance": 0.0,
+  "settledCashForInvestment": 0.0, "unSettledCashForInvestment": 0.0, "marginBuyingPower": 3001.0, "cashBuyingPower": 1500.5, "marginBalance": 0,
+  "RealTimeValues": {"totalAccountValue": 3001.55, "netMv": 3000.75, "netMvLong": 3000.75, "netMvShort": 0}}}}
