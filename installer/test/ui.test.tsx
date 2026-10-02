@@ -23,7 +23,12 @@ import { extrasRoot, FakeRunner, miniRoot, opts, tmpDir } from "./helpers.js";
 const ENTER = "\r";
 const ESCAPE = "";
 const DOWN = "[B";
-const tick = () => new Promise((r) => setTimeout(r, 20));
+const tick = () => new Promise((r) => setTimeout(r, 50));
+// A fixed wait is a guess about how fast the runner is; poll for the state instead.
+const until = async (done: () => boolean, ms = 3000) => {
+  const end = Date.now() + ms;
+  while (!done() && Date.now() < end) await new Promise((r) => setTimeout(r, 10));
+};
 
 describe("Select", () => {
   it("moves with arrows, selects with enter, and jumps with numbers", async () => {
@@ -104,9 +109,9 @@ describe("SkillPickerScreen", () => {
     expect(lastFrame()).toContain("select at least one skill");
     expect(result).toBeNull();
     stdin.write("a");
-    await tick();
+    await until(() => (lastFrame() ?? "").includes("3 of 3 selected"));
     stdin.write(ENTER);
-    await tick();
+    await until(() => result !== null);
     expect(result).toEqual(["a", "b", "c"]);
   });
 
