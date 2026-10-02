@@ -112,7 +112,7 @@ describe("SkillPickerScreen", () => {
     await until(() => (lastFrame() ?? "").includes("3 of 3 selected"));
     stdin.write(ENTER);
     await until(() => result !== null);
-    expect(result).toEqual(["a", "b", "c"]);
+    expect(result, `screen at failure:\n${lastFrame()}`).toEqual(["a", "b", "c"]);
   });
 
   it("shows the highlighted skill's description and badges", () => {

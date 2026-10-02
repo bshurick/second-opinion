@@ -23,7 +23,11 @@ jobs:
           python-version: ${{ matrix.python }}
       # The annotate plugin reports each failing test on the run page, with its message.
       - run: pip install -r requirements-dev.txt pytest-github-actions-annotate-failures
+      # The page tests drive headless Chrome, which hangs now and then on the macOS runners;
+      # the Linux jobs cover them.
       - run: python -m pytest tests -q -ra
+        env:
+          SECOND_OPINION_SKIP_CHROME: ${{ runner.os == 'macOS' && '1' || '' }}
 
   installer:
     runs-on: ubuntu-latest

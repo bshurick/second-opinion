@@ -28,8 +28,11 @@ def _find_chrome() -> str | None:
     return None
 
 
-CHROME = _find_chrome()
-requires_chrome = pytest.mark.skipif(CHROME is None, reason="Google Chrome not found")
+# Headless Chrome hangs at start-up now and then on shared macOS CI runners. The pages are the
+# same HTML and JavaScript on every system, so CI runs these tests on Linux and sets this there.
+SKIP_ENV = "SECOND_OPINION_SKIP_CHROME"
+CHROME = None if os.environ.get(SKIP_ENV) else _find_chrome()
+requires_chrome = pytest.mark.skipif(CHROME is None, reason=f"Google Chrome not found, or {SKIP_ENV} is set")
 ADVICE = re.compile(r"\b(recommend\w*|advis\w*|should|suggest\w*)\b", re.I)
 _AUDIT = re.compile(r'<script type="application/json" id="fa-audit">(.*?)</script>', re.S)
 
