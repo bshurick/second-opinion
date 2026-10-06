@@ -55,6 +55,7 @@ TRADING_PROTOCOL_SKILLS = {"trading", "portfolio-analysis"}
 REFERENCE_FILES = [
     "valuation/references/dcf-methods.md",
     "valuation/references/value-investing.md",
+    "valuation/references/deep-roles.md",
     "portfolio-analysis/references/portfolio-research.md",
     "portfolio-snapshot/references/how-figures-are-built.md",
     "trading/references/momentum-research.md",

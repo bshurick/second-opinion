@@ -34,7 +34,7 @@ Say these in plain language; Claude picks the skill. Grouped as in the README's 
 
 ## Research and markets
 
-- **valuation:** "What's a fair price for COST?" · "Does KO pass Graham's defensive-investor tests? What are its owner earnings and the margin of safety at today's price?"
+- **valuation:** "What's a fair price for COST?" · "Does KO pass Graham's defensive-investor tests? What are its owner earnings and the margin of safety at today's price?" · "Do a deep dive on PHM: what has to go right, and what would I earn at today's price?"
 - **fundamental-research:** "What does Nvidia's latest 10-K say about risk factors?" · "What did Berkshire buy last quarter?"
 - **stock-screener:** "Find me companies with strong growth that the market is underpricing." · "Run a value screen: cheap on cash flow, little debt, no dilution." · "Loosen the growth screen to include smaller companies." · "Run the magic formula, leaving out what I already own." · "Does Graham's defensive screen find anything today?" · "How did the quality screen's picks from three years ago do?"
 - **options:** "Show me the AAPL option chain for next month and the expected move." · "What's the payoff and breakeven on a 180/190 call spread?"

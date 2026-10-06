@@ -14,7 +14,8 @@ of ``dcf``, ``intrinsic``, ``comps``, ``ddm`` must be present::
      "dcf_mid_cycle": <dcf.py result on intrinsic's normalized.dcf_input_mid_cycle>,
      "intrinsic": <intrinsic.py result>,
      "comps": <comps.py result>,
-     "ddm": <ddm.py result>}
+     "ddm": <ddm.py result>,
+     "returns": <returns.py result, convergence mode on the bear/base/bull fair values>}
 
 A bare ``dcf.py`` or ``intrinsic.py`` result is accepted and wrapped. Sections: stat tiles (price,
 DCF fair value, Graham number, growth-formula value, mid-cycle DCF, owner-earnings DCF, comps
@@ -160,6 +161,11 @@ SCRIPT = r"""
   if (est.length) { const vs = est.map(e => e.value); tiles.push(['Range of estimates', `${money(Math.min(...vs))} – ${money(Math.max(...vs))}`, `${est.length} estimates from the methods below`]); }
   if (est.length && F.isNum(price)) { const above = est.filter(e => e.value > price).length;
     tiles.push(['Estimates above the price', `${above} of ${est.length}`, above === 0 ? 'the price is above every estimate' : above === est.length ? 'every estimate is above the price' : 'the price sits inside the range']); }
+  const RT = D.returns;
+  if (RT && RT.scenarios && RT.scenarios.length) {
+    const r = RT.scenarios.map(s => `${F.esc(s.name)} ${F.isNum(s.irr) ? F.pct(s.irr, 1, true) : '—'}`).join(' · ');
+    tiles.push([`Return a year over ${RT.horizon} years`, r, 'at today’s price, if the price reaches each case’s value']);
+  }
   g('tiles').innerHTML = tiles.map(([k, v, d]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d}</div></div>`).join('');
   F.armTerms(g('tiles'));
   // margin of safety
@@ -390,6 +396,8 @@ def build(data: dict) -> tuple[str, str, dict]:
     title = f"{symbol} Valuation".strip()
     markup = page.render(title, data, BODY, SCRIPT)
     methods = [k for k in _METHODS if isinstance(data.get(k), dict)]
+    if isinstance(data.get("returns"), dict):
+        methods.append("returns")
     flags = len((data.get("intrinsic") or {}).get("flags") or [])
     return title, markup, {"title": title, "symbol": symbol or None, "methods": methods, "flags": flags}
 

@@ -1,8 +1,10 @@
 ---
 name: valuation
-description: Estimates the fair value of a security with DCF, comparable multiples, dividend discount and Graham/Buffett intrinsic value (Graham number, owner earnings, margin of safety). Use when asked what something is worth, for a fair or target price, or a value check.
+description: Estimates fair value and the return at today's price with DCF, multiples, dividend discount, Graham/Buffett checks, or a deep dive that researches filings and values scenarios by segment. Use when asked what something is worth, a fair price or a deep dive.
 ---
-Estimates what a security is worth from its fundamentals: a discounted-cash-flow range, cross-checked against comparable multiples, dividend discounting and Graham/Buffett arithmetic, with every assumption stated. It works from public financial data and market prices and has no access to brokerage accounts.
+Estimates what a security is worth from its fundamentals, and what buying at today's price would earn a year.
+
+Quick mode runs a discounted-cash-flow range cross-checked against comparable multiples, dividend discounting and Graham/Buffett arithmetic. Deep mode sends research subagents through the filings and news, keeps a sourced ledger of the beliefs the value rests on, and values named scenarios segment by segment. It has no access to brokerage accounts.
 
 ## Background
 
@@ -104,6 +106,7 @@ Estimates what a security is worth from its fundamentals: a discounted-cash-flow
   | `intrinsic` | The `intrinsic.py` result |
   | `comps` | The `comps.py` result |
   | `ddm` | The `ddm.py` result |
+| `returns` | The `returns.py` result in `convergence` mode, shown as one tile of bear / base / bull annualized returns |
 
 - Every key is optional, with at least one of `dcf`, `intrinsic`, `comps`, `ddm` present. A bare `dcf.py` or `intrinsic.py` result is wrapped.
 - The page shows stat tiles: price, DCF fair value, Graham number, growth-formula value, mid-cycle and owner-earnings DCF, comps median, DDM value.
@@ -111,6 +114,56 @@ Estimates what a security is worth from its fundamentals: a discounted-cash-flow
 - It shows the Graham checklist and Buffett tenets as pass/fail lists, owner earnings by year, the normalized block, the comps and DDM tables and the flags.
 - It prints `{"out", "title", "symbol", "methods", "flags"}`.
 - The only figure it derives is the discount to price for the DCF, comps and DDM values (1 − price / value), stated in its note.
+
+### Two modes
+
+| The person says | Mode |
+|---|---|
+| "what's X worth", "value check", "fair price", several tickers, the screener funnel's price check | Quick |
+| "deep dive", "in depth", "full valuation", "dig into X", "what could go wrong with X's plan" | Deep |
+| A single ticker, unclear which | Quick, ending with one line: a deep version is available and sends ten to fifteen research subagents |
+
+### What `returns.py` adds
+
+- The annualized return (IRR) from buying at today's price and holding to the horizon (5 years by default), with the total multiple and the exit value that would earn the hurdle (10% by default).
+- `convergence` mode (quick): the price closes on a fair value by the horizon. Buying at fair value earns exactly the cost of equity.
+- `paths` mode (deep): `model.py`'s `returns_input`, with its yearly distributions and exit value.
+- `TOTAL_LOSS` fires when nothing comes back to the holder.
+
+### What `model.py` does (deep mode)
+
+- It values a company as a sum of segments under named scenarios. Its docstring is the full contract.
+- Segment kinds:
+
+  | `kind` | Use for |
+  |---|---|
+  | `operating` | A business line: revenue growth, EBIT margin and sales-to-capital by year, its own discount rate, and a Gordon or exit-multiple terminal value |
+  | `cost` | Unallocated corporate cost, valued as a negative perpetuity |
+  | `asset` | A stake, land or other item at a stated value |
+  | `venture` | A long shot: probability × value if it works, less its cost |
+  | `residual_income` | A bank or insurer: book value plus the present value of returns above the cost of equity |
+
+- `discount_premium` with `premium_reason` raises one segment's discount rate for a doubtful or vague plan. `value_ex_premiums` shows the value without any premium.
+- A scenario overrides named segment fields. `fails` ends a segment at a year with a salvage value.
+- Each scenario's `path` and `exit` feed `returns_input`.
+- `implied` is what today's price implies: the one shift to every operating margin (or to every residual-income ROE) that makes the first scenario worth the price.
+- Flags: `TERMINAL_HEAVY`, `NEGATIVE_EQUITY`, `MARGIN_ABOVE_HISTORY`, `REINVESTMENT_NEGATIVE`.
+
+### The deep-mode case folder
+
+Each deep run keeps its work in `DIR/deep-SYMBOL/`, where DIR is the session scratchpad:
+
+| Path | Holds |
+|---|---|
+| `baseline/` | Quick-mode script output |
+| `research/<role>.md` | One findings file per research role |
+| `ledger.json` | The belief ledger: `id`, `belief`, `holder`, `stakes`, `verdict`, `if_true` (`up` or `down`), `headline`, `takeaway`, optional `effect_per_share`, `for` and `against` (each `claim`, `source`, `date`), `consequence`, `thread` |
+| `threads/<n>-<slug>.md` | One file per deep-dive |
+| `model.json` | The `model.py` input |
+| `custom/*.py` | Calculations the engine cannot express, each printing JSON |
+| `page.json` | The `render_deep.py` input |
+
+`render_deep.py` always opens with the scenario table and the price against the scenarios. After that it shows the blocks you list, in your order. `segments`, `drivers`, `ledger`, `track_record`, `forensics`, `skepticism`, `sensitivity`, `custom` and `text` are described in its docstring. A ledger claim without a source and a date is exit 2.
 
 ### Reference files
 
@@ -126,6 +179,7 @@ Read these with the Read tool and ground the answer in what they say. Do not ans
   - comparable-multiples methodology (which multiples, peer selection, transaction comps) or Adjusted Present Value (APV)
 - Read `references/value-investing.md` before answering anything about Benjamin Graham, Warren Buffett, value investing, the margin of safety, the Graham number, net-nets or net current asset value, owner earnings, or a "value screen".
 - `references/value-investing.md` maps every figure `intrinsic.py` emits to its source (Graham's chapters 11, 14, 15 and 20; the 1977, 1983, 1986 and 1992 Berkshire letters; Greenwald).
+- `references/deep-roles.md` holds the brief for each deep-mode research subagent. Hand a subagent its section and the Shared rules section, verbatim.
 
 ## Scripts
 
@@ -141,6 +195,9 @@ Run with the Bash tool. All print JSON on stdout.
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/valuation/scripts/intrinsic-inputs.py" <symbol> [--years 10] [--business-type industrial|financial|reit|utility]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/valuation/scripts/intrinsic.py" <<< '<input json>'
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/valuation/scripts/render.py" --in valuation.json --out page.html
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/valuation/scripts/returns.py" <<< '<input json>'
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/valuation/scripts/model.py" < DIR/deep-SYMBOL/model.json
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/valuation/scripts/render_deep.py" --in DIR/deep-SYMBOL/page.json --out DIR/deep-SYMBOL/page.html
 ```
 
 | Script | What it does |
@@ -154,15 +211,20 @@ Run with the Bash tool. All print JSON on stdout.
 | `intrinsic-inputs.py` | Filled `intrinsic.py` input: EDGAR annual table, price, FRED AAA and DGS10 yields, business type from the SIC code. |
 | `intrinsic.py` | Graham and Buffett figures, checklists, the `normalized` block and margin-of-safety rows. |
 | `render.py` | The interactive page from the collected results. |
+| `returns.py` | Annualized return at today's price per scenario, in `convergence` or `paths` mode. |
+| `model.py` | Segment-by-segment, scenario-by-scenario valuation with the path to the horizon and `returns_input`. |
+| `render_deep.py` | The deep-mode page: scenario table, price strip, then the chosen blocks. |
 
 | Exit code | Meaning | What to show |
 |---|---|---|
-| 2 | Bad input. For `render.py`, no script result is present. | `error` |
+| 2 | Bad input. For `render.py`, no script result is present. For `render_deep.py`, a missing model, an unknown block, or an undated ledger claim. | `error` |
 | 4 | `intrinsic-inputs.py` only. `SKILL_MISSING`: the fundamental-research skill is not installed. `CONFIG_MISSING`: EDGAR is not configured. | `error` |
 | 5 | A data source (Yahoo, EDGAR) returned an error | `error` |
 | 6 | Python dependencies missing | `error`, and say the setup skill repairs it |
 
 ## Steps
+
+**Quick (one company or several)**
 
 1. Identify the security. Run `fundamentals.py <symbol>` for current market data (price, market cap, shares outstanding) and the statements: at minimum 3-5 years of income statements, balance sheets and cash flow statements.
 2. Run `inputs.py <symbol>`. Read `business_type` and `flags`.
@@ -188,6 +250,7 @@ Run with the Bash tool. All print JSON on stdout.
 7. Run `dcf.py` on all three `dcf_scenarios` inputs (`bear`, `base`, `bull`). Keep `current_share_price` in each input to get the `implied` block.
    - `dcf.py` discounts the projected cash flows and the terminal value to enterprise value, subtracts net debt for equity value, and divides by shares for per-share fair value.
    - The three results are the range. The sensitivity grid inside each result shows how WACC and perpetual growth move it.
+   - Run `returns.py` in `convergence` mode on the three results: `fair_value` from each `fair_value_per_share`, `cost_of_equity` from `inputs.py`'s `assumptions.cost_of_equity.value`, `dividend_yield` from `inputs.py`'s `ddm_input.dividend0` / price (0 when null). If `cost_of_equity` is null, use `inputs.py`'s `wacc` and say so.
 8. Note the terminal-value share of total value in each result.
 9. Cross-check against trading comparables (EV/EBITDA, P/E, EV/Sales). Choose peers in the same line of business, run `peers.py <symbol> --peers A,B,C`, and pipe its output into `comps.py`. Say which peers you chose.
 10. If step 3 calls for `intrinsic.py`:
@@ -198,15 +261,63 @@ Run with the Bash tool. All print JSON on stdout.
 11. If step 3 calls for `ddm.py`, run it on the `ddm_input` from `inputs.py`, `reit_tests` or `utility_tests`.
 12. Compare with other analysts' estimates and ratings from a web search. Do this only after your own work is complete; do not reference other analysts before then.
 13. Deliver the page.
-    1. Write the results you ran to one file, `DIR/valuation.json`: the `render.py` input object from Background. DIR is the session scratchpad.
+    1. Write the results you ran, including `returns`, to one file, `DIR/valuation.json`: the `render.py` input object from Background. DIR is the session scratchpad.
     2. Run `render.py --in DIR/valuation.json --out DIR/valuation.html`.
     3. Publish the HTML with the Artifact tool: icon chart, description "Valuation: SYMBOL at PRICE". Republish the same file path on later runs so the link stays stable.
     4. Reply with the published-page format below.
 14. If the Artifact tool is not available in the session (a headless or non-interactive host), reply with the markdown fallback instead. Never both.
+15. With several companies, skip the page and reply with one row each: price, bear / base / bull value, and the base-case annualized return.
+
+**Deep (one company)**
+
+1. Run `edgar.py SYMBOL` from the fundamental-research skill. If it exits 4, stop. Say deep mode needs SEC EDGAR, and offer quick mode.
+2. Make `DIR/deep-SYMBOL/` and its `baseline/`, `research/`, `threads/` and `custom/` folders. Write the output of `fundamentals.py`, `inputs.py`, `intrinsic-inputs.py` and `edgar.py` into `baseline/`.
+3. Tell the person deep mode has started and roughly how many research tasks it will run.
+4. Dispatch the four round-1 roles in parallel with the Agent tool (general-purpose type): Forensic accountant, Management claims, Industry and news, Segment economics.
+   - Each prompt names the Shared rules section and the role's section of `references/deep-roles.md` by its absolute path for the subagent to read, plus the case folder path, the symbol and today's date.
+   - Each prompt also gives the fundamental-research script commands with `SNAPTRADE_PY` and `CLAUDE_PLUGIN_ROOT` already resolved to absolute paths. A subagent does not inherit them.
+   - If the Agent tool is unavailable, run the roles one after another yourself, and say so in the reply.
+   - For several companies, run two or three deep valuations at a time. Each dispatches up to five subagents at once, and the session caps both concurrent subagents and web searches.
+5. If a role failed or wrote no file, add its name to `missing_roles` and go on.
+6. Merge the candidate beliefs into `ledger.json`. Combine duplicates. Set `verdict` to `open` where the evidence is thin. Rank by stakes, then by how evenly the evidence splits.
+   - Stakes are how much value moves if the belief is wrong, never how much attention the belief gets in the news.
+   - A belief settled by a single source, or by a policy that can be reversed, keeps its stakes and stays eligible for a thread.
+   - Give every entry `if_true`: `up` when the belief, if true, raises the value, `down` when it lowers it. The page combines it with the verdict to mark each row as working for or against the value.
+   - Give every entry a `headline`, a label of a few words such as "Questionable SMB growth" (at most 60 characters), and a `takeaway`: one plain sentence saying what the research concluded. Update both after each thread. Add `effect_per_share` when a model rerun measured what the belief's consequence did to the central value.
+7. Write `model.json`:
+   1. Take the segments from `research/segments.md`, plus a `cost` segment for unallocated corporate cost when it is reported.
+   2. Anchor each driver on the segment's history. Move it only where a ledger entry gives a dated reason.
+   3. In a year when revenue shrinks, set that year's `sales_to_capital` to about 4 unless the history shows inventory being released. At the normal ratio, a shrinking year hands back far more capital than builders and manufacturers actually free up.
+   4. Write three to five scenarios that differ in their story (what happens to the business), not just in a growth shift. Each has a `summary` and its `must_be_true` list.
+   5. Give a `discount_premium` only where a ledger entry is doubtful, contradicted or vague. Put the entry's id in the `premium_reason`.
+   6. Take `claims` from the balance-sheet table in `research/segments.md`, not from `inputs.py`. Its net debt comes from Yahoo's total debt, which counts a finance arm's warehouse lines as corporate debt. Take `base_discount_rate` from `inputs.py`'s `wacc`, and add `history` with each segment's best historical margin.
+      - For a company valued only through `residual_income` segments, `claims` is empty, because debt and cash sit inside book value, and `base_discount_rate` is the cost of equity.
+      - `retention` nets out new share issuance, and `annual_dilution` stays 0.
+   7. Set the rest of the top level: `price`, `tax_rate` and `cost_of_debt` from `inputs.py`'s `assumptions`, `payout` as the share of free cash flow the company has paid out in dividends and buybacks (default 1), and `annual_dilution` from the share-count trend. `returns.py` needs `price`.
+   8. Check `inputs.py`'s discount rate before using it. Its equity risk premium is a fixed, undated 5%. Its cost of debt has no credit spread. Its beta is a five-year figure. When the rate moves the value, rebuild it from dated sources and record it as a ledger entry.
+   9. Fit any shared cost path (a platform or head-office cost) after the segment revenue paths are final.
+   10. Add a `sensitivity` on the two inputs the central scenario hangs on. `roe_shift` serves a residual-income segment, and `discount_shift` with segment `"*"` moves every discount rate at once.
+8. Run `model.py`, then `returns.py` on its `returns_input`. If `model.py` exits 2, fix `model.json` and rerun. Read `implied`: if every scenario sits above the price, or every one below, a scenario is probably missing. Write the one the price implies before the threads.
+9. Thread rounds, at most three:
+   1. Pick up to four `open` or contested beliefs with high or medium stakes. One of them is a blind-spot thread: the highest-stakes belief that got the least coverage, or that rests on a single source or a reversible policy.
+   2. Dispatch one Thread deep-dive per belief, in parallel. Each gets the Shared rules and Thread deep-dive sections, the ledger entry, its output file name, the case folder, and the current `model.json` values for the fields the belief touches in each scenario.
+   3. Write each verdict and its evidence into `ledger.json`, apply each model consequence to `model.json`, and add any new beliefs. Then recheck fields fitted to others (a cost path fitted to revenue), since each thread changes one field at a time.
+   4. Rerun `model.py` and `returns.py`.
+   5. Stop when no scenario's `value_per_share` moved more than 5% in the round, or after round three.
+10. Dispatch the Red team with its section and the name of the central scenario.
+    - Apply each proposed change that holds up, and rerun.
+    - Keep a list of the changes you rejected, each with one line on why.
+11. If a case needs arithmetic the engine cannot express:
+    1. Write it as `custom/<name>.py` printing JSON with an `answer` (one plain sentence with the figure that matters) and, when there is more than one figure, a `table` of display-ready strings: `{"columns": [...], "rows": [[...]]}`, with rates as "8.6%" and values as "$31.96". Use a model axis instead when `model.py`'s sensitivity can express the grid.
+    2. Have the Red team rerun it.
+    3. Show it as a `custom` block. Never fold it silently into a total.
+12. Write `page.json`. Pick the blocks that tell this company's story, in the order a reader needs them. Run `render_deep.py --in DIR/deep-SYMBOL/page.json --out DIR/deep-SYMBOL/page.html`.
+13. Publish with the Artifact tool: icon chart, description "Deep valuation: SYMBOL at PRICE". Republish the same path on later runs.
+14. Reply in the deep format below. If the Artifact tool is unavailable, use the deep markdown fallback.
 
 ## Reply format
 
-**When the page was published (the default):** these parts, in this order, then stop.
+**Quick mode, page published (the default):** these parts, in this order, then stop.
 
 1. The artifact link on its own line.
 2. One line naming only the methods that ran: **Valuation: SYMBOL** price `price` · DCF `dcf.fair_value_per_share` (range from the sensitivity grid, bear / base / bull) · Graham number `intrinsic.graham.graham_number` · growth formula `intrinsic.graham.growth_formula.value` · mid-cycle DCF `dcf_mid_cycle.fair_value_per_share`.
@@ -216,7 +327,7 @@ Run with the Bash tool. All print JSON on stdout.
 
 The page carries the sensitivity grids, checklists, owner earnings, normalized block, comps and DDM tables, so do not repeat them in the reply. If the user asks for a number the page shows, read it from the scripts' JSON.
 
-**Markdown fallback (only when the Artifact tool is unavailable):** these parts, then stop.
+**Quick mode, markdown fallback (only when the Artifact tool is unavailable):** these parts, then stop.
 
 1. The fair-value range with the WACC × terminal-growth sensitivity table.
 2. Every key assumption.
@@ -248,9 +359,24 @@ The page carries the sensitivity grids, checklists, owner earnings, normalized b
 - For a `reit`, lead with `reit_tests` and say GAAP EPS understates it.
 - For a `utility`, lead with `utility_tests` and the dividend model.
 
+**Deep mode, page published:** these parts, then stop.
+
+1. The artifact link on its own line.
+2. A table: scenario | value per share | return a year at today's price, from `model.py` and `returns.py`.
+3. What today's price implies (`implied`), in one line, and which scenario comes nearest to it.
+4. The two or three ledger verdicts that move value most, each with its source and date, and what it changed in the model.
+5. One line on the cost of skepticism: the largest gap between `value_per_share` and `value_ex_premiums`, with its reason.
+6. **Flags**: `model.py` and `returns.py` flags, missing research roles, and rejected red-team changes. Or "None".
+7. One sentence, once: the figures are general information at the stated assumptions, not financial, tax, or legal advice.
+
+**Deep mode, markdown fallback:** the same parts without the link, plus the full ledger as a list (belief, verdict, the deciding evidence with sources).
+
 ## Rules
 
-- Every number comes from the scripts. Present the scripts' numbers; do not recompute them by hand or add figures.
+- Every number comes from the scripts, or from a `custom/*.py` the Red team reran and the page labels. Present those numbers; do not recompute them by hand.
+- In deep mode, a belief without a dated source changes nothing in the model.
+- Every discount-rate premium is stated with its reason and the ledger entry behind it.
+- Scenarios carry no probabilities. Present them side by side and leave the weighing to the person.
 - Ground every estimate in historical data. Do not fabricate financials or guess at numbers you have not retrieved.
 - When a `DCF_NOT_MEANINGFUL_FOR_…` flag or `NEGATIVE_FCF` fires, do not present the DCF as an estimate of value.
 - Margin-of-safety bands are description, not a signal.

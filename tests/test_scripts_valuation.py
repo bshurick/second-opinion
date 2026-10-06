@@ -607,3 +607,14 @@ def test_graham_explainer_names_the_larger_figure(tmp_path, capsys) -> None:
     a = render_and_audit("valuation/scripts/render.py", ["--in", str(PLUGIN_ROOT / "docs/samples/valuation.json")], tmp_path, capsys)
     text = card_text(a, "Graham")  # sample: Graham number $153.01, growth formula $324.40
     assert "higher of the two" in text and "lower of the two" not in text
+
+
+def test_render_shows_returns_tiles(tmp_path, capsys) -> None:
+    data = json.loads((PLUGIN_ROOT / "docs/samples/valuation.json").read_text())
+    data["returns"] = {"mode": "convergence", "price": 100.0, "horizon": 5, "hurdle": 0.1, "assumptions": [], "flags": [],
+                       "scenarios": [{"name": "bear", "irr": -0.02}, {"name": "base", "irr": 0.07}, {"name": "bull", "irr": 0.13}]}
+    src = tmp_path / "v.json"
+    src.write_text(json.dumps(data))
+    rc, res = run_json(load_script("valuation/scripts/render.py"), ["--in", str(src), "--out", str(tmp_path / "v.html")], capsys)
+    assert rc == 0 and "returns" in res["methods"]
+    assert '"irr":0.13' in (tmp_path / "v.html").read_text()

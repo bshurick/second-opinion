@@ -1,0 +1,617 @@
+{
+ "symbol": "ACME",
+ "price": 20.0,
+ "as_of": "2026-10-05",
+ "model": {
+  "symbol": "ACME",
+  "price": 20.0,
+  "horizon": 5,
+  "scenarios": [
+   {
+    "name": "Base",
+    "summary": "Steady.",
+    "must_be_true": [
+     "Margin holds"
+    ],
+    "enterprise_value": 1630.14,
+    "equity_value": 1430.14,
+    "value_per_share": 14.3,
+    "value_ex_premiums": 14.3,
+    "upside": -0.2849,
+    "segments": [
+     {
+      "name": "Core",
+      "kind": "operating",
+      "value": 1755.87,
+      "pv_terminal": 1029.64,
+      "terminal_share": 0.5864,
+      "discount_rate": 0.09,
+      "premium": 0.0,
+      "premium_reason": "",
+      "years": [
+       {
+        "t": 1,
+        "revenue": 1050.0,
+        "ebit": 157.5,
+        "reinvestment": 25.0,
+        "fcff": 93.12
+       },
+       {
+        "t": 2,
+        "revenue": 1102.5,
+        "ebit": 165.38,
+        "reinvestment": 26.25,
+        "fcff": 97.78
+       },
+       {
+        "t": 3,
+        "revenue": 1157.62,
+        "ebit": 173.64,
+        "reinvestment": 27.56,
+        "fcff": 102.67
+       },
+       {
+        "t": 4,
+        "revenue": 1215.51,
+        "ebit": 182.33,
+        "reinvestment": 28.94,
+        "fcff": 107.8
+       },
+       {
+        "t": 5,
+        "revenue": 1276.28,
+        "ebit": 191.44,
+        "reinvestment": 30.39,
+        "fcff": 113.19
+       },
+       {
+        "t": 6,
+        "revenue": 1340.1,
+        "ebit": 201.01,
+        "reinvestment": 31.91,
+        "fcff": 118.85
+       },
+       {
+        "t": 7,
+        "revenue": 1407.1,
+        "ebit": 211.07,
+        "reinvestment": 33.5,
+        "fcff": 124.8
+       },
+       {
+        "t": 8,
+        "revenue": 1477.46,
+        "ebit": 221.62,
+        "reinvestment": 35.18,
+        "fcff": 131.04
+       },
+       {
+        "t": 9,
+        "revenue": 1551.33,
+        "ebit": 232.7,
+        "reinvestment": 36.94,
+        "fcff": 137.59
+       },
+       {
+        "t": 10,
+        "revenue": 1628.89,
+        "ebit": 244.33,
+        "reinvestment": 38.78,
+        "fcff": 144.47
+       }
+      ]
+     },
+     {
+      "name": "HQ",
+      "kind": "cost",
+      "value": -125.73,
+      "pv_terminal": -61.55,
+      "terminal_share": null,
+      "discount_rate": 0.09,
+      "premium": 0.0,
+      "premium_reason": "",
+      "years": [
+       {
+        "t": 1,
+        "cost": 10.0
+       },
+       {
+        "t": 2,
+        "cost": 10.0
+       },
+       {
+        "t": 3,
+        "cost": 10.0
+       },
+       {
+        "t": 4,
+        "cost": 10.0
+       },
+       {
+        "t": 5,
+        "cost": 10.0
+       },
+       {
+        "t": 6,
+        "cost": 10.0
+       },
+       {
+        "t": 7,
+        "cost": 10.0
+       },
+       {
+        "t": 8,
+        "cost": 10.0
+       },
+       {
+        "t": 9,
+        "cost": 10.0
+       },
+       {
+        "t": 10,
+        "cost": 10.0
+       }
+      ]
+     }
+    ],
+    "bridge": {
+     "enterprise_value": 1630.14,
+     "debt": 300.0,
+     "cash": 100.0,
+     "leases": 0.0,
+     "minority_interest": 0.0,
+     "pension_deficit": 0.0,
+     "preferred": 0.0,
+     "options": 0.0,
+     "residual_income_equity": 0,
+     "equity_value": 1430.14
+    },
+    "path": [
+     {
+      "t": 1,
+      "fcfe": 75.62,
+      "distributions_per_share": 0.3781,
+      "net_debt": 162.19,
+      "shares": 100.0
+     },
+     {
+      "t": 2,
+      "fcfe": 81.7,
+      "distributions_per_share": 0.4085,
+      "net_debt": 121.34,
+      "shares": 100.0
+     },
+     {
+      "t": 3,
+      "fcfe": 88.12,
+      "distributions_per_share": 0.4406,
+      "net_debt": 77.28,
+      "shares": 100.0
+     },
+     {
+      "t": 4,
+      "fcfe": 94.91,
+      "distributions_per_share": 0.4745,
+      "net_debt": 29.82,
+      "shares": 100.0
+     },
+     {
+      "t": 5,
+      "fcfe": 102.08,
+      "distributions_per_share": 0.5104,
+      "net_debt": -21.21,
+      "shares": 100.0
+     }
+    ],
+    "exit": {
+     "dcf_roll": 19.78,
+     "multiple": null
+    }
+   },
+   {
+    "name": "Squeeze",
+    "summary": "Pricing gives.",
+    "must_be_true": [
+     "Rivals cut price"
+    ],
+    "enterprise_value": 680.07,
+    "equity_value": 480.07,
+    "value_per_share": 4.8,
+    "value_ex_premiums": 7.47,
+    "upside": -0.76,
+    "segments": [
+     {
+      "name": "Core",
+      "kind": "operating",
+      "value": 805.8,
+      "pv_terminal": 423.88,
+      "terminal_share": 0.526,
+      "discount_rate": 0.11,
+      "premium": 0.02,
+      "premium_reason": "guidance track record is poor",
+      "years": [
+       {
+        "t": 1,
+        "revenue": 1050.0,
+        "ebit": 105.0,
+        "reinvestment": 25.0,
+        "fcff": 53.75
+       },
+       {
+        "t": 2,
+        "revenue": 1102.5,
+        "ebit": 110.25,
+        "reinvestment": 26.25,
+        "fcff": 56.44
+       },
+       {
+        "t": 3,
+        "revenue": 1157.62,
+        "ebit": 115.76,
+        "reinvestment": 27.56,
+        "fcff": 59.26
+       },
+       {
+        "t": 4,
+        "revenue": 1215.51,
+        "ebit": 121.55,
+        "reinvestment": 28.94,
+        "fcff": 62.22
+       },
+       {
+        "t": 5,
+        "revenue": 1276.28,
+        "ebit": 127.63,
+        "reinvestment": 30.39,
+        "fcff": 65.33
+       },
+       {
+        "t": 6,
+        "revenue": 1340.1,
+        "ebit": 134.01,
+        "reinvestment": 31.91,
+        "fcff": 68.6
+       },
+       {
+        "t": 7,
+        "revenue": 1407.1,
+        "ebit": 140.71,
+        "reinvestment": 33.5,
+        "fcff": 72.03
+       },
+       {
+        "t": 8,
+        "revenue": 1477.46,
+        "ebit": 147.75,
+        "reinvestment": 35.18,
+        "fcff": 75.63
+       },
+       {
+        "t": 9,
+        "revenue": 1551.33,
+        "ebit": 155.13,
+        "reinvestment": 36.94,
+        "fcff": 79.41
+       },
+       {
+        "t": 10,
+        "revenue": 1628.89,
+        "ebit": 162.89,
+        "reinvestment": 38.78,
+        "fcff": 83.38
+       }
+      ]
+     },
+     {
+      "name": "HQ",
+      "kind": "cost",
+      "value": -125.73,
+      "pv_terminal": -61.55,
+      "terminal_share": null,
+      "discount_rate": 0.09,
+      "premium": 0.0,
+      "premium_reason": "",
+      "years": [
+       {
+        "t": 1,
+        "cost": 10.0
+       },
+       {
+        "t": 2,
+        "cost": 10.0
+       },
+       {
+        "t": 3,
+        "cost": 10.0
+       },
+       {
+        "t": 4,
+        "cost": 10.0
+       },
+       {
+        "t": 5,
+        "cost": 10.0
+       },
+       {
+        "t": 6,
+        "cost": 10.0
+       },
+       {
+        "t": 7,
+        "cost": 10.0
+       },
+       {
+        "t": 8,
+        "cost": 10.0
+       },
+       {
+        "t": 9,
+        "cost": 10.0
+       },
+       {
+        "t": 10,
+        "cost": 10.0
+       }
+      ]
+     }
+    ],
+    "bridge": {
+     "enterprise_value": 680.07,
+     "debt": 300.0,
+     "cash": 100.0,
+     "leases": 0.0,
+     "minority_interest": 0.0,
+     "pension_deficit": 0.0,
+     "preferred": 0.0,
+     "options": 0.0,
+     "residual_income_equity": 0,
+     "equity_value": 480.07
+    },
+    "path": [
+     {
+      "t": 1,
+      "fcfe": 36.25,
+      "distributions_per_share": 0.1812,
+      "net_debt": 181.88,
+      "shares": 100.0
+     },
+     {
+      "t": 2,
+      "fcfe": 39.62,
+      "distributions_per_share": 0.1981,
+      "net_debt": 162.07,
+      "shares": 100.0
+     },
+     {
+      "t": 3,
+      "fcfe": 43.18,
+      "distributions_per_share": 0.2159,
+      "net_debt": 140.48,
+      "shares": 100.0
+     },
+     {
+      "t": 4,
+      "fcfe": 46.95,
+      "distributions_per_share": 0.2348,
+      "net_debt": 117.0,
+      "shares": 100.0
+     },
+     {
+      "t": 5,
+      "fcfe": 50.95,
+      "distributions_per_share": 0.2547,
+      "net_debt": 91.53,
+      "shares": 100.0
+     }
+    ],
+    "exit": {
+     "dcf_roll": 7.66,
+     "multiple": null
+    }
+   }
+  ],
+  "sensitivity": {
+   "scenario": "Base",
+   "a": {
+    "segment": "Core",
+    "field": "margin_shift",
+    "values": [
+     -0.02,
+     0,
+     0.02
+    ]
+   },
+   "b": {
+    "segment": "Core",
+    "field": "discount_premium",
+    "values": [
+     0,
+     0.02
+    ]
+   },
+   "value_per_share": [
+    [
+     11.57,
+     7.94
+    ],
+    [
+     14.3,
+     10.04
+    ],
+    [
+     17.03,
+     12.13
+    ]
+   ],
+   "base": {
+    "a": 0.0,
+    "b": 0.0
+   },
+   "discount_rate": {
+    "a": 0.09,
+    "b": 0.09
+   }
+  },
+  "implied": {
+   "scenario": "Base",
+   "field": "margin_shift",
+   "value": 0.0417
+  },
+  "returns_input": {
+   "mode": "paths",
+   "price": 20.0,
+   "horizon": 5,
+   "hurdle": 0.1,
+   "scenarios": [
+    {
+     "name": "Base",
+     "distributions_per_share": [
+      0.3781,
+      0.4085,
+      0.4406,
+      0.4745,
+      0.5104
+     ],
+     "exit_value_per_share": 19.78,
+     "exit_multiple_value": null
+    },
+    {
+     "name": "Squeeze",
+     "distributions_per_share": [
+      0.1812,
+      0.1981,
+      0.2159,
+      0.2348,
+      0.2547
+     ],
+     "exit_value_per_share": 7.66,
+     "exit_multiple_value": null
+    }
+   ]
+  },
+  "flags": []
+ },
+ "returns": {
+  "mode": "paths",
+  "price": 20.0,
+  "horizon": 5,
+  "hurdle": 0.1,
+  "scenarios": [
+   {
+    "name": "Base",
+    "irr": 0.019942,
+    "irr_at_multiple": null,
+    "total_multiple": 1.0996,
+    "hurdle_exit_value": 29.55,
+    "exit_value_per_share": 19.78,
+    "distributions_total": 2.2121
+   },
+   {
+    "name": "Squeeze",
+    "irr": -0.157785,
+    "irr_at_multiple": null,
+    "total_multiple": 0.4372,
+    "hurdle_exit_value": 30.91,
+    "exit_value_per_share": 7.66,
+    "distributions_total": 1.0847
+   }
+  ],
+  "assumptions": [
+   "Bought at 20 today and held 5 years; distributions arrive at each year end.",
+   "Distributions are dividends plus buybacks from the model's free cash flow to equity; the exit value is the model's value at the horizon."
+  ],
+  "flags": []
+ },
+ "ledger": [
+  {
+   "id": "B1",
+   "belief": "Price increases stick",
+   "holder": "management",
+   "stakes": "high",
+   "verdict": "doubtful",
+   "if_true": "up",
+   "headline": "Price increases not sticking",
+   "takeaway": "Price increases are not sticking: volumes fell 6% as prices rose 4%.",
+   "for": [
+    {
+     "claim": "Q2 price up 4%",
+     "source": "10-Q Item 2",
+     "date": "2026-08-01"
+    }
+   ],
+   "against": [
+    {
+     "claim": "Volumes fell 6%",
+     "source": "10-Q Item 2",
+     "date": "2026-08-01"
+    }
+   ],
+   "consequence": {
+    "segment": "Core",
+    "field": "margin",
+    "change": "10% in Squeeze"
+   },
+   "thread": "threads/1-pricing.md"
+  }
+ ],
+ "blocks": [
+  {
+   "type": "segments",
+   "scenario": "Base"
+  },
+  {
+   "type": "drivers",
+   "segment": "Core",
+   "field": "fcff"
+  },
+  {
+   "type": "ledger"
+  },
+  {
+   "type": "track_record",
+   "rows": [
+    {
+     "period": "FY2025",
+     "metric": "Revenue growth",
+     "guided": "8%",
+     "actual": "5%",
+     "source": "8-K 2026-02-10"
+    }
+   ]
+  },
+  {
+   "type": "forensics",
+   "items": [
+    {
+     "finding": "Receivables up 20% vs revenue up 5%",
+     "severity": "medium",
+     "source": "10-K 2026-02-20"
+    }
+   ]
+  },
+  {
+   "type": "skepticism"
+  },
+  {
+   "type": "sensitivity"
+  },
+  {
+   "type": "custom",
+   "title": "Lease adjustment",
+   "file": "custom/leases.py",
+   "result": "12.3",
+   "explanation": "Capitalized operating leases."
+  },
+  {
+   "type": "text",
+   "title": "What the market may be missing",
+   "markdown": "**Pricing** is the swing factor.\n\n- one\n- two"
+  }
+ ],
+ "missing_roles": [
+  "industry"
+ ],
+ "notes": [
+  "Sample built from invented figures."
+ ]
+}
