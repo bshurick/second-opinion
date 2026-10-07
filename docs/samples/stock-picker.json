@@ -140,6 +140,14 @@
      "trend": "gaining"
     }
    ],
+   "prospects": [
+    {
+     "ticker": "OTHER",
+     "name": "OTHER Inc",
+     "market_cap": 2100000000.0,
+     "why": "Revenue up 10 of 12 quarters; FCF 4 of 4 years; 3 analysts."
+    }
+   ],
    "evidence": [
     {
      "claim": "Orders up 6%",

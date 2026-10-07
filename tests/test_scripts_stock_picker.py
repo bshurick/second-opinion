@@ -101,7 +101,8 @@ def pick_input() -> dict:
         "funnel": [{"stage": "Industries scanned", "count": 40}, {"stage": "Merged pool", "count": 24}, {"stage": "Finalists", "count": 3}, {"stage": "Picks", "count": 2}],
         "industries": [
             {"sector": "Industrials", "industry": "Railroads", "verdict": "favored", "contrarian": False, "temperature": "Volumes recovering.",
-             "growth": "Carloads +3% (AAR, 2026-09-30)", "sentiment": "Neutral.", "leaders": [{"ticker": "SAFE", "name": "Safe Rail", "trend": "gaining"}], "evidence": ev},
+             "growth": "Carloads +3% (AAR, 2026-09-30)", "sentiment": "Neutral.", "leaders": [{"ticker": "SAFE", "name": "Safe Rail", "trend": "gaining"}],
+             "prospects": [{"ticker": "OTHER", "name": "OTHER Inc", "market_cap": 2.1e9, "why": "Revenue up 10 of 12 quarters; FCF 4 of 4 years; 3 analysts."}], "evidence": ev},
             {"sector": "Consumer Discretionary", "industry": "Homebuilders", "verdict": "unfavored", "contrarian": True, "temperature": "Rates bite.",
              "growth": "Starts -2% (Census, 2026-09-17)", "sentiment": "Gloomy.", "leaders": [{"ticker": "ABOVE", "name": "Above Homes", "trend": "steady"}], "evidence": ev},
         ],
@@ -127,7 +128,8 @@ def test_render_pick_every_section(tmp_path, capsys) -> None:
     rc, res = _render(pick_input(), tmp_path, capsys)
     assert rc == 0, res
     assert res["picks"] == ["SAFE", "ABOVE"] and res["near_misses"] == ["LOSS"] and res["industries"] == 2 and res["candidates"] == 4
-    assert "SAFE" in (tmp_path / "p.html").read_text()
+    html = (tmp_path / "p.html").read_text()
+    assert "SAFE" in html and "Revenue up 10 of 12 quarters" in html
 
 
 def test_render_pick_no_passes(tmp_path, capsys) -> None:
@@ -187,6 +189,8 @@ def test_render_pick_every_card_explains_itself(tmp_path, capsys) -> None:
     (lambda d: d["industries"][0].update(evidence="a string"), "evidence"),
     (lambda d: d.update(candidates=[7]), "candidates"),
     (lambda d: d.update(funnel=[{"stage": "Pool", "remaining": 24}]), "count"),
+    (lambda d: d["industries"][0].update(prospects="OTHER"), "prospects"),
+    (lambda d: d["industries"][0]["prospects"][0].pop("ticker"), "prospect has no ticker"),
     (lambda d: d["gate"]["results"][0].update(page="javascript:alert(1)"), "https"),
 ])
 def test_render_pick_rejects_malformed_input_with_exit_2(mutate, needle, tmp_path, capsys) -> None:

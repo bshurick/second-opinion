@@ -7,6 +7,7 @@ Turns a deep-picker run into one self-contained HTML page for the Artifact tool.
      "funnel": [{"stage", "count"}],
      "industries": [{"sector", "industry", "verdict": "favored"|"neutral"|"unfavored", "contrarian",
                      "temperature", "growth", "sentiment", "leaders": [{"ticker", "name", "trend"}],
+                     "prospects": [{"ticker", "name", "market_cap", "why"}] (optional),
                      "evidence": [{"claim", "source", "date"}]}],
      "candidates": [{"ticker", "name", "industry", "origin": "industry"|"screen"|"both", "held",
                      "scores": {"quality", "direction", "tailwind", "value"} (1-5),
@@ -58,7 +59,7 @@ BODY = """
 <section class="card" id="picks-card"><h2>Picks</h2><p class="sub">Finalists whose deep valuation shows no scenario losing money over five years and a central case that clears the hurdle.</p><div id="picks"></div></section>
 <section class="card" id="near-card"><h2>Near misses</h2><p class="sub">Finalists that were valued in depth but failed the downside gate, and why.</p><div id="near"></div></section>
 <section class="card" id="funnel-card"><h2>Funnel</h2><p class="sub">How many companies were left after each stage of the search.</p><div id="funnel"></div></section>
-<section class="card" id="ind-card"><h2>Industry map</h2><p class="sub">Each industry the scan covered, grouped by its verdict, with the leaders and the dated evidence behind the call.</p><div id="ind"></div></section>
+<section class="card" id="ind-card"><h2>Industry map</h2><p class="sub">Each industry the scan covered, grouped by its verdict, with its biggest companies, its prospects (chosen on trajectory, cash, price and coverage, not size) and the dated evidence behind the call.</p><div id="ind"></div></section>
 <section class="card" id="cand-card"><h2>Candidates</h2><p class="sub">Every company in the merged pool, scored 1 to 5 on business quality (Q), direction (D), industry tailwind (T) and price against value (V).</p><div id="cand"></div></section>
 <section data-help="none"><h2>Flags</h2>""" + page.FLAGS_INTRO + """<ul class="flags" id="flags"></ul></section>
 <p class="note">Industry verdicts and candidate scores are judgement backed by dated evidence, not forecasts. A pick passed a downside test on stated assumptions; it is not a recommendation. General information at the stated assumptions, not financial, tax, or legal advice.</p>
@@ -95,6 +96,7 @@ SCRIPT = r"""
   g('ind').innerHTML = groups.map(([k, t, f]) => { const xs = (D.industries || []).filter(f); return xs.length ? `<h3 class="lg ${k}">${esc(t)} <span class="muted">(${xs.length})</span></h3>` + xs.map(i =>
     `<details class="row"><summary><span class="n">${esc(i.industry)}</span><span class="m">${esc(i.sector)} · ${esc(i.temperature)}</span></summary>
       <div class="d"><b>Leaders:</b> ${(i.leaders || []).map(l => `${esc(l.ticker)} (${esc(l.trend)})`).join(', ') || '—'}</div>
+      <div class="d"><b>Prospects:</b> ${(i.prospects || []).map(p => `${esc(p.ticker)}${p.why ? ` <span class="muted">${esc(p.why)}</span>` : ''}`).join('; ') || '—'}</div>
       <div class="d"><b>Growth:</b> ${esc(i.growth || '—')}</div><div class="d"><b>Sentiment:</b> ${esc(i.sentiment || '—')}</div><ul>${ev(i.evidence)}</ul></details>`).join('') : ''; }).join('');
   F.help(g('ind-card'), {lead: 'The industry scan’s call on each industry, from dated growth forecasts, cycle position, pricing power, policy, structural threats, sentiment and valuation against its own history. Contrarian industries are out of favour while their fundamentals improve.'});
 
@@ -144,6 +146,9 @@ def _validate(data: dict) -> None:
         if i.get("verdict") not in VERDICTS:
             raise InvalidInput(f"industry {name}: verdict must be one of {', '.join(VERDICTS)}")
         _list_of_dicts(i.get("leaders"), f"industry {name}: leaders")
+        for p in _list_of_dicts(i.get("prospects"), f"industry {name}: prospects"):
+            if not p.get("ticker"):
+                raise InvalidInput(f"industry {name}: a prospect has no ticker")
         for e in _list_of_dicts(i.get("evidence"), f"industry {name}: evidence"):
             for f in ("claim", "source", "date"):
                 if not e.get(f):

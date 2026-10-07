@@ -75,7 +75,8 @@ Its deep picker mode adds an industry scan, quick reads of each candidate and de
 
 ### The deep picker
 
-- **Pipeline.** An industry scan and the financial screen run side by side. Their candidates are merged and health-checked, quick reads score each one, and three to five finalists get a deep valuation (the valuation skill's deep mode).
+- **Pipeline.** An industry scan and the financial screens (including a small-cap pass) run side by side. Their candidates are merged and health-checked, quick reads score each one, and three to five finalists get a deep valuation (the valuation skill's deep mode).
+- **Where candidates come from.** Each industry contributes its prospects: companies chosen on trajectory over 8 to 12 quarters, free cash flow, price and how overlooked they are, not on size. Prospects and screen survivors from every industry enter the pool; the industry verdict feeds the `tailwind` score and never removes a name.
 - **The gate (`gate.py`).**
   - A finalist passes when no deep-valuation scenario loses money over five years, dividends included (`floor`, default 0%), and the central (first) scenario earns at least the hurdle (`hurdle`, default 10%) a year at today's price.
   - `pass_flagged` means it passed while every scenario sits above the price, so a downside case may be missing.
@@ -198,11 +199,12 @@ The funnel has five steps, in order. Say which step you are on.
 
      | Finalists | Industry scanners | Quick reads | Each deep valuation |
      |---|---|---|---|
-     | 3 (default) | 10 each, 30 | 40, split over the pool (2 per company up to 20 names, else 1) | 30 (Industry and news 4), 90 |
-     | 4 | 10 each, 30 | 40, as above | 22: round-1 roles only, threads from what is left (88) |
-     | 5 | 10 each, 30 | 1 per company, at most 25 | 18 (90) |
+     | 3 (default) | 8 each, 24 | 46, split over the pool (2 per company up to 23 names, else 1) | 30 (Industry and news 4), 90 |
+     | 4 | 8 each, 24 | 46, as above | 22: round-1 roles only, threads from what is left (88) |
+     | 5 | 8 each, 24 | 1 per company, at most 30 | 18 (90) |
 
-   - The 3-finalist row totals 160 (30 + 40 + 90) with 40 in reserve. The 4-finalist row totals 158 and the 5-finalist row 145, so each stays within 160 with 40 in reserve.
+   - The 3-finalist row totals 160 (24 + 46 + 90) with 40 in reserve. The 4-finalist row totals 158 and the 5-finalist row 144, so each stays within 160 with 40 in reserve.
+   - Scanners need fewer searches than quick reads: their prospect tests run on the scripts (`edgar.py --quarters 12`, `fundamentals.py`), which spend none. The pool is wider than when only favored industries fed it, so the quick reads take the difference.
    - Ask before a plan above 160. Run the picker in a session that has not spent its searches on other work.
    - After each agent returns, add the searches it used. If the plan runs short, cut thread rounds first, then the number of finalists. Never let a stage start without its share.
 4. Write `context/macro.md` in the run folder before dispatching the scanners. Fetch from the rows of `references/primary-sources.md`, and date each line:
@@ -213,11 +215,13 @@ The funnel has five steps, in order. Say which step you are on.
 5. In parallel:
    - Dispatch three Industry scanner agents (general-purpose), one per sector group in `references/picker-roles.md`. Each prompt names the brief's path and its two sections, the run folder, today's date, the group, its search cap, and the resolved script commands.
    - Run `screen.py` with the preset that matches the profile: `value` then `quality` for a value investor, `garp` for growth. Write each output into `screen/`.
+   - Run the same first preset again as a small-cap pass, `--set min_revenue=1.5e8 --set min_market_cap=3e8`, into `screen/smallcap.json`. The presets' revenue floors otherwise keep most companies under about $2B in market value out.
 6. Merge into `pool.json`:
-   - the leaders of favored and contrarian industries
-   - screen survivors whose industry is not unfavored
-   - drop duplicates, aiming for 20 to 25 names (at most 40 when the person asks for a wider pool, with 1 quick-read search per company)
-   - mark held names
+   - the prospects of every industry, whatever its verdict
+   - the survivors of every screen, whatever their industry's verdict
+   - leaders only when they are also prospects or screen survivors
+   - drop duplicates, aiming for 25 to 35 names, at most 40. When there are more, keep prospects that pass all four tests and the top-ranked screen survivors first, and never trim on the industry verdict
+   - mark held names, and each name's `origin` (`industry`, `screen` or `both`)
 7. Run `screen.py --symbols … --preset health --no-price --held …` on the pool.
    - Drop the names that fail, and keep each one's failed tests for the page.
    - Keep financial filers, `not_found` names and `incomplete` names (no US-GAAP history for the four years screened: too new, or files IFRS, like many foreign leaders). Their quick read judges their health, and the reply's Flags list them.

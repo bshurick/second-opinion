@@ -139,6 +139,7 @@ def company_info(symbol: str) -> dict[str, Any]:
         "free_cash_flow": info.get("freeCashflow"), "operating_cash_flow": info.get("operatingCashflow"),
         "target_high_price": info.get("targetHighPrice"), "target_low_price": info.get("targetLowPrice"),
         "target_mean_price": info.get("targetMeanPrice"), "recommendation": info.get("recommendationKey"),
+        "analyst_count": info.get("numberOfAnalystOpinions"), "institutional_ownership": info.get("heldPercentInstitutions"),
     }
 
 

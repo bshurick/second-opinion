@@ -60,7 +60,7 @@ Each section is the brief for one deep-picker subagent. The coordinator hands a 
 
 ## Industry scanner
 
-Search cap: 10, unless the prompt gives another. Output:
+Search cap: 8, unless the prompt gives another. Output:
 
 - `industries/<group>.json`: a list of industry objects, in the shape `render_pick.py` reads
 - `industries/<group>.md`: the notes behind them
@@ -84,11 +84,20 @@ For each industry with meaningful size in your sectors (roughly the Yahoo indust
 2. **Sentiment and valuation.**
    - What the market believes now: the sector's price performance, valuation against its own five-to-ten-year range, and fund flows where available.
    - Whether that belief looks stretched or overly gloomy against the fundamentals you found. Background only.
-3. **Leaders.**
+3. **Leaders.** Context only; they do not enter the candidate pool.
    - The top three to five US-listed companies, by revenue or share.
    - For each, whether it is gaining, steady or losing share, and the evidence for that.
-4. **Verdict.** `favored`, `neutral` or `unfavored`, with the two or three reasons that decide it.
-5. **Contrarian mark.** Set `contrarian: true` when an industry is out of favour (weak sentiment, low valuation against its history) while its fundamentals improve. That is where value often hides, and it keeps the industry in play whatever its verdict.
+4. **Prospects.** Three to five US-listed companies chosen for promise, not size. They are what the industry contributes to the candidate pool, and a leader can be one only when it passes the same tests.
+   - **Trajectory.** Revenue and operating margin improving over the last 8 to 12 quarters, or share rising. Check with `edgar.py SYMBOL --quarters 12`.
+   - **Cash.** Free cash flow positive in most of the last four years, and covering the dividend and buyback.
+   - **Price.** Cheap against its own history or its peers, from `fundamentals.py SYMBOL` (P/E, EV, free cash flow) and the filings.
+   - **Overlooked.** Few analysts (`analyst_count` in `fundamentals.py`), low institutional ownership (`institutional_ownership`), or a selloff the fundamentals do not explain.
+   - Market value at least $300M. No other size rule: a large company qualifies on the same tests.
+   - Find names from the filings and the trade press you already read, then check them with the scripts, which spend no searches. Spend at most two searches on finding names.
+   - For each: `ticker`, `name`, `market_cap`, and a `why` naming the tests it passes with figures. A prospect that passes fewer than three of the four tests stays out.
+   - An industry with no company that passes gets an empty list, and the notes say so.
+5. **Verdict.** `favored`, `neutral` or `unfavored`, with the two or three reasons that decide it. It is your judgement of the fundamentals above, not of what the market or the media favour. It feeds the quick readers' `tailwind` score; it does not decide which prospects enter the pool.
+6. **Contrarian mark.** Set `contrarian: true` when an industry is out of favour (weak sentiment, low valuation against its history) while its fundamentals improve. That is where value often hides.
 
 Each object in `industries/<group>.json`:
 
@@ -98,6 +107,8 @@ Each object in `industries/<group>.json`:
  "growth": "The dated outlook, e.g. 'Carloads +3% in 2027 (AAR, 2026-09-30)'.",
  "sentiment": "One sentence on what the market believes and whether it looks stretched or gloomy.",
  "leaders": [{"ticker": "UNP", "name": "Union Pacific", "trend": "gaining"}],
+ "prospects": [{"ticker": "GWR", "name": "Example Short Line", "market_cap": 2.1e9,
+                "why": "Revenue up 10 of the last 12 quarters; FCF positive 4 of 4 years; P/E 11 vs 5-yr median 16; 3 analysts."}],
  "evidence": [{"claim": "...", "source": "...", "date": "2026-09-30"}]}
 ```
 
@@ -110,7 +121,7 @@ Output: one `cards/<TICKER>.json` per company assigned to you, with notes in `ca
 For each company:
 
 1. **Competitive position.** What it sells, to whom, its share against the leaders named in the industry scan, and the evidence of a moat: pricing power, switching costs, scale, network or regulatory position.
-2. **Direction.** Revenue, margin and cash-flow trend over the latest four quarters (`edgar.py SYMBOL --quarters 6`), and whether it is improving or worsening.
+2. **Direction.** Revenue, margin and cash-flow trend over the latest 8 to 12 quarters (`edgar.py SYMBOL --quarters 12`), and whether it is improving or worsening.
 3. **Management record.** Guidance against results for the last two to three years. Start from `earnings.py SYMBOL` (the earnings releases), then add call coverage.
 4. **Red flags.**
    - Run `filing.py SYMBOL --search` for "going concern", "material weakness", "restat" and "related part".
@@ -133,7 +144,7 @@ Then score four parts from 1 to 5, each with a one-line reason:
 |---|---|---|
 | `quality` | commodity business, no moat, weak returns | durable moat, high returns on capital, strong balance sheet |
 | `direction` | revenue and margins falling, guidance cut | revenue and margins rising, guidance met or raised |
-| `tailwind` | the industry scan's unfavored verdict with no contrarian mark | favored industry, company gaining share |
+| `tailwind` | the industry scan's unfavored verdict with no contrarian mark, company losing share | favored industry, company gaining share |
 | `value` | quick value well below the price | quick value well above the price, with a five-year return above 15% a year |
 
 Finish each card with:
