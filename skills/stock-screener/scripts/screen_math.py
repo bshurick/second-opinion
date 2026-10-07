@@ -27,7 +27,8 @@ Input JSON contract (stdin)::
         "quarter": {"revenue": 6.5e8, "revenue_year_ago": 5.0e8,       # optional, latest
                     "period": "CY2026Q2"},                                # reported quarter
         "market": {"market_cap": 3.0e9, "enterprise_value": 3.1e9,     # optional: its presence
-                   "price": 30.0, "financial": false, "sector": "Technology",   # runs the price stage
+                   "price": 30.0, "shares": 1.0e8,    # shares: Yahoo's priced count, optional
+                   "financial": false, "sector": "Technology",   # runs the price stage
                    "momentum": 0.12}}]}
 
 Output JSON contract (stdout)::
@@ -127,7 +128,11 @@ cash margin is more than 10 points above the multi-year average (the average was
 the P/E flatters), ``CAPEX_NOT_REPORTED``, ``LATEST_QUARTER_NOT_REPORTED``, ``ACQUISITIVE``, ``PRICE_FALLING``
 when momentum is below -20%, ``SPLIT_OR_LISTING_YEAR_SKIPPED`` when a share-count year was
 left out, ``MISSCALED`` when a flow figure (named in ``metrics.misscaled``) sat below
-1/100,000th of revenue -- a filer's unscaled tag -- and was dropped. A revenue series whose
+1/100,000th of revenue -- a filer's unscaled tag -- and was dropped, ``LARGE_MINORITY_INTEREST``
+when income attributable to noncontrolling interests (``annual.nci_income``) is over 10% of that
+plus the parent's net income (cash yield overstates the shareholders' share; informational),
+``CORPORATE_ACTION`` when ``market.shares`` over the latest filed diluted shares falls outside
+0.75-1.33 and no split was detected (a spin-off or reverse split; price figures meaningless). A revenue series whose
 years differ by more than 1,000x is dropped as incomplete. ``near_misses`` excludes companies
 that failed only the revenue-size cutoff, financial filers, and companies with no ticker.
 
@@ -197,6 +202,12 @@ RANK_UNPRICED = {"revenue_cagr", "roce", "f_score", "expected_growth"}
 CASH_OUTRUNS_PROFIT_PP = 0.15
 # Last year's cash margin this far above the multi-year average: the average was used instead.
 CASH_ABOVE_AVERAGE_PP = 0.10
+# Income that belongs to minority partners above this share of (theirs + the parent's):
+# consolidated cash flow overstates what the shareholders own.
+MINORITY_SHARE = 0.10
+# Yahoo's priced share count against the latest filed diluted count outside this band:
+# a spin-off, reverse split or buyback the filed cash flow does not reflect.
+CORPORATE_ACTION_BAND = (0.75, 1.33)
 # A flow figure below 1/100,000th of revenue is a filer's scale error (tagged in millions or
 # thousands without the scale), not a real number: dropped and flagged MISSCALED.
 MISSCALE_RATIO = 1e-5
@@ -323,6 +334,17 @@ PRESETS = {
         "min_shareholder_yield": 0.04,
         "exclude_sectors": ["Real Estate"],
         "rank_by": "shareholder_yield",
+    },
+    # A floor for a hand-picked list, not a ranking: drops shrinking, cash-burning, heavily
+    # diluting or over-borrowed businesses and keeps everything else.
+    "health": {
+        "min_revenue": 250e6,
+        "min_revenue_cagr": -0.05,
+        "min_f_score": 4,
+        "max_share_growth": 0.05,
+        "max_net_debt_to_ebit": 4.0,
+        "min_fcf_margin": 0.0,
+        "rank_by": "f_score",
     },
 }
 
@@ -506,6 +528,8 @@ def metrics(company: dict, years: list[int]) -> dict | None:
         "operating_margin_latest": _r4(op[-1] / last) if op[-1] is not None else None,
         "margin_basis": basis,
         "net_income_latest": ni[-1],
+        "nci_income_latest": _series(annual, "nci_income", years)[-1],
+        "shares_latest": shares[-1],
         "operating_income_latest": _series(annual, "operating_income", years)[-1],
         "net_income_positive_years": sum(1 for v in ni if v is not None and v > 0),
         "ebit_latest": ebit,
@@ -631,6 +655,9 @@ def _price_metrics(m: dict, market: dict, crit: dict) -> None:
     m["sector"] = market.get("sector")
     m["financial"] = fin
     m["momentum"] = _r4(_num(market.get("momentum")))
+    priced, filed = _num(market.get("shares")), m["shares_latest"]
+    m["priced_shares"] = priced
+    m["priced_to_filed_shares"] = _r4(priced / filed) if priced and priced > 0 and filed and filed > 0 else None
     ok = mc and mc > 0 and not fin
     after_sbc = crit.get("fcf_basis", "fcf_after_sbc") == "fcf_after_sbc"
     cash = m["fcf_after_sbc_norm"] if after_sbc else m["fcf_norm"]
@@ -726,6 +753,9 @@ def _flags(m: dict, missing: list[str]) -> list[str]:
         flags.append("SPLIT_OR_LISTING_YEAR_SKIPPED")
     if m["misscaled"]:
         flags.append("MISSCALED")
+    nci, parent = m["nci_income_latest"], m["net_income_latest"]
+    if nci is not None and nci > 0 and parent is not None and nci + parent > 0 and nci / (nci + parent) > MINORITY_SHARE:
+        flags.append("LARGE_MINORITY_INTEREST")
     return flags
 
 
@@ -792,6 +822,9 @@ def run_screen_math(params: dict) -> dict:
         market = c.get("market")
         if isinstance(market, dict):
             _price_metrics(m, market, crit)
+            ratio = m["priced_to_filed_shares"]
+            if ratio is not None and not m["split_detected"] and not CORPORATE_ACTION_BAND[0] <= ratio <= CORPORATE_ACTION_BAND[1]:
+                row["flags"].append("CORPORATE_ACTION")
             if m["momentum"] is not None and m["momentum"] < PRICE_FALLING:
                 row["flags"].append("PRICE_FALLING")
             if m["financial"] and not keep_fin:

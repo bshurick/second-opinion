@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Usage: screen.py [--preset NAME] [--set KEY=VALUE ...] [--year YYYY] [--no-price]
                     [--price-limit N] [--held SYM,SYM ...] [--exclude-held] [--all]
+                    [--symbols SYM,SYM ...]
 
 Screens every US filer with XBRL financials. SEC EDGAR "frames" give one concept for every
 company in a single request, so four years of revenue, margins, cash flow, capital spending,
@@ -12,13 +13,19 @@ about -- are then priced from Yahoo (market cap, enterprise value, sector, and t
 price change skipping the latest month) and screened again on the price criteria, and ranked.
 
 ``--preset`` picks a criteria set (default ``growth``; see screen_math.PRESETS): growth, value,
-quality, garp, magic, graham, payout. ``--set`` overrides one criterion, e.g.
+quality, garp, magic, graham, payout, health (a lenient floor for a hand-picked list). ``--set`` overrides one criterion, e.g.
 ``--set min_revenue_cagr=0.25 --set max_pe=20``; a value of ``none`` switches a criterion off.
 ``--year`` is the latest fiscal year (default: last calendar year); four years ending there are
 used. ``--no-price`` stops after the fundamental stage. ``--held`` takes the symbols the person
 already owns (comma-separated, repeatable): they are marked ``held`` in the output, and
 ``--exclude-held`` leaves them out of the survivors. ``--all`` includes every screened company
-in the output, not only the survivors and near misses.
+in the output, not only the survivors and near misses. ``--symbols`` (comma-separated, repeatable)
+restricts the screen to those tickers' filers (any share class; BRK.B is read as BRK-B) and adds
+``checked`` (one row per ticker screened: ticker as given, primary ticker, name, passed (it is
+among the survivors), failed criteria (``not_priced`` when only a missing quote kept it out, ``held_excluded`` under
+``--exclude-held``),
+financial), ``not_found`` (no SEC filer) and ``incomplete`` (a filer with no US-GAAP history
+for the four years screened: too new, or files IFRS).
 
 How the figures are assembled. Revenue comes from the concept that covers the most of the
 years screened, with any missing year filled from the other revenue concepts. Capital spending
@@ -66,6 +73,7 @@ ANNUAL = {
     "cost_of_revenue": ("CostOfRevenue", "CostOfGoodsAndServicesSold"),
     "operating_income": ("OperatingIncomeLoss",),
     "net_income": ("NetIncomeLoss",),
+    "nci_income": ("NetIncomeLossAttributableToNoncontrollingInterest",),
     "ocf": ("NetCashProvidedByUsedInOperatingActivities",),
     "sbc": ("ShareBasedCompensation",),
     "dividends": ("PaymentsOfDividends", "PaymentsOfDividendsCommonStock", "PaymentsOfOrdinaryDividends"),
@@ -277,7 +285,7 @@ def coverage(frame: Frame, years: list[int]) -> dict[str, int]:
 
 
 def quote(ticker: str) -> dict | None:
-    """Market cap, enterprise value, price and whether Yahoo files it under financials."""
+    """Market cap, enterprise value, price, priced share count (implied, every class, else reported) and whether Yahoo files it under financials."""
     from second_opinion import market
 
     try:
@@ -290,6 +298,7 @@ def quote(ticker: str) -> dict | None:
         "market_cap": info.get("market_cap"),
         "enterprise_value": info.get("enterprise_value"),
         "price": info.get("current_price"),
+        "shares": info.get("implied_shares_outstanding") or info.get("shares_outstanding"),
         "sector": info.get("sector"),
         "financial": info.get("sector") in FINANCIAL_SECTORS,
     }
@@ -350,7 +359,7 @@ def _held(items: list[str] | None) -> set[str]:
 
 def run(ns: argparse.Namespace, frame: Frame | None = None, quoter: Callable[[str], dict | None] = quote,
         today: dt.date | None = None, names: dict[int, dict] | None = None,
-        momentum_of: Callable[[list[str], dt.date], dict] = momentum) -> dict:
+        momentum_of: Callable[[list[str], dt.date], dict] = momentum, aliases: dict[str, int] | None = None) -> dict:
     frame = frame or edgar.frame
     today = today or dt.date.today()
     latest = ns.year or today.year - 1
@@ -364,7 +373,18 @@ def run(ns: argparse.Namespace, frame: Frame | None = None, quoter: Callable[[st
     except ValueError as exc:
         raise InvalidInput(str(exc)) from exc
     quarters = quarter_periods(today)
-    companies = build_companies(frame, years, quarters, names if names is not None else edgar.tickers())
+    requested = sorted(_held(ns.symbols)) if getattr(ns, "symbols", None) is not None else []
+    if getattr(ns, "symbols", None) is not None and not requested:
+        raise InvalidInput("--symbols named no tickers")
+    if requested and aliases is None:  # every ticker of every filer, so GOOG finds GOOGL's filer
+        aliases = ({str(n.get("ticker") or "").upper(): cik for cik, n in names.items()} if names is not None
+                   else edgar.ticker_ciks())
+    names = names if names is not None else edgar.tickers()
+    companies = build_companies(frame, years, quarters, names)
+    cik_of = {t: (aliases.get(t.replace(".", "-")) or aliases.get(t)) for t in requested} if requested else {}
+    wanted = {c for c in cik_of.values() if c is not None}
+    if requested:  # a hand-picked list: screen only these filers, and report each ticker below
+        companies = [c for c in companies if c.get("cik") in wanted]
     for c in companies:
         c["held"] = bool(c.get("ticker")) and str(c["ticker"]).upper() in held
     try:
@@ -408,6 +428,23 @@ def run(ns: argparse.Namespace, frame: Frame | None = None, quoter: Callable[[st
         if ns.exclude_held:
             result["survivors"] = [s for s in result["survivors"] if not s["held"]]
         result["held"] = {"given": len(held), "matched": len(matched), "survivors_held": sorted(s["ticker"] for s in owned), "excluded": bool(ns.exclude_held)}
+    if requested:
+        rows = {r.get("cik"): r for r in result.get("companies") or []}
+        kept = {r.get("cik") for r in result.get("survivors") or []}
+
+        def why(row: dict) -> list:  # a name the price stage dropped without a failed test had no quote
+            if row["failed"] or row.get("cik") in kept:
+                return row["failed"]
+            return ["held_excluded"] if ns.exclude_held and row.get("held") else ["not_priced"]
+
+        result["checked"] = [
+            {"ticker": t, "primary": rows[c].get("ticker"), "name": rows[c].get("name"), "passed": c in kept,
+             "failed": why(rows[c]), "financial": "financial_filer" in rows[c]["failed"] or "financial_excluded" in rows[c]["failed"]}
+            for t, c in sorted(cik_of.items()) if c in rows
+        ]
+        result["not_found"] = sorted(t for t, c in cik_of.items() if c is None)  # no SEC filer with this ticker
+        # a filer, but with no US-GAAP history for the four years screened (too new, or files IFRS)
+        result["incomplete"] = sorted(t for t, c in cik_of.items() if c is not None and c not in rows)
     if not ns.all:
         result.pop("companies", None)
     result.update(
@@ -436,6 +473,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--held", action="append", metavar="SYM,SYM")
     p.add_argument("--exclude-held", action="store_true")
     p.add_argument("--all", action="store_true")
+    p.add_argument("--symbols", action="append", metavar="SYM,SYM")
     return p
 
 

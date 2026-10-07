@@ -677,3 +677,64 @@ def test_render_deep_custom_table_shape(result, ok, tmp_path, capsys) -> None:
     src.write_text(json.dumps(data))
     rc, res = run_json(load_script(RENDER), ["--in", str(src), "--out", str(tmp_path / "p.html")], capsys)
     assert (rc == 0) if ok else (rc == 2 and "table" in res["error"])
+
+
+# --- the central case up front -------------------------------------------------------------------
+
+
+def _dom(data: dict, tmp_path) -> str:
+    """The page after its script ran: Chrome's --dump-dom of the rendered file."""
+    import subprocess
+
+    import page_dom
+    src, out = tmp_path / "page.json", tmp_path / "p.html"
+    src.write_text(json.dumps(data))
+    run = subprocess.run([sys.executable, str(PLUGIN_ROOT / "skills" / RENDER), "--in", str(src), "--out", str(out)],
+                         capture_output=True, text=True)
+    assert run.returncode == 0, run.stdout
+    doc = tmp_path / "doc.html"
+    doc.write_text(f'<!doctype html><html><head><meta charset="utf-8"></head><body>{out.read_text()}</body></html>')
+    return subprocess.run([page_dom.CHROME, "--headless=new", "--disable-gpu", "--virtual-time-budget=3000",
+                           "--dump-dom", doc.as_uri()], capture_output=True, text=True, timeout=90).stdout
+
+
+def _lowest_first(data: dict) -> dict:
+    """Central (scenarios[0]) is the lowest-value scenario, so a value sort alone would put it last."""
+    data["model"]["scenarios"].sort(key=lambda s: s["value_per_share"])
+    return data
+
+
+def test_render_deep_headline_markup_and_docstring() -> None:
+    mod = load_script(RENDER)
+    assert 'id="headline"' in mod.BODY
+    for label in ("Price", "Central value", "Central return / yr", "Worst case", "Range"):
+        assert f"tile('{label}'" in mod.SCRIPT
+    assert "not averaged" in mod.SCRIPT and "pin: r => r.central" in mod.SCRIPT
+    assert "central case" in mod.__doc__ and "nothing is averaged" in mod.__doc__
+
+
+@requires_chrome
+def test_render_deep_headline_tiles_and_pinned_central(tmp_path) -> None:
+    import re
+    data = _lowest_first(page_input())
+    central = data["model"]["scenarios"][0]
+    dom = _dom(data, tmp_path)
+    text = re.search(r'id="headline".*?id="sc-card"', dom, re.S).group(0)
+    for label in ("Price", "Central value", "Central return / yr", "Worst case", "Range"):
+        assert f'<div class="k">{label}</div>' in text
+    assert f"${central['value_per_share']:,.2f}" in text and "scenarios not averaged" in text
+    rows = re.findall(r"<tr>(.*?)</tr>", re.search(r'id="sc".*?</table>', dom, re.S).group(0), re.S)[1:]
+    assert central["name"] in rows[0] and "Central" in rows[0] and all("Central<" not in r for r in rows[1:])
+    assert "not averaged" in re.search(r'id="intro".*?</div>', dom, re.S).group(0)
+
+
+@requires_chrome
+def test_render_deep_central_without_returns_row_shows_dash(tmp_path) -> None:
+    import re
+    data = page_input()
+    data["returns"]["scenarios"] = [s for s in data["returns"]["scenarios"] if s["name"] != data["model"]["scenarios"][0]["name"]]
+    dom = _dom(data, tmp_path)
+    tile = re.search(r'Central return / yr</div><div class="v">(.*?)</div>', dom).group(1)
+    assert tile == "—"
+    data["returns"] = None
+    assert 'Central return / yr</div><div class="v">—</div>' in _dom(data, tmp_path)

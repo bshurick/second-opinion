@@ -302,22 +302,27 @@ class _Calls(list):
 INPUTS = "valuation/scripts/inputs.py"
 
 
+def _codes(out) -> list[str]:
+    """Flag codes other than ERP_DEFAULT, which always fires without --erp."""
+    return [f["code"] for f in out["flags"] if f["code"] != "ERP_DEFAULT"]
+
+
 def test_inputs_script_fills_dcf_and_ddm_inputs(fake_yahoo, capsys) -> None:
     rc, out = run_json(load_script(INPUTS), ["ko"], capsys)
     assert rc == 0, out
-    assert out["symbol"] == "KO" and out["business_type"] == "industrial" and out["flags"] == []
+    assert out["symbol"] == "KO" and out["business_type"] == "industrial" and _codes(out) == []
     # exactly one call each: info, statements, the 10-year quote, dividend history
     assert fake_yahoo.seen() == ["info:KO", "financials:KO", "quote:^TNX", "dividends:KO"]
 
     a = out["assumptions"]
     assert a["risk_free"]["value"] == 0.045 and out["sources"]["risk_free"] == "yahoo (^TNX)"
     assert a["adjusted_beta"]["value"] == pytest.approx(0.67 * 1.2 + 0.33)
-    coe = 0.045 + (0.67 * 1.2 + 0.33) * 0.05
+    coe = 0.045 + (0.67 * 1.2 + 0.33) * 0.042
     assert a["cost_of_equity"]["value"] == pytest.approx(coe, abs=1e-4)
     assert a["cost_of_debt"]["value"] == pytest.approx(0.05)            # 20 interest / 400 debt
     assert a["tax_rate"]["value"] == 0.25
-    # 1600 equity and 400 debt at market value: 80% / 20%
-    assert a["wacc"]["value"] == pytest.approx(0.8 * coe + 0.2 * 0.05 * 0.75, abs=1e-4)
+    # 1600 equity and 300 net debt (400 debt - 100 cash) at market value
+    assert a["wacc"]["value"] == pytest.approx((1600 * coe + 300 * 0.05 * 0.75) / 1900, abs=1e-4)
 
     dcf_input = out["dcf_input"]
     # free cash flow grew faster than revenue, so the latest year (165.9) is above the average
@@ -397,7 +402,7 @@ def test_inputs_falls_back_for_missing_pieces(fake_yahoo, capsys) -> None:
     assert a["tax_rate"] == {"value": 0.21, "source": "stated default"}
     assert out["dcf_input"]["fcf0"] == -50.0 and "often unreliable" in a["fcf0"]["source"]
     assert out["dcf_input"]["growth_rate"] is None and out["dcf_scenarios"] is None
-    assert [f["code"] for f in out["flags"]] == ["NEGATIVE_FCF"]
+    assert [f["code"] for f in out["flags"]] == ["NEGATIVE_FCF", "ERP_DEFAULT"]
 
 
 def test_inputs_script_degrades_to_nulls_when_data_missing(monkeypatch, capsys) -> None:
@@ -618,3 +623,245 @@ def test_render_shows_returns_tiles(tmp_path, capsys) -> None:
     rc, res = run_json(load_script("valuation/scripts/render.py"), ["--in", str(src), "--out", str(tmp_path / "v.html")], capsys)
     assert rc == 0 and "returns" in res["methods"]
     assert '"irr":0.13' in (tmp_path / "v.html").read_text()
+
+
+def _diluted(fake_yahoo, shares):
+    income = {k: dict(v, **{"Diluted Average Shares": shares}) for k, v in STATEMENTS["income_statement"].items()}
+    fake_yahoo.state["statements"] = dict(STATEMENTS, income_statement=income)
+
+
+def test_inputs_counts_every_share_class_from_the_implied_figure(fake_yahoo, capsys) -> None:
+    fake_yahoo.state["info"].update(shares_outstanding=5.867e9, implied_shares_outstanding=12.23e9)
+    _diluted(fake_yahoo, 12.23e9)
+    rc, out = run_json(load_script(INPUTS), ["goog"], capsys)
+    assert rc == 0, out
+    assert out["dcf_input"]["shares_outstanding"] == 12.23e9
+    assert out["assumptions"]["shares_outstanding"]["value"] == 12.23e9
+    flag = next(f for f in out["flags"] if f["code"] == "SHARE_CLASSES_COMBINED")
+    assert "12230000000" in flag["message"] and "5867000000" in flag["message"]
+
+
+def test_inputs_without_implied_shares_uses_shares_outstanding_silently(fake_yahoo, capsys) -> None:
+    rc, out = run_json(load_script(INPUTS), ["ko"], capsys)
+    assert rc == 0, out
+    assert out["dcf_input"]["shares_outstanding"] == 1000.0
+    assert out["assumptions"]["shares_outstanding"]["value"] == 1000.0 and out["assumptions"]["shares_outstanding"]["source"]
+    assert _codes(out) == []
+
+
+def test_inputs_flags_a_share_count_that_halved_against_the_statements(fake_yahoo, capsys) -> None:
+    fake_yahoo.state["info"]["shares_outstanding"] = 317e6
+    _diluted(fake_yahoo, 634e6)
+    rc, out = run_json(load_script(INPUTS), ["hon"], capsys)
+    assert rc == 0, out
+    flag = next(f for f in out["flags"] if f["code"] == "CORPORATE_ACTION_SUSPECTED")
+    assert "split, reverse split or spin-off" in flag["message"]
+    assert "not meaningful until a post-action year is reported" in flag["message"]
+
+
+def test_inputs_does_not_flag_a_stable_share_count(fake_yahoo, capsys) -> None:
+    fake_yahoo.state["info"]["shares_outstanding"] = 1000.0
+    _diluted(fake_yahoo, 1050.0)
+    rc, out = run_json(load_script(INPUTS), ["ko"], capsys)
+    assert rc == 0, out
+    assert _codes(out) == []
+
+
+def _nci(fake_yahoo, minority, including=2800.0, provision=433.0, pretax=3233.0):
+    income = dict(STATEMENTS["income_statement"])
+    latest = max(income)
+    income[latest] = dict(income[latest], **{"Net Income Including Noncontrolling Interests": including, "Minority Interests": minority, "Tax Provision": provision, "Pretax Income": pretax})
+    fake_yahoo.state["statements"] = dict(STATEMENTS, income_statement=income)
+
+
+def test_inputs_deducts_a_large_minority_interest(fake_yahoo, capsys) -> None:
+    rc, base = run_json(load_script(INPUTS), ["thc"], capsys)
+    _nci(fake_yahoo, -960.0)
+    rc, out = run_json(load_script(INPUTS), ["thc"], capsys)
+    assert rc == 0, out
+    a = out["assumptions"]
+    share = 960.0 / 2800.0
+    assert a["nci_share"]["value"] == pytest.approx(0.343, abs=1e-3) and a["nci_share"]["source"]
+    flag = next(f for f in out["flags"] if f["code"] == "LARGE_MINORITY_INTEREST")
+    assert "34%" in flag["message"] and "Book NCI understates the claim" in flag["message"]
+    parent_tax = 433.0 / (3233.0 - 960.0)
+    fcf = base["assumptions"]["fcf0"]["value"] - 20.0 * (1 - 0.25)   # strip the add-back at the old 25% rate
+    assert a["fcf0"]["value"] == pytest.approx(round((fcf + 20.0 * (1 - parent_tax)) * (1 - share), 2), abs=0.02)
+    assert a["tax_rate"]["value"] == pytest.approx(parent_tax, abs=1e-4)
+    assert "attributable to the parent" in a["tax_rate"]["source"]
+
+
+def test_inputs_notes_the_parent_share_scaling_in_the_fcf0_sources(fake_yahoo, capsys) -> None:
+    _nci(fake_yahoo, -960.0)
+    rc, out = run_json(load_script(INPUTS), ["thc"], capsys)
+    a = out["assumptions"]
+    assert "LARGE_MINORITY_INTEREST" in a["fcf0"]["source"] and "parent's share" in a["fcf0"]["source"]
+    assert "scaled like fcf0" in a["fcf0_latest"]["source"]
+    fake_yahoo.state["statements"] = dict(STATEMENTS)
+    rc, plain = run_json(load_script(INPUTS), ["ko"], capsys)
+    assert "scaled" not in plain["assumptions"]["fcf0"]["source"] and "scaled" not in plain["assumptions"]["fcf0_latest"]["source"]
+
+
+@pytest.mark.parametrize("minority, including", [(-150.0, 100.0), (-100.0, 100.0), (50.0, 100.0), (-150.0, -40.0)])
+def test_inputs_does_not_scale_when_the_parent_share_is_underivable(fake_yahoo, capsys, minority, including) -> None:
+    _nci(fake_yahoo, minority, including=including)
+    rc, out = run_json(load_script(INPUTS), ["thc"], capsys)
+    assert rc == 0, out
+    a = out["assumptions"]
+    assert a["nci_share"]["value"] is None and "cannot be derived" in a["nci_share"]["source"]
+    flag = next(f for f in out["flags"] if f["code"] == "LARGE_MINORITY_INTEREST")
+    assert "cannot be derived" in flag["message"] and "NOT scaled" in flag["message"]
+    fake_yahoo.state["statements"] = dict(STATEMENTS)
+    rc, base = run_json(load_script(INPUTS), ["ko"], capsys)
+    assert a["fcf0"]["value"] == base["assumptions"]["fcf0"]["value"] and "scaled" not in a["fcf0"]["source"]
+
+
+def test_inputs_cash_burning_parent_with_profitable_partners_stays_negative(fake_yahoo, capsys) -> None:
+    _margins(fake_yahoo, [-0.20, -0.15, -0.10, -0.10])
+    st = fake_yahoo.state["statements"]
+    latest = max(st["income_statement"])
+    st["income_statement"][latest].update({"Net Income Including Noncontrolling Interests": 100.0, "Minority Interests": -150.0})
+    rc, out = run_json(load_script(INPUTS), ["x"], capsys)
+    assert rc == 0, out
+    assert out["assumptions"]["fcf0"]["value"] <= 0 and out["dcf_input"]["fcf0"] <= 0
+    codes = {f["code"] for f in out["flags"]}
+    assert {"NEGATIVE_FCF", "LARGE_MINORITY_INTEREST"} <= codes
+
+
+def test_inputs_leaves_a_small_minority_interest_alone(fake_yahoo, capsys) -> None:
+    rc, base = run_json(load_script(INPUTS), ["thc"], capsys)
+    _nci(fake_yahoo, -140.0)
+    rc, out = run_json(load_script(INPUTS), ["thc"], capsys)
+    assert rc == 0, out
+    assert out["assumptions"]["nci_share"]["value"] == pytest.approx(0.05)
+    assert _codes(out) == []
+    assert out["assumptions"]["fcf0"] == base["assumptions"]["fcf0"]
+    assert out["assumptions"]["tax_rate"] == base["assumptions"]["tax_rate"]
+
+
+def test_inputs_without_minority_rows_reports_a_null_share(fake_yahoo, capsys) -> None:
+    rc, out = run_json(load_script(INPUTS), ["ko"], capsys)
+    assert rc == 0, out
+    assert out["assumptions"]["nci_share"]["value"] is None
+    assert _codes(out) == []
+    assert out["assumptions"]["tax_rate"] == {"value": 0.25, "source": "latest income statement"}
+
+
+def _margins(fake_yahoo, margins, revenue=1000.0):
+    years = [f"{2020 + i}-12-31T00:00:00" for i in range(len(margins))]
+    income = {y: {"Total Revenue": revenue, "Interest Expense": 20.0, "Tax Rate For Calcs": 0.25} for y in years}
+    cash = {y: {"Free Cash Flow": m * revenue} for y, m in zip(years, margins)}
+    fake_yahoo.state["statements"] = dict(STATEMENTS, income_statement=income, cash_flow=cash)
+
+
+def test_inputs_flags_a_cyclical_and_shows_the_latest_year_beside_the_average(fake_yahoo, capsys) -> None:
+    _margins(fake_yahoo, [-0.10, 0.05, 0.30, 0.45])
+    rc, out = run_json(load_script(INPUTS), ["mu"], capsys)
+    assert rc == 0, out
+    codes = {f["code"]: f for f in out["flags"]}
+    assert "CYCLICAL" in codes and "CYCLE_BASE_SPLIT" in codes
+    assert "do not report one base value" in codes["CYCLE_BASE_SPLIT"]["message"]
+    latest = 450.0 + 20.0 * 0.75
+    assert out["dcf_input_latest"]["fcf0"] == pytest.approx(latest)
+    assert out["assumptions"]["fcf0_latest"]["value"] == pytest.approx(latest) and out["assumptions"]["fcf0_latest"]["source"]
+    assert out["dcf_input"]["fcf0"] < latest / 2
+    assert {k: v for k, v in out["dcf_input_latest"].items() if k != "fcf0"} == {k: v for k, v in out["dcf_input"].items() if k != "fcf0"}
+
+
+def test_inputs_leaves_a_steady_company_unflagged(fake_yahoo, capsys) -> None:
+    _margins(fake_yahoo, [0.20, 0.21, 0.22, 0.23])
+    rc, out = run_json(load_script(INPUTS), ["ko"], capsys)
+    assert rc == 0, out
+    assert not {"CYCLICAL", "CYCLE_BASE_SPLIT"} & {f["code"] for f in out["flags"]}
+    assert "dcf_input_latest" not in out
+    assert out["assumptions"]["fcf0_latest"]["value"] == pytest.approx(230.0 + 20.0 * 0.75)
+
+
+def test_inputs_latest_year_figure_takes_the_minority_scaling(fake_yahoo, capsys) -> None:
+    _margins(fake_yahoo, [-0.10, 0.05, 0.30, 0.45])
+    st = fake_yahoo.state["statements"]
+    latest = max(st["income_statement"])
+    st["income_statement"][latest].update({"Net Income Including Noncontrolling Interests": 2800.0, "Minority Interests": -960.0})
+    rc, out = run_json(load_script(INPUTS), ["thc"], capsys)
+    assert rc == 0, out
+    assert out["dcf_input_latest"]["fcf0"] == pytest.approx(out["assumptions"]["fcf0_latest"]["value"])
+    assert out["assumptions"]["fcf0_latest"]["value"] < 450.0
+
+
+def test_inputs_without_statements_has_a_null_latest_figure(fake_yahoo, capsys) -> None:
+    fake_yahoo.state["statements"] = {"symbol": "KO", "income_statement": {}, "cash_flow": {}}
+    rc, out = run_json(load_script(INPUTS), ["ko"], capsys)
+    assert rc == 0, out
+    assert out["assumptions"]["fcf0_latest"]["value"] is None
+    assert "dcf_input_latest" not in out
+
+
+# ---------------------------------------------------------------------------
+# inputs.py: WACC weights net debt; the equity premium is dated
+# ---------------------------------------------------------------------------
+
+def test_inputs_net_cash_company_has_no_debt_weight(fake_yahoo, capsys) -> None:
+    fake_yahoo.state["info"].update(total_debt=6750.0, total_cash=7200.0, market_cap=100000.0)
+    rc, out = run_json(load_script(INPUTS), ["ko"], capsys)
+    a = out["assumptions"]
+    assert a["wacc"]["value"] == a["cost_of_equity"]["value"]
+    assert "net cash: no debt weight" in a["wacc"]["source"]
+
+
+def test_inputs_weights_debt_net_of_cash(fake_yahoo, capsys) -> None:
+    fake_yahoo.state["info"].update(total_debt=10000.0, total_cash=2000.0, market_cap=50000.0, beta=1.2)
+    rc, out = run_json(load_script(INPUTS), ["ko"], capsys)
+    a = out["assumptions"]
+    w = 8000 / 58000
+    expected = (1 - w) * a["cost_of_equity"]["value"] + w * a["cost_of_debt"]["value"] * (1 - a["tax_rate"]["value"])
+    assert a["wacc"]["value"] == pytest.approx(expected, abs=1e-4)
+    assert "net of cash" in a["wacc"]["source"]
+
+
+def test_inputs_unknown_cash_weights_gross_debt_and_says_so(fake_yahoo, capsys) -> None:
+    fake_yahoo.state["info"].update(total_debt=400.0, total_cash=None)
+    rc, out = run_json(load_script(INPUTS), ["ko"], capsys)
+    a = out["assumptions"]
+    w = 400 / 2000
+    expected = (1 - w) * a["cost_of_equity"]["value"] + w * a["cost_of_debt"]["value"] * 0.75
+    assert a["wacc"]["value"] == pytest.approx(expected, abs=1e-4)
+    assert "gross debt" in a["wacc"]["source"] and "cash unknown" in a["wacc"]["source"]
+
+
+def test_inputs_erp_argument_replaces_the_default(fake_yahoo, capsys) -> None:
+    rc, out = run_json(load_script(INPUTS), ["ko", "--erp", "0.045", "--erp-date", "2026-10-01"], capsys)
+    assert rc == 0, out
+    erp = out["assumptions"]["equity_risk_premium"]
+    assert erp["value"] == 0.045 and erp["as_of"] == "2026-10-01"
+    assert out["assumptions"]["cost_of_equity"]["value"] == pytest.approx(0.045 + (0.67 * 1.2 + 0.33) * 0.045, abs=1e-4)
+    assert "ERP_DEFAULT" not in {f["code"] for f in out["flags"]}
+
+
+@pytest.mark.parametrize("argv", [["ko", "--erp", "0.045"], ["ko", "--erp-date", "2026-10-01"], ["ko", "--erp", "0.3", "--erp-date", "2026-10-01"],
+                                  ["ko", "--erp", "x", "--erp-date", "2026-10-01"], ["ko", "--erp", "0.045", "--erp-date", "soon"]])
+def test_inputs_bad_erp_arguments_exit_2(fake_yahoo, capsys, argv) -> None:
+    rc, out = run_json(load_script(INPUTS), argv, capsys)
+    assert rc == 2 and "error" in out
+
+
+def test_inputs_default_erp_is_dated_and_flagged(fake_yahoo, capsys) -> None:
+    rc, out = run_json(load_script(INPUTS), ["ko"], capsys)
+    erp = out["assumptions"]["equity_risk_premium"]
+    assert erp["value"] == 0.042 and erp["as_of"] == "2026-10-01"
+    assert erp["source"] == "Damodaran implied ERP, 2026-10-01 (stated default; pass --erp with a dated figure)"
+    codes = {f["code"] for f in out["flags"]}
+    assert "ERP_DEFAULT" in codes and "ERP_STALE" not in codes
+
+
+def test_inputs_default_erp_goes_stale_after_180_days(fake_yahoo, capsys, monkeypatch) -> None:
+    module = load_script(INPUTS)
+
+    class Later(date):
+        @classmethod
+        def today(cls):
+            return date(2026, 10, 1) + timedelta(days=200)
+
+    monkeypatch.setattr(module, "date", Later)
+    rc, out = run_json(module, ["ko"], capsys)
+    assert rc == 0, out
+    assert {"ERP_DEFAULT", "ERP_STALE"} <= {f["code"] for f in out["flags"]}

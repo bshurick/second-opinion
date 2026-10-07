@@ -11,6 +11,7 @@ Researches a company from its SEC filings: the numbers from XBRL, the words from
 - Set `EDGAR_USER_AGENT` to "app-name contact@email" in the plugin's `.env`. The SEC blocks clients without a proper User-Agent, and the script flags the placeholder default.
 - EDGAR's rate limit is 10 requests per second.
 - Filing index and company facts are cached under the plugin data directory.
+- Earnings press releases are 8-K Exhibit 99.1 filings tagged Item 2.02; `earnings.py` reads them, so guidance and results come from the filing, not a web search.
 
 **Form types**
 
@@ -76,6 +77,7 @@ Run with the Bash tool.
 ```bash
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/fundamental-research/scripts/edgar.py" <symbol> [--years N] [--filings-only] [--quarters N] [--form4 [N]] [--as-of YYYY-MM-DD]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/fundamental-research/scripts/filing.py" <symbol> [--url URL] [--form 10-K|10-Q] [--item 1A] [--search TERM] [--diff] [--max-chars N] [--context N]
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/fundamental-research/scripts/earnings.py" <symbol> [--last N] [--max-chars N]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/fundamental-research/scripts/fundamentals.py" < input.json
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/fundamental-research/scripts/filing_sections.py" < input.json
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/fundamental-research/scripts/holdings.py" <manager> [--limit N] | --cik N | --search NAME | --list
@@ -90,6 +92,7 @@ Run with the Bash tool.
 | `edgar.py --quarters N` | Adds a quarterly revenue/net-income table and trailing-twelve-month figures. |
 | `edgar.py --form4 [N]` | Fetches and structurally parses that many recent Form 4 filings (default 5, max 10), instead of you opening each one. |
 | `filing.py` | Downloads the latest 10-K or 10-Q (or a filing `--url`) and runs `filing_sections.py`. Returns the Item list, one Item's text (`--item`), a passage search (`--search`), or a diff of an Item against the previous filing (`--item` with `--diff`). `--max-chars` (default 20000) caps an Item's text. |
+| `earnings.py` | Recent earnings press releases: the 8-K filings with Item 2.02, each with its Exhibit 99.1 text (`--last` filings, default 8; `--max-chars` per release, default 15000). A company with none returns `releases: []`. Use for guidance-versus-results track records instead of web search. |
 | `fundamentals.py` | Pure math on companyfacts JSON you already have. |
 | `filing_sections.py` | Pure reader on a filing document you already have. |
 | `holdings.py` | 13F: a manager's latest holdings against the prior quarter. Takes a curated alias, a bare CIK, or `--cik N` for any filer. `--search NAME` only looks up 13F filers. |

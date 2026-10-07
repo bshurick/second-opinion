@@ -324,6 +324,7 @@ const FA = (() => {
     const lg = el('div', {class: 'legend'}); parts.forEach((p, i) => lg.appendChild(el('span', {}, `<i style="background:${p.color || S[i % 8]}"></i>${esc(p.label)} ${pct(p.value / total)}`))); root.appendChild(lg);
   };
   // sortable, filterable table. cols = [{key, label, fmt, cls, left}], rows = objects
+  // opts: sortKey, desc, onDraw, pin (a row predicate: matching rows stay first whatever the sort)
   const table = (root, cols, rows, opts = {}) => {
     let sortKey = opts.sortKey || cols[0].key, desc = opts.desc !== false, filter = () => true, query = '';
     const t = el('table'); const thead = el('thead'); const tr = el('tr');
@@ -332,7 +333,7 @@ const FA = (() => {
     const draw = () => {
       const q = query.toLowerCase();
       const vis = rows.filter(filter).filter(r => !q || cols.some(c => String(r[c.key] ?? '').toLowerCase().includes(q)));
-      vis.sort((a, b) => { const x = a[sortKey], y = b[sortKey]; const nx = x == null, ny = y == null; if (nx && ny) return 0; if (nx) return 1; if (ny) return -1; const d = typeof x === 'number' ? x - y : String(x).localeCompare(String(y)); return desc ? -d : d; });
+      vis.sort((a, b) => { if (opts.pin) { const pa = !!opts.pin(a), pb = !!opts.pin(b); if (pa !== pb) return pa ? -1 : 1; } const x = a[sortKey], y = b[sortKey]; const nx = x == null, ny = y == null; if (nx && ny) return 0; if (nx) return 1; if (ny) return -1; const d = typeof x === 'number' ? x - y : String(x).localeCompare(String(y)); return desc ? -d : d; });
       thead.querySelectorAll('th').forEach(th => th.setAttribute('aria-sort', th.dataset.key === sortKey ? (desc ? 'descending' : 'ascending') : 'none'));
       tb.innerHTML = vis.map(r => '<tr>' + cols.map(c => `<td class="${c.left ? 'l ' : ''}${c.cls ? c.cls(r[c.key], r) : ''}">${c.fmt ? c.fmt(r[c.key], r) : esc(r[c.key])}</td>`).join('') + '</tr>').join('');
       if (opts.onDraw) opts.onDraw(vis);

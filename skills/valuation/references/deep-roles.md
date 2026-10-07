@@ -15,6 +15,7 @@ Each section is the brief for one research subagent in a deep valuation. The orc
 
 - Work only inside the case folder `DIR/deep-SYMBOL/`. Write your findings to the file your role names.
 - Every other file you write goes inside the case folder too, including downloads and scratch files, under a name that starts with your role or thread, e.g. `research/forensic-10k-2025.txt`. Never write to the folder above it: other deep runs share that folder, and a generic name like `10k.txt` gets overwritten by another company's filing.
+- SEC data comes only through the scripts below and `earnings.py SYMBOL` (earnings releases). Never write an HTTP request to sec.gov. Never put a person's name, email or other identifier in a request, a URL or a file.
 - Fetch filings with the fundamental-research skill's scripts:
   - `edgar.py SYMBOL` (financials, filing index, Form 4)
   - `filing.py SYMBOL --item ITEM` (one Item's text)
@@ -22,7 +23,7 @@ Each section is the brief for one research subagent in a deep valuation. The orc
   - `filing.py SYMBOL --item ITEM --diff` (what changed since the previous filing)
   - `filing.py --url URL` (an older filing from the index)
   - `filing.py` cuts an Item at 20,000 characters. Pass `--max-chars` with a larger number for long Items such as the MD&A or the notes.
-- Use web search and page fetching for 8-K exhibits, earnings-call coverage, competitors and news.
+- Use page fetching and web search for 8-K exhibits, earnings-call coverage, competitors and news, within your search cap below.
 - Every claim carries its source and date:
   - A filing is its form, Item and filing date, e.g. "10-K Item 7, 2026-02-20".
   - An article is its outlet and the dateline printed on the page, e.g. "Reuters, 2026-09-14".
@@ -32,7 +33,13 @@ Each section is the brief for one research subagent in a deep valuation. The orc
 - For each belief, find at least one source that argues the other side. Prefer primary sources (filings, regulator dockets and rulings, government statistics, court records) over coverage of them.
 - A threat reported as gone (a rule withdrawn, a program ended, a competitor retreating) is itself a belief. Write down what would bring it back, and how often that has happened before.
 - Look further back than the news: how the same kind of shock played out at this company and its peers over the last five to ten years.
-- If your web-search budget runs out, say so, and say which claims rest on what you had. A claim from memory alone stays out of the findings.
+- **Web searches are a shared, limited allowance.** The whole session has one pool of web searches (about 200), and every subagent draws on it.
+  - Your prompt gives your cap. Treat it as a hard limit and keep a count.
+  - Fetch primary sources directly before searching: SEC filings through the scripts, and government data (EIA, Census, BLS, FRED), trade-body releases and company investor-relations pages by URL. A direct fetch does not spend a search.
+  - Save searches for what needs them: news, sentiment, analyst actions and competitor coverage.
+  - At the cap, stop searching, and say which claims you could not check.
+  - Report the number of searches you used in your reply.
+- A claim from memory alone stays out of the findings.
 - Separate what a document says from what you infer. Write inference as "Inference:" on its own line.
 - Quote the exact figure from the source. Do not round or restate it.
 - End the findings file with a `## Candidate beliefs` list, except the Red team. Each entry has:
@@ -42,12 +49,12 @@ Each section is the brief for one research subagent in a deep valuation. The orc
   - which way it cuts: whether the value goes up or down if the belief is true
   - the evidence for and against so far, with sources
   - the model field it would change (segment, and growth, margin, sales_to_capital, a discount premium, or a scenario failure)
-- Return to the orchestrator one paragraph: the three findings that matter most, and the file path.
+- Return to the orchestrator one paragraph: the three findings that matter most, the file path, and the searches you used.
 - Leave buy, sell and hold judgements out entirely. The output describes the business and the evidence.
 
 ## Forensic accountant
 
-Output: `research/forensic.md`.
+Output: `research/forensic.md`. Search cap: 3 (filings carry this role).
 
 Look for places where the reported numbers and the cash, or the notes, disagree:
 
@@ -67,17 +74,21 @@ State each finding with its size in figures and its source. Then say what it wou
 
 ## Management claims
 
-Output: `research/claims.md`.
+Output: `research/claims.md`. Search cap: 6.
+
+Start from `earnings.py SYMBOL`: its releases give the guidance and the results for the track record before any search.
 
 1. List the strategy in management's own words, from 10-K Item 1 and Item 7, the latest 10-Q Item 2 and the latest earnings release.
 2. List the current guidance: each figure, its period and its source.
-3. Build the track record. For each of the last three to five years, take the guidance given at the start of the year (8-K Item 2.02 exhibits, earnings-call coverage) and what was then reported. Write it as a table: period | measure | guided | actual | source.
+3. Build the track record. For each of the last three to five years, take the guidance given at the start of the year (`earnings.py` releases, then earnings-call coverage) and what was then reported. Write it as a table: period | measure | guided | actual | source.
 4. Name the beliefs the strategy rests on, e.g. "the new segment reaches breakeven by 2028" or "price increases will stick". For each, gather the evidence that bears on it: results so far, competitor moves, what similar efforts elsewhere achieved.
 5. Note vagueness: targets with no date, no figure, or a changing definition from one year to the next. A vague plan is itself a finding.
 
 ## Industry and news
 
-Output: `research/industry.md`.
+Output: `research/industry.md`. Search cap: 8.
+
+When the prompt hands you the picker's industry object and notes, take the sector outlook from them, check their dates against the latest earnings, and spend searches only on company news and competitors. Cap 4 in that case.
 
 1. Competitors: the three to six that matter, with their scale, growth and margins where public.
 2. The market: its size and growth from a dated source, and who is gaining or losing share.
@@ -100,7 +111,7 @@ Output: `research/industry.md`.
 
 ## Segment economics
 
-Output: `research/segments.md`.
+Output: `research/segments.md`. Search cap: 2 (filings carry this role).
 
 1. From the 10-K segment note (`filing.py --search "segment"`, and the Item 8 notes), take each reported segment's:
    - revenue, operating income, assets, capital spending, and depreciation and amortization
@@ -116,7 +127,7 @@ Output: `research/segments.md`.
 
 ## Thread deep-dive
 
-Output: `threads/<n>-<slug>.md`, the name given by the orchestrator.
+Output: `threads/<n>-<slug>.md`, the name given by the orchestrator. Search cap: 2, unless the prompt gives another.
 
 You get one belief from the ledger. Take it to a verdict:
 
@@ -140,7 +151,7 @@ You get one belief from the ledger. Take it to a verdict:
 
 ## Red team
 
-Output: `research/redteam.md`.
+Output: `research/redteam.md`. Search cap: 3.
 
 You get the case folder after the model has run. Attack the central scenario (the one the orchestrator names):
 

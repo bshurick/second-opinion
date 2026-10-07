@@ -12,7 +12,12 @@ analyst picked) into one self-contained HTML page for the Artifact tool. Input::
                  "against": [...], "consequence": {"segment", "field", "change"}, "thread"}],
      "blocks": [{"type": ...}, ...], "missing_roles": ["industry"], "notes": ["..."]}
 
-Always shown first: the scenario table (value per share, upside, annualized return, total
+The first scenario in model.scenarios is the central case: the page labels it "Central", pins it first
+in the scenario table and headlines its value and return. The other scenarios are alternatives and
+nothing is averaged: scenarios carry no probabilities. The headline tiles show price, the central
+value and return, the worst case (lowest value) and the range.
+
+Always shown first: the headline tiles, the scenario table (value per share, upside, annualized return, total
 multiple, what has to be true), a line on what today's price implies (model.py's ``implied``),
 and the price against each scenario's value. Then the blocks, in
 order:
@@ -83,6 +88,7 @@ BODY = """
 .heat td.mod{outline:2px solid var(--ink);outline-offset:-2px;font-weight:600}.heat thead th .ax{display:block;font-size:11px;color:var(--muted);text-align:left;white-space:nowrap}
 .ans{font-size:15px;font-weight:600;margin:4px 0 10px}.sub3{font-size:13px;margin:12px 0 4px;color:var(--muted)}
 table.plain{border-collapse:collapse;width:100%;font-size:13px}table.plain th,table.plain td{padding:6px 8px;border-bottom:1px solid var(--grid);text-align:right;white-space:nowrap}table.plain th{color:var(--muted);font-weight:500}table.plain .l{text-align:left}li.sub{margin-left:18px;list-style:circle}
+.pill-central{background:var(--ink);color:var(--surface);margin-left:0;margin-right:6px}
 .must{margin:4px 0 0;padding-left:16px;font-size:12px;color:var(--muted)}
 .wrap td.l{white-space:normal;min-width:180px}
 @media (max-width:640px){.belief .ev{grid-template-columns:1fr}}
@@ -90,6 +96,7 @@ table.plain{border-collapse:collapse;width:100%;font-size:13px}table.plain th,ta
 <h1 id="h1">Deep valuation</h1>
 <p class="sub" id="sub"></p>
 <div id="intro"></div>
+<div class="tiles" id="headline"></div>
 <section class="card wrap" id="sc-card"><h2>Scenarios</h2><p class="sub">Each row is one possible future for the business, what a share is worth if it happens, and what buying at today’s price would earn a year.</p><div class="twrap" id="sc"></div><p class="sub" id="implied" style="margin-top:12px"></p></section>
 <section class="card" id="strip-card"><h2>Price against the scenarios</h2><p class="sub">Where today’s price sits among the values the scenarios give.</p><div id="strip"></div></section>
 <div id="blocks"></div>
@@ -105,15 +112,23 @@ SCRIPT = r"""
   const scs = M.scenarios;
   g('h1').textContent = `${D.symbol || ''} deep valuation`.trim();
   g('sub').textContent = `Price ${money(price)}${D.as_of ? ' · as of ' + D.as_of : ''} · ${scs.length} scenarios · ${M.horizon}-year horizon`;
-  F.intro(g('intro'), {lead: `What one share of ${esc(D.symbol || 'this company')} could be worth under ${scs.length} different futures, built segment by segment from the company’s filings, and what buying at ${money(price)} would earn a year in each.`});
+  F.intro(g('intro'), {lead: `What one share of ${esc(D.symbol || 'this company')} could be worth under ${scs.length} different futures, built segment by segment from the company’s filings, and what buying at ${money(price)} would earn a year in each. The central case is the scenario the research found most consistent with the evidence; the others are alternatives and are not averaged.`});
+  const C = scs[0], cr = ret[C.name] || {}, worst = scs.reduce((a, s) => s.value_per_share < a.value_per_share ? s : a, scs[0]), wr = ret[worst.name] || {};
+  const allv = scs.map(s => s.value_per_share).filter(F.isNum), irrTxt = r => F.isNum(r.irr) ? pct(r.irr) : '—';
+  const tile = (k, v, d) => `<div class="tile"><div class="k">${esc(k)}</div><div class="v">${v}</div><div class="d">${d}</div></div>`;
+  g('headline').innerHTML = tile('Price', esc(money(price)), D.as_of ? 'as of ' + esc(D.as_of) : '&nbsp;')
+    + tile('Central value', esc(money(C.value_per_share)), `${esc(C.name)}${F.isNum(C.upside) ? ' · ' + esc(pct(C.upside)) + ' vs price' : ''}`)
+    + tile('Central return / yr', esc(irrTxt(cr)), `${esc(C.name)} · ${M.horizon}-year horizon`)
+    + tile('Worst case', esc(money(worst.value_per_share)), `${esc(worst.name)} · ${esc(irrTxt(wr))} a year`)
+    + tile('Range', `${esc(money(Math.min(...allv)))} to ${esc(money(Math.max(...allv)))}`, 'scenarios not averaged');
 
   F.table(g('sc'), [
-    {key: 'name', label: 'Scenario', left: true, fmt: (v, r) => `<b>${esc(v)}</b><div class="muted" style="font-size:12px">${esc(r.summary)}</div>${r.must.length ? `<ul class="must">${r.must.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}`},
+    {key: 'name', label: 'Scenario', left: true, fmt: (v, r) => `${r.central ? '<span class="pill pill-central">Central</span>' : ''}<b>${esc(v)}</b><div class="muted" style="font-size:12px">${esc(r.summary)}</div>${r.must.length ? `<ul class="must">${r.must.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}`},
     {key: 'value', label: 'Value / share', fmt: v => money(v)},
     {key: 'upside', label: 'vs price', fmt: v => F.isNum(v) ? pct(v) : '—'},
     {key: 'irr', label: `Return / yr (${M.horizon}y)`, fmt: v => F.isNum(v) ? pct(v) : '—'},
     {key: 'mult', label: 'Total multiple', fmt: v => F.isNum(v) ? F.num(v, 2) + '×' : '—'},
-  ], scs.map(s => ({name: s.name, summary: s.summary, value: s.value_per_share, upside: s.upside, irr: (ret[s.name] || {}).irr, mult: (ret[s.name] || {}).total_multiple, must: s.must_be_true || []})), {sortKey: 'value'});
+  ], scs.map((s, i) => ({central: i === 0, name: s.name, summary: s.summary, value: s.value_per_share, upside: s.upside, irr: (ret[s.name] || {}).irr, mult: (ret[s.name] || {}).total_multiple, must: s.must_be_true || []})), {sortKey: 'value', pin: r => r.central});
   const IM = M.implied;
   if (IM && F.isNum(IM.value)) {
     const what = IM.field === 'roe_shift' ? 'return on equity' : 'operating margin';
@@ -129,7 +144,7 @@ SCRIPT = r"""
   const lo = Math.min(...vals, 0), hi = Math.max(...vals) * 1.08, W = 960, H = 34 + 22 * scs.length;
   const X = v => 20 + (W - 160) * (v - lo) / ((hi - lo) || 1);
   let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="price against scenario values"><line x1="20" x2="${W - 140}" y1="${H - 14}" y2="${H - 14}" stroke="var(--grid)"/>`;
-  scs.forEach((s, i) => { const x = X(s.value_per_share), y = 14 + 22 * i; svg += `<line x1="${X(lo)}" x2="${x}" y1="${y}" y2="${y}" stroke="${F.S[i % 8]}" stroke-width="8" stroke-linecap="round" opacity=".8"/><text x="${x + 8}" y="${y + 4}" font-size="12" fill="var(--ink)">${esc(s.name)} ${esc(money(s.value_per_share))}</text>`; });
+  scs.forEach((s, i) => { const x = X(s.value_per_share), y = 14 + 22 * i; svg += `<line x1="${X(lo)}" x2="${x}" y1="${y}" y2="${y}" stroke="${F.S[i % 8]}" stroke-width="${i === 0 ? 12 : 8}" stroke-linecap="round" opacity=".8"/><text x="${x + 8}" y="${y + 4}" font-size="12" fill="var(--ink)">${esc(s.name)}${i === 0 ? ' (central)' : ''} ${esc(money(s.value_per_share))}</text>`; });
   svg += `<line x1="${X(price)}" x2="${X(price)}" y1="4" y2="${H - 8}" stroke="var(--ink)" stroke-dasharray="4 3"/><text x="${X(price)}" y="${H - 1}" font-size="11" text-anchor="middle" fill="var(--muted)">price ${esc(money(price))}</text></svg>`;
   g('strip').innerHTML = svg;
   F.help(g('strip-card'), {lead: 'Each bar runs to one scenario’s value per share; the dashed line is today’s price. Bars that end left of the line are futures in which the share is worth less than it costs.'});
@@ -209,7 +224,7 @@ SCRIPT = r"""
     } else if (b.type === 'skepticism') {
       const [c, el] = card('Cost of skepticism', 'How much of each scenario’s value the extra discount for doubtful plans takes away, and why each extra discount is there.');
       F.table(el, [{key: 'name', label: 'Scenario', left: true}, {key: 'v', label: 'Value / share', fmt: v => money(v)}, {key: 'x', label: 'Without the extra discount', fmt: v => money(v)}, {key: 'd', label: 'Difference', fmt: v => money(v)}],
-        scs.map(s => ({name: s.name, v: s.value_per_share, x: s.value_ex_premiums, d: s.value_per_share - s.value_ex_premiums})), {sortKey: 'name'});
+        scs.map((s, i) => ({central: i === 0, name: s.name, v: s.value_per_share, x: s.value_ex_premiums, d: s.value_per_share - s.value_ex_premiums})), {sortKey: 'name'});
       const prem = []; scs.forEach(s => s.segments.forEach(x => { if (x.premium) prem.push(`<li><b>${esc(s.name)} · ${esc(x.name)}</b>: +${F.num(x.premium * 100, 1)} points — ${esc(x.premium_reason || 'no reason given')}</li>`); }));
       el.insertAdjacentHTML('beforeend', prem.length ? `<ul style="font-size:13px;margin-top:10px">${prem.join('')}</ul>` : '<p class="muted">No extra discount was applied.</p>');
       F.help(c, {lead: 'Where a plan is vague or the evidence leans against it, the model discounts that part of the business at a higher rate. This card shows what that choice costs in value.'});

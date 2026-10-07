@@ -56,6 +56,8 @@ REFERENCE_FILES = [
     "valuation/references/dcf-methods.md",
     "valuation/references/value-investing.md",
     "valuation/references/deep-roles.md",
+    "stock-screener/references/picker-roles.md",
+    "stock-screener/references/primary-sources.md",
     "portfolio-analysis/references/portfolio-research.md",
     "portfolio-snapshot/references/how-figures-are-built.md",
     "trading/references/momentum-research.md",

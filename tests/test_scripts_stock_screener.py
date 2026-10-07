@@ -86,6 +86,7 @@ def _ns(*argv):
 
 def _run(frames, *argv, **kw):
     kw.setdefault("quoter", quoter)
+    kw.setdefault("aliases", None)
     return SCREEN.run(_ns(*argv), frame=frames, today=TODAY, names=NAMES, momentum_of=kw.pop("momentum_of", NO_MOMENTUM), **kw)
 
 
@@ -281,3 +282,100 @@ def test_every_card_explains_itself(frames, tmp_path, capsys) -> None:
     src = tmp_path / "screen.json"
     src.write_text(json.dumps(result))
     assert_page_help(render_and_audit("stock-screener/scripts/render.py", ["--in", str(src)], tmp_path, capsys))
+
+
+def test_health_preset_is_a_floor(frames) -> None:
+    # The fixture's flat margins give SLOW a Piotroski score of 3, so the floor is lowered to 3 here.
+    out = _run(frames, "--preset", "health", "--no-price", "--set", "min_f_score=3")
+    assert {"GROW", "SLOW"} <= {s["ticker"] for s in out["survivors"]}
+    assert out["rank_by"] == "f_score"
+    out = _run(frames, "--preset", "health", "--no-price")
+    assert "SLOW" not in {s["ticker"] for s in out["survivors"]}  # Piotroski 3 < 4
+
+
+def test_health_preset_fails_heavy_dilution(frames) -> None:
+    for y in YEARS:
+        for r in frames.data[("WeightedAverageNumberOfDilutedSharesOutstanding", f"CY{y}")]:
+            if r["cik"] == 2:
+                r["val"] = 100e6 * (1.10 ** (y - 2022))
+    out = _run(frames, "--preset", "health", "--no-price", "--set", "min_f_score=3", "--all")
+    slow = next(c for c in out["companies"] if c["ticker"] == "SLOW")
+    assert "max_share_growth" in slow["failed"]
+
+
+def test_symbols_restricts_and_reports(frames) -> None:
+    # Priced, so BANK is recognised as a financial filer (Yahoo files it under financials).
+    out = _run(frames, "--preset", "health", "--symbols", "grow,bank", "--symbols", "NOPE")
+    assert out["universe"] == 2
+    checked = {c["ticker"]: c for c in out["checked"]}
+    assert checked["GROW"]["passed"] is True and checked["GROW"]["failed"] == []
+    assert checked["BANK"]["financial"] is True and checked["BANK"]["passed"] is False
+    assert out["not_found"] == ["NOPE"] and out["incomplete"] == []
+
+
+def test_symbols_reports_incomplete(frames) -> None:
+    for y in (2022, 2023):
+        for concept in ("Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax"):
+            frames.data[(concept, f"CY{y}")] = [r for r in frames.data.get((concept, f"CY{y}"), []) if r["cik"] != 2]
+    out = _run(frames, "--preset", "health", "--no-price", "--symbols", "SLOW,GROW")
+    assert out["incomplete"] == ["SLOW"] and [c["ticker"] for c in out["checked"]] == ["GROW"]
+
+
+# --- final-review fixes -----------------------------------------------------------------------------
+
+
+def test_symbols_resolves_other_share_classes_and_dots(frames) -> None:
+    """GOOG/GOOGL and BRK.B/BRK-B: the SEC lists every ticker of a filer, edgar.tickers() only the first."""
+    aliases = {"GROW": 1, "GROW-B": 1, "SLOW": 2, "BANK": 3}
+    out = _run(frames, "--preset", "health", "--no-price", "--symbols", "GROW.B", aliases=aliases)
+    assert out["not_found"] == [] and out["universe"] == 1
+    assert out["checked"] == [{"ticker": "GROW.B", "primary": "GROW", "name": "Grower Inc", "passed": True, "failed": [], "financial": False}]
+
+
+def test_symbols_empty_is_an_error(frames) -> None:
+    with pytest.raises(SCREEN.InvalidInput, match="--symbols"):
+        _run(frames, "--preset", "health", "--no-price", "--symbols", " , ")
+
+
+def test_symbols_passed_agrees_with_the_survivors(frames) -> None:
+    """In a priced run, a name the price stage dropped (here SLOW, which has no quote, under a
+    price criterion) is not reported as passed."""
+    out = _run(frames, "--preset", "health", "--set", "min_f_score=3", "--set", "min_market_cap=1e9", "--symbols", "GROW,SLOW")
+    survivors = {s["ticker"] for s in out["survivors"]}
+    assert {c["ticker"]: c["passed"] for c in out["checked"]} == {t: t in survivors for t in ("GROW", "SLOW")}
+    assert "SLOW" not in survivors
+
+
+def test_symbols_held_and_excluded_says_so(frames) -> None:
+    out = _run(frames, "--preset", "health", "--no-price", "--symbols", "GROW", "--held", "GROW", "--exclude-held")
+    assert out["checked"][0]["passed"] is False and out["checked"][0]["failed"] == ["held_excluded"]
+
+
+def test_the_noncontrolling_interest_frame_is_requested_and_carried(frames) -> None:
+    frames.data[("NetIncomeLossAttributableToNoncontrollingInterest", "CY2025")] = [{"cik": 1, "val": 40e6}]
+    cos = {c["ticker"]: c for c in SCREEN.build_companies(frames, YEARS, SCREEN.quarter_periods(TODAY), NAMES)}
+    assert ("NetIncomeLossAttributableToNoncontrollingInterest", "CY2025", "USD") in frames.calls
+    assert cos["GROW"]["annual"]["nci_income"] == {"2025": 40e6}
+    assert cos["SLOW"]["annual"]["nci_income"] == {}
+
+
+def test_the_quote_carries_yahoos_priced_share_count(monkeypatch) -> None:
+    import second_opinion.market as market
+
+    base = {"market_cap": 3e9, "sector": "Technology", "current_price": 30.0}
+    monkeypatch.setattr(market, "company_info", lambda t: {**base, "implied_shares_outstanding": 100e6, "shares_outstanding": 60e6})
+    assert SCREEN.quote("X")["shares"] == 100e6
+    monkeypatch.setattr(market, "company_info", lambda t: {**base, "shares_outstanding": 60e6})
+    assert SCREEN.quote("X")["shares"] == 60e6
+
+
+def test_render_labels_the_minority_interest_and_corporate_action_flags(frames, tmp_path, capsys) -> None:
+    result = _run(frames)
+    result["survivors"][0]["flags"] = ["LARGE_MINORITY_INTEREST", "CORPORATE_ACTION"]
+    src = tmp_path / "screen.json"
+    src.write_text(json.dumps(result))
+    rc, _ = run_json(load_script("stock-screener/scripts/render.py"), ["--in", str(src), "--out", str(tmp_path / "p.html")], capsys)
+    html = (tmp_path / "p.html").read_text()
+    assert rc == 0
+    assert "LARGE_MINORITY_INTEREST: 'large minority interest'" in html
+    assert "CORPORATE_ACTION: 'split or spin-off since last filing'" in html

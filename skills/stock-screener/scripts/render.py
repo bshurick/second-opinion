@@ -85,7 +85,8 @@ SCRIPT = r"""
   F.bars(g('funnel'), D.funnel.map((s, i) => ({label: label(s.stage), share: s.remaining / Math.max(top, 1), text: F.num(s.remaining, 0), color: i === D.funnel.length - 1 ? 'var(--s1)' : 'var(--s3)'})));
   const FLAG = {CASH_OUTRUNS_PROFIT: 'cash outruns profit', SPLIT_OR_LISTING_YEAR_SKIPPED: 'split/listing year skipped', CASH_ABOVE_ITS_AVERAGE: 'cash above its average',
     PROFIT_ABOVE_OPERATING_PROFIT: 'profit above operating profit', CAPEX_NOT_REPORTED: 'no capital-spending figure', LATEST_QUARTER_NOT_REPORTED: 'no latest quarter',
-    ACQUISITIVE: 'growth partly bought', PRICE_FALLING: 'price falling', MISSCALED: 'a figure was mis-scaled'};
+    ACQUISITIVE: 'growth partly bought', PRICE_FALLING: 'price falling', MISSCALED: 'a figure was mis-scaled',
+    LARGE_MINORITY_INTEREST: 'large minority interest', CORPORATE_ACTION: 'split or spin-off since last filing'};
   const rows = S.map(s => ({ticker: s.ticker, name: s.name, held: s.held, ...s.metrics, flags: (s.flags || []).map(f => FLAG[f] || f).join(', '), nr: (s.not_reported || []).length}));
   // Each ranking shows the columns that explain it; the rest stay in the data for a custom page.
   const LEAD = ['ticker', 'name', 'revenue_latest', 'revenue_cagr', 'latest_quarter_growth'];

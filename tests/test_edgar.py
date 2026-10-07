@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import time
+import urllib.error
 
 import pytest
 from second_opinion import edgar
@@ -178,3 +179,117 @@ def test_tickers_keeps_the_first_listing_per_cik(fake_http) -> None:
 
     got = e.tickers()
     assert got[320193] == {"ticker": "AAPL", "title": "Apple Inc."}
+
+
+def test_ticker_ciks_lists_every_share_class(fake_http) -> None:
+    import second_opinion.edgar as e
+
+    got = e.ticker_ciks()
+    assert got["AAPL"] == 320193 and all(isinstance(v, int) for v in got.values())
+    by_cik: dict[int, list[str]] = {}
+    for t, c in got.items():
+        by_cik.setdefault(c, []).append(t)
+    assert len(got) >= len(e.tickers())  # never fewer tickers than the one-per-filer list
+
+
+class _Resp:
+    def __init__(self, body: bytes) -> None:
+        self._body = body
+        self.headers = {}
+
+    def read(self) -> bytes:
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a) -> None:
+        return None
+
+
+@pytest.fixture
+def no_sleep(monkeypatch, tmp_path):
+    monkeypatch.setenv("SECOND_OPINION_DATA", str(tmp_path))
+    sleeps: list[float] = []
+    monkeypatch.setattr(edgar.time, "sleep", lambda s: sleeps.append(s))
+    return sleeps
+
+
+def test_fetch_retries_on_429_then_succeeds(monkeypatch, no_sleep) -> None:
+    calls: list[str] = []
+
+    def fake_urlopen(req, timeout=30):
+        calls.append(req.full_url)
+        if len(calls) < 3:
+            raise urllib.error.HTTPError(req.full_url, 429, "Too Many", {}, None)
+        return _Resp(b'{"ok": 1}')
+
+    monkeypatch.setattr(edgar.urllib.request, "urlopen", fake_urlopen)
+    assert edgar._fetch("https://data.sec.gov/x.json", "ua") == b'{"ok": 1}'
+    assert len(calls) == 3
+    assert edgar._BACKOFF[0] in no_sleep and edgar._BACKOFF[1] in no_sleep
+
+
+def test_fetch_gives_up_after_retries(monkeypatch, no_sleep) -> None:
+    calls: list[str] = []
+
+    def fake_urlopen(req, timeout=30):
+        calls.append(req.full_url)
+        raise urllib.error.HTTPError(req.full_url, 429, "Too Many", {}, None)
+
+    monkeypatch.setattr(edgar.urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(ApiError) as exc:
+        edgar._fetch("https://data.sec.gov/x.json", "ua")
+    assert exc.value.extra.get("http_status") == 429
+    assert len(calls) == edgar._MAX_RETRIES + 1
+
+
+def test_fetch_does_not_retry_other_http_errors(monkeypatch, no_sleep) -> None:
+    calls: list[str] = []
+
+    def fake_urlopen(req, timeout=30):
+        calls.append(req.full_url)
+        raise urllib.error.HTTPError(req.full_url, 404, "Nope", {}, None)
+
+    monkeypatch.setattr(edgar.urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(ApiError, match="HTTP 404"):
+        edgar._fetch("https://data.sec.gov/x.json", "ua")
+    assert len(calls) == 1
+
+
+def test_throttle_spaces_requests(monkeypatch, no_sleep) -> None:
+    clock = [1000.0]
+    monkeypatch.setattr(edgar.time, "time", lambda: clock[0])
+    monkeypatch.setattr(edgar.time, "sleep", lambda s: (no_sleep.append(s), clock.__setitem__(0, clock[0] + s))[0])
+    edgar._throttle()
+    edgar._throttle()
+    assert sum(no_sleep) >= edgar._MIN_INTERVAL - 1e-9
+
+
+def test_throttle_survives_unwritable_lock_dir(monkeypatch, tmp_path, no_sleep) -> None:
+    blocker = tmp_path / "file"
+    blocker.write_text("x")
+    monkeypatch.setattr(edgar, "cache_dir", lambda: blocker / "edgar-cache")
+    edgar._throttle()  # must not raise
+    assert no_sleep == [edgar._MIN_INTERVAL]
+
+
+def test_archive_rejects_other_hosts() -> None:
+    with pytest.raises(InvalidInput):
+        edgar.archive("https://example.com/a.htm")
+    with pytest.raises(InvalidInput):
+        edgar.archive("https://data.sec.gov/submissions/CIK1.json")
+    with pytest.raises(InvalidInput):
+        edgar.archive(None)  # type: ignore[arg-type]
+
+
+def test_archive_fetches_and_caches(monkeypatch, no_sleep) -> None:
+    url = "https://www.sec.gov/Archives/edgar/data/320193/000032019326000001/ex99.htm"
+    monkeypatch.setattr(edgar.urllib.request, "urlopen", lambda req, timeout=30: _Resp(b"<html>Q3 results</html>"))
+    assert edgar.archive(url) == "<html>Q3 results</html>"
+
+    def boom(req, timeout=30):
+        raise AssertionError("network used")
+
+    monkeypatch.setattr(edgar.urllib.request, "urlopen", boom)
+    assert edgar.archive(url) == "<html>Q3 results</html>"

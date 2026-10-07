@@ -17,16 +17,20 @@ Quick mode runs a discounted-cash-flow range cross-checked against comparable mu
 
 ### What `inputs.py` builds
 
-`inputs.py <symbol>` emits a filled `dcf.py` input, three scenario inputs and a filled `ddm.py` input, with nulls where the data cannot fill a field. Every derived value is echoed with its source in `assumptions`.
+`inputs.py <symbol> [--erp RATE --erp-date YYYY-MM-DD]` emits a filled `dcf.py` input, three scenario inputs and a filled `ddm.py` input, with nulls where the data cannot fill a field. Every derived value is echoed with its source in `assumptions`.
 
 | Field | How it is built |
 |---|---|
 | `fcf0` | Free cash flow **to the firm**: the annual statement's free cash flow plus after-tax interest, so it matches the WACC and the net-debt subtraction. When the latest year is above the average margin over the statements, the average is used and the source says so. |
-| `wacc` | A weighted cost of capital: CAPM cost of equity on the 10-year Treasury (^TNX) with beta pulled a third of the way toward 1, cost of debt from interest expense over total debt, market-value weights, debt after tax, and never below the Treasury plus 2.5 points. |
+| `wacc` | A weighted cost of capital: CAPM cost of equity on the 10-year Treasury (^TNX) with beta pulled a third of the way toward 1, cost of debt from interest expense over total debt, market-value weights on debt net of cash (a company holding more cash than debt carries no debt weight, matching the net-debt subtraction in `dcf.py`; gross debt when cash is unknown), debt after tax, and never below the Treasury plus 2.5 points. The equity risk premium is a dated default (4.2%, Damodaran implied, 2026-10-01) flagged `ERP_DEFAULT`, and `ERP_STALE` after 180 days; `--erp RATE --erp-date YYYY-MM-DD` replaces it with a dated figure between 2% and 10%. |
 | `growth_rate` | The lower of the revenue and free-cash-flow CAGRs, kept within 0–15%. |
 | `dcf_scenarios` | `bear`, `base` and `bull` inputs that differ in the business assumption, not the discount rate. Each fades growth in a straight line to terminal growth, from below, at, and above the hint. |
 | `business_type` | From Yahoo's sector. |
 | `flags` | For a bank or insurer, a REIT, or a regulated utility, a `DCF_NOT_MEANINGFUL_FOR_…` flag says the cash-flow DCF says little and names what to use. `NEGATIVE_FCF` says the same for any company burning cash. |
+| `shares_outstanding` (in `assumptions`) | Yahoo's implied count across every share class when present, else `sharesOutstanding`, else the statement figure. `SHARE_CLASSES_COMBINED` fires when the implied count is more than 5% above the one-class figure. |
+| `assumptions.nci_share`, `LARGE_MINORITY_INTEREST` | The share of net income that goes to noncontrolling interests. At 10% or more the flag fires, `fcf0` is scaled to the parent's share, and the tax rate excludes the partners' earnings. Book value understates the claim, so a deep model values it from the minority's earnings. |
+| `CORPORATE_ACTION_SUSPECTED` | Today's share count is under 0.75 or over 1.33 times the latest statement's diluted average shares: a split, reverse split or spin-off may separate the statements from the share count. Per-share values are not meaningful until a post-action year is reported. |
+| `assumptions.fcf0_latest`, `dcf_input_latest`, `CYCLICAL`, `CYCLE_BASE_SPLIT` | `CYCLICAL` fires when the cash-flow margin swings widely across the statements. `dcf_input_latest` then reruns the DCF on the latest year's cash flow. `CYCLE_BASE_SPLIT` fires when the two bases differ more than 2x: present both values, never one base. `intrinsic.py`'s `normalized` block gives a mid-cycle view. |
 | `ddm_input` | Discounts at the cost of equity. `dividend_cagr` runs over complete calendar years. |
 
 - The three `dcf_scenarios` results are the range to present. The sensitivity grid inside each result is the discount-rate range.
@@ -187,7 +191,7 @@ Run with the Bash tool. All print JSON on stdout.
 
 ```bash
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/valuation/scripts/fundamentals.py" <symbol> [--quarterly]
-"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/valuation/scripts/inputs.py" <symbol>
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/valuation/scripts/inputs.py" <symbol> [--erp RATE --erp-date YYYY-MM-DD]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/valuation/scripts/peers.py" <symbol> --peers A,B,C
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/valuation/scripts/dcf.py"   <<< '<input json>'
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/valuation/scripts/ddm.py"   <<< '<input json>'
@@ -273,11 +277,15 @@ Run with the Bash tool. All print JSON on stdout.
 1. Run `edgar.py SYMBOL` from the fundamental-research skill. If it exits 4, stop. Say deep mode needs SEC EDGAR, and offer quick mode.
 2. Make `DIR/deep-SYMBOL/` and its `baseline/`, `research/`, `threads/` and `custom/` folders. Write the output of `fundamentals.py`, `inputs.py`, `intrinsic-inputs.py` and `edgar.py` into `baseline/`.
 3. Tell the person deep mode has started and roughly how many research tasks it will run.
+   - Write `budget.json` in the case folder: the web searches this run may spend (about 30 for one company: the role caps in `references/deep-roles.md`, plus 2 per thread), each role's cap, and the searches used so far.
+   - The session has one shared pool of about 200 searches. A deep valuation run by the deep picker takes its budget from the picker's plan.
+   - A deep valuation run by the deep picker receives the finalist's industry object and `.md` notes. Hand them to the Industry and news role in its prompt, so it takes the sector outlook from them and spends its searches (cap 4) on company news and competitors.
 4. Dispatch the four round-1 roles in parallel with the Agent tool (general-purpose type): Forensic accountant, Management claims, Industry and news, Segment economics.
    - Each prompt names the Shared rules section and the role's section of `references/deep-roles.md` by its absolute path for the subagent to read, plus the case folder path, the symbol and today's date.
    - Each prompt also gives the fundamental-research script commands with `SNAPTRADE_PY` and `CLAUDE_PLUGIN_ROOT` already resolved to absolute paths. A subagent does not inherit them.
+   - Each prompt states the role's search cap as a hard limit. After each agent returns, add the searches it used to `budget.json`.
    - If the Agent tool is unavailable, run the roles one after another yourself, and say so in the reply.
-   - For several companies, run two or three deep valuations at a time. Each dispatches up to five subagents at once, and the session caps both concurrent subagents and web searches.
+   - For several companies, run two or three deep valuations at a time. Each dispatches up to five subagents at once, and the session caps both concurrent subagents and web searches. Split the search pool before starting, about 30 per company, and keep 20 in reserve.
 5. If a role failed or wrote no file, add its name to `missing_roles` and go on.
 6. Merge the candidate beliefs into `ledger.json`. Combine duplicates. Set `verdict` to `open` where the evidence is thin. Rank by stakes, then by how evenly the evidence splits.
    - Stakes are how much value moves if the belief is wrong, never how much attention the belief gets in the news.
@@ -294,12 +302,17 @@ Run with the Bash tool. All print JSON on stdout.
       - For a company valued only through `residual_income` segments, `claims` is empty, because debt and cash sit inside book value, and `base_discount_rate` is the cost of equity.
       - `retention` nets out new share issuance, and `annual_dilution` stays 0.
    7. Set the rest of the top level: `price`, `tax_rate` and `cost_of_debt` from `inputs.py`'s `assumptions`, `payout` as the share of free cash flow the company has paid out in dividends and buybacks (default 1), and `annual_dilution` from the share-count trend. `returns.py` needs `price`.
-   8. Check `inputs.py`'s discount rate before using it. Its equity risk premium is a fixed, undated 5%. Its cost of debt has no credit spread. Its beta is a five-year figure. When the rate moves the value, rebuild it from dated sources and record it as a ledger entry.
+   8. Check `inputs.py`'s discount rate before using it:
+      - Look at `ERP_DEFAULT` and `ERP_STALE` first. The equity risk premium is a dated default unless `--erp` and `--erp-date` supply one, and a default or stale one is replaced with a current dated figure when the value moves on it.
+      - Its cost of debt has no credit spread, and its beta is a five-year figure.
+      - When the rate moves the value, rebuild it from dated sources and record it as a ledger entry.
    9. Fit any shared cost path (a platform or head-office cost) after the segment revenue paths are final.
    10. Add a `sensitivity` on the two inputs the central scenario hangs on. `roe_shift` serves a residual-income segment, and `discount_shift` with segment `"*"` moves every discount rate at once.
 8. Run `model.py`, then `returns.py` on its `returns_input`. If `model.py` exits 2, fix `model.json` and rerun. Read `implied`: if every scenario sits above the price, or every one below, a scenario is probably missing. Write the one the price implies before the threads.
 9. Thread rounds, at most three:
-   1. Pick up to four `open` or contested beliefs with high or medium stakes. One of them is a blind-spot thread: the highest-stakes belief that got the least coverage, or that rests on a single source or a reversible policy.
+   1. Check `budget.json` first. If fewer than 4 searches remain, skip the thread rounds, say so in the flags, and go to the Red team.
+      - Otherwise pick up to four `open` or contested beliefs with high or medium stakes, no more than the remaining searches allow at 2 each.
+      - One of them is a blind-spot thread: the highest-stakes belief that got the least coverage, or that rests on a single source or a reversible policy.
    2. Dispatch one Thread deep-dive per belief, in parallel. Each gets the Shared rules and Thread deep-dive sections, the ledger entry, its output file name, the case folder, and the current `model.json` values for the fields the belief touches in each scenario.
    3. Write each verdict and its evidence into `ledger.json`, apply each model consequence to `model.json`, and add any new beliefs. Then recheck fields fitted to others (a cost path fitted to revenue), since each thread changes one field at a time.
    4. Rerun `model.py` and `returns.py`.
@@ -366,7 +379,7 @@ The page carries the sensitivity grids, checklists, owner earnings, normalized b
 3. What today's price implies (`implied`), in one line, and which scenario comes nearest to it.
 4. The two or three ledger verdicts that move value most, each with its source and date, and what it changed in the model.
 5. One line on the cost of skepticism: the largest gap between `value_per_share` and `value_ex_premiums`, with its reason.
-6. **Flags**: `model.py` and `returns.py` flags, missing research roles, and rejected red-team changes. Or "None".
+6. **Flags**: `model.py` and `returns.py` flags, missing research roles, rejected red-team changes, and searches used against the budget when a role hit its cap or rounds were cut. Or "None".
 7. One sentence, once: the figures are general information at the stated assumptions, not financial, tax, or legal advice.
 
 **Deep mode, markdown fallback:** the same parts without the link, plus the full ledger as a list (belief, verdict, the deciding evidence with sources).

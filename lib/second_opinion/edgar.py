@@ -5,6 +5,11 @@ EDGAR is free but requires a descriptive User-Agent with a contact address
 "app-name contact@email"; the placeholder default may be blocked. Responses
 are cached on disk under ``<plugin data dir>/edgar-cache`` (ticker list 7
 days, everything else 1 day). urllib only, so no extra dependency.
+
+Requests are spaced to about 8 per second across every process on the machine
+(a file lock in the cache dir; the SEC limit is 10/s per IP), and HTTP 429/503
+are retried with backoff. ``archive(url)`` fetches any file under the SEC
+filing archive (an 8-K exhibit, an index.json) through the same cache.
 """
 from __future__ import annotations
 
@@ -25,6 +30,10 @@ FRAME_URL = "https://data.sec.gov/api/xbrl/frames/{taxonomy}/{concept}/{unit}/{p
 _DEFAULT_UA = "second-opinion-plugin (set EDGAR_USER_AGENT) contact@example.com"
 _TTL = {"company_tickers.json": 7 * 86400}
 _DEFAULT_TTL = 86400
+_MIN_INTERVAL = 0.125  # SEC fair-access limit is 10 requests/second; stay at 8
+_MAX_RETRIES = 4  # on HTTP 429 / 503
+_BACKOFF = (2, 5, 10, 20)  # seconds
+ARCHIVE_PREFIX = "https://www.sec.gov/Archives/edgar/data/"
 
 
 def user_agent() -> str:
@@ -40,20 +49,51 @@ def cache_dir() -> Path:
     return Path(base) / "edgar-cache"
 
 
+def _throttle() -> None:
+    """Space EDGAR requests across every process on this machine (all agents share one IP)."""
+    try:
+        import fcntl
+
+        lock = cache_dir() / ".throttle"
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        with open(lock, "a+") as fh:
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            fh.seek(0)
+            try:
+                last = float(fh.read() or 0)
+            except ValueError:
+                last = 0.0
+            wait = last + _MIN_INTERVAL - time.time()
+            if wait > 0:
+                time.sleep(wait)
+            fh.seek(0)
+            fh.truncate()
+            fh.write(repr(time.time()))
+            fh.flush()
+    except (OSError, ImportError):
+        time.sleep(_MIN_INTERVAL)
+
+
 def _fetch(url: str, user_agent: str) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": user_agent, "Accept-Encoding": "gzip, deflate", "Host": url.split("/")[2]})
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 — fixed https hosts
-            data = resp.read()
-            if resp.headers.get("Content-Encoding") == "gzip":
-                import gzip
+    for attempt in range(_MAX_RETRIES + 1):
+        _throttle()
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 — fixed https hosts
+                data = resp.read()
+                if resp.headers.get("Content-Encoding") == "gzip":
+                    import gzip
 
-                data = gzip.decompress(data)
-            return data
-    except urllib.error.HTTPError as exc:
-        raise ApiError(f"EDGAR returned HTTP {exc.code} for {url}", code="EDGAR_HTTP", http_status=exc.code, hint="set EDGAR_USER_AGENT to 'app-name contact@email'; the SEC blocks anonymous clients") from exc
-    except urllib.error.URLError as exc:
-        raise ApiError(f"EDGAR request failed for {url}: {exc.reason}", code="EDGAR_HTTP") from exc
+                    data = gzip.decompress(data)
+                return data
+        except urllib.error.HTTPError as exc:
+            if exc.code in (429, 503) and attempt < _MAX_RETRIES:
+                time.sleep(_BACKOFF[attempt])
+                continue
+            raise ApiError(f"EDGAR returned HTTP {exc.code} for {url}", code="EDGAR_HTTP", http_status=exc.code, hint="set EDGAR_USER_AGENT to 'app-name contact@email'; the SEC blocks anonymous clients") from exc
+        except urllib.error.URLError as exc:
+            raise ApiError(f"EDGAR request failed for {url}: {exc.reason}", code="EDGAR_HTTP") from exc
+    raise ApiError(f"EDGAR request failed for {url}", code="EDGAR_HTTP")  # unreachable
 
 
 def _cached_json(url: str, name: str) -> Any:
@@ -121,6 +161,15 @@ def tickers() -> dict[int, dict[str, str]]:
     return out
 
 
+def ticker_ciks() -> dict[str, int]:
+    """``{TICKER: cik}`` for every ticker in the SEC list, every share class included (GOOG and
+    GOOGL, BRK-B), unlike ``tickers()``, which keeps a CIK's first listing only."""
+    table = _cached_json(TICKERS_URL, "company_tickers.json") or {}
+    rows = table.values() if isinstance(table, dict) else table
+    return {str(r["ticker"]).upper(): int(r["cik_str"]) for r in rows
+            if isinstance(r, dict) and r.get("ticker") and isinstance(r.get("cik_str"), int)}
+
+
 def cik_for(symbol: str) -> tuple[int, str]:
     """(CIK, company title) for a ticker from the SEC's ticker list."""
     sym = symbol.strip().upper()
@@ -167,6 +216,13 @@ def document(url: str) -> str:
     except OSError:
         pass
     return text
+
+
+def archive(url: str) -> str:
+    """Any file under the SEC filing archive (an 8-K exhibit, an index.json), cached for a day."""
+    if not isinstance(url, str) or not url.startswith(ARCHIVE_PREFIX):
+        raise InvalidInput(f"not an SEC archive URL: {url!r} (must start with {ARCHIVE_PREFIX})")
+    return document(url)
 
 
 def thirteen_f_filings(cik: int) -> list[dict[str, Any]]:

@@ -337,3 +337,27 @@ def test_held_is_passed_through() -> None:
     c = company()
     c["held"] = True
     assert one(c)["held"] is True and one(company())["held"] is False
+
+
+def test_a_large_minority_interest_is_flagged_and_a_small_one_is_not() -> None:
+    big = one(company(nci_income=0.05))     # 0.05 / (0.05 + 0.12) = 29% of net income is the partners'
+    small = one(company(nci_income=0.005))  # 4%
+    assert "LARGE_MINORITY_INTEREST" in big["flags"]
+    assert "LARGE_MINORITY_INTEREST" not in small["flags"]
+    assert "LARGE_MINORITY_INTEREST" not in one(company())["flags"]
+
+
+def test_priced_shares_far_from_the_filed_count_flag_a_corporate_action() -> None:
+    mkt = {"market_cap": 2e9, "enterprise_value": 2e9}
+    halved = one(company(market={**mkt, "shares": 50e6}))     # filed 100m, priced 50m
+    same = one(company(market={**mkt, "shares": 102e6}))
+    unknown = one(company(market=mkt))
+    assert "CORPORATE_ACTION" in halved["flags"]
+    assert "CORPORATE_ACTION" not in same["flags"]
+    assert "CORPORATE_ACTION" not in unknown["flags"]
+
+
+def test_no_corporate_action_flag_when_a_split_was_already_detected() -> None:
+    split = company(shares=(100e6, 100e6, 50e6, 50e6), market={"market_cap": 2e9, "enterprise_value": 2e9, "shares": 100e6})
+    flags = one(split)["flags"]
+    assert "SPLIT_OR_LISTING_YEAR_SKIPPED" in flags and "CORPORATE_ACTION" not in flags

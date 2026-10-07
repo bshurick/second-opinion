@@ -1,0 +1,283 @@
+{
+ "as_of": "2026-10-05",
+ "profile": "value \u00b7 years \u00b7 moderate risk",
+ "gate": {
+  "hurdle": 0.1,
+  "floor": 0.0,
+  "results": [
+   {
+    "symbol": "SAFE",
+    "price": 50.0,
+    "verdict": "pass",
+    "value_range": [
+     45,
+     62
+    ],
+    "central": {
+     "name": "Base",
+     "irr": 0.11,
+     "value_per_share": 62
+    },
+    "worst": {
+     "name": "Bear",
+     "irr": 0.03,
+     "value_per_share": 45
+    },
+    "checks": {
+     "worst_ok": true,
+     "central_ok": true,
+     "all_above_price": false
+    },
+    "reasons": [],
+    "page": "https://example/SAFE",
+    "implied": {
+     "field": "margin_shift",
+     "value": -0.01
+    }
+   },
+   {
+    "symbol": "ABOVE",
+    "price": 50.0,
+    "verdict": "pass_flagged",
+    "value_range": [
+     55,
+     70
+    ],
+    "central": {
+     "name": "Base",
+     "irr": 0.15,
+     "value_per_share": 70
+    },
+    "worst": {
+     "name": "Bear",
+     "irr": 0.08,
+     "value_per_share": 55
+    },
+    "checks": {
+     "worst_ok": true,
+     "central_ok": true,
+     "all_above_price": true
+    },
+    "reasons": [
+     "Every scenario is worth more than the price; a downside case may be missing."
+    ],
+    "page": "https://example/ABOVE",
+    "implied": {
+     "field": "margin_shift",
+     "value": -0.01
+    }
+   },
+   {
+    "symbol": "LOSS",
+    "price": 50.0,
+    "verdict": "fail",
+    "value_range": [
+     40,
+     60
+    ],
+    "central": {
+     "name": "Base",
+     "irr": 0.12,
+     "value_per_share": 60
+    },
+    "worst": {
+     "name": "Bear",
+     "irr": -0.02,
+     "value_per_share": 40
+    },
+    "checks": {
+     "worst_ok": false,
+     "central_ok": true,
+     "all_above_price": false
+    },
+    "reasons": [
+     "Worst scenario 'Bear' loses 2.0% a year, below the 0.0% floor."
+    ],
+    "page": "https://example/LOSS",
+    "implied": {
+     "field": "margin_shift",
+     "value": -0.01
+    }
+   }
+  ],
+  "counts": {
+   "pass": 1,
+   "pass_flagged": 1,
+   "fail": 1
+  }
+ },
+ "funnel": [
+  {
+   "stage": "Industries scanned",
+   "count": 40
+  },
+  {
+   "stage": "Merged pool",
+   "count": 24
+  },
+  {
+   "stage": "Finalists",
+   "count": 3
+  },
+  {
+   "stage": "Picks",
+   "count": 2
+  }
+ ],
+ "industries": [
+  {
+   "sector": "Industrials",
+   "industry": "Railroads",
+   "verdict": "favored",
+   "contrarian": false,
+   "temperature": "Volumes recovering.",
+   "growth": "Carloads +3% (AAR, 2026-09-30)",
+   "sentiment": "Neutral.",
+   "leaders": [
+    {
+     "ticker": "SAFE",
+     "name": "Safe Rail",
+     "trend": "gaining"
+    }
+   ],
+   "evidence": [
+    {
+     "claim": "Orders up 6%",
+     "source": "10-Q Item 2",
+     "date": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "sector": "Consumer Discretionary",
+   "industry": "Homebuilders",
+   "verdict": "unfavored",
+   "contrarian": true,
+   "temperature": "Rates bite.",
+   "growth": "Starts -2% (Census, 2026-09-17)",
+   "sentiment": "Gloomy.",
+   "leaders": [
+    {
+     "ticker": "ABOVE",
+     "name": "Above Homes",
+     "trend": "steady"
+    }
+   ],
+   "evidence": [
+    {
+     "claim": "Orders up 6%",
+     "source": "10-Q Item 2",
+     "date": "2026-08-01"
+    }
+   ]
+  }
+ ],
+ "candidates": [
+  {
+   "ticker": "SAFE",
+   "name": "SAFE Inc",
+   "industry": "Railroads",
+   "origin": "both",
+   "held": false,
+   "scores": {
+    "quality": 4,
+    "direction": 3,
+    "tailwind": 4,
+    "value": 3
+   },
+   "reasons": {
+    "quality": "quality reason",
+    "direction": "direction reason",
+    "tailwind": "tailwind reason",
+    "value": "value reason"
+   },
+   "missing": "Market misses X.",
+   "bad_pick": "If Y.",
+   "health": "passed",
+   "finalist": true
+  },
+  {
+   "ticker": "ABOVE",
+   "name": "ABOVE Inc",
+   "industry": "Railroads",
+   "origin": "industry",
+   "held": false,
+   "scores": {
+    "quality": 4,
+    "direction": 3,
+    "tailwind": 4,
+    "value": 3
+   },
+   "reasons": {
+    "quality": "quality reason",
+    "direction": "direction reason",
+    "tailwind": "tailwind reason",
+    "value": "value reason"
+   },
+   "missing": "Market misses X.",
+   "bad_pick": "If Y.",
+   "health": "passed",
+   "finalist": true
+  },
+  {
+   "ticker": "LOSS",
+   "name": "LOSS Inc",
+   "industry": "Railroads",
+   "origin": "screen",
+   "held": true,
+   "scores": {
+    "quality": 4,
+    "direction": 3,
+    "tailwind": 4,
+    "value": 3
+   },
+   "reasons": {
+    "quality": "quality reason",
+    "direction": "direction reason",
+    "tailwind": "tailwind reason",
+    "value": "value reason"
+   },
+   "missing": "Market misses X.",
+   "bad_pick": "If Y.",
+   "health": "passed",
+   "finalist": true
+  },
+  {
+   "ticker": "OTHER",
+   "name": "OTHER Inc",
+   "industry": "Railroads",
+   "origin": "screen",
+   "held": false,
+   "scores": {
+    "quality": 4,
+    "direction": 3,
+    "tailwind": 4,
+    "value": 3
+   },
+   "reasons": {
+    "quality": "quality reason",
+    "direction": "direction reason",
+    "tailwind": "tailwind reason",
+    "value": "value reason"
+   },
+   "missing": "Market misses X.",
+   "bad_pick": "If Y.",
+   "health": "passed",
+   "finalist": false
+  }
+ ],
+ "picks": {
+  "SAFE": {
+   "thesis": "Steady rail volumes at a fair price.",
+   "bad_pick": "A freight recession."
+  },
+  "ABOVE": {
+   "thesis": "Cheap builder.",
+   "bad_pick": "Rates to 8%."
+  }
+ },
+ "missing_roles": [],
+ "notes": [
+  "Sample built from invented figures."
+ ]
+}
