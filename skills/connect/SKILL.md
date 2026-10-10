@@ -97,9 +97,19 @@ This case applies when the `direct` row's `status` is `expired` or `none`, when 
 
 **The user wants to remove a connection**
 
-1. Show which brokerage will be removed.
+1. Show which brokerage will be removed, and end the reply with the confirmation block in Reply format.
 2. Wait for the user to say yes in their own message.
 3. Run `disconnect.py <id> --confirm`.
+
+## Reply format
+
+**Confirmation block.** A reply that waits on the user's yes ends with this block. It is the last thing in the reply: no follow-up questions, notes or disclaimers after it, so the question is never buried.
+
+```markdown
+---
+### ⚠️ ACTION NEEDED: reply to confirm
+**Nothing has been removed yet.** Reply `yes` to remove the E*Trade connection (Individual Brokerage), or `no` to keep it.
+```
 
 ## Rules
 

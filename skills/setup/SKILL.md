@@ -108,7 +108,17 @@ This case covers "turn off suggested questions", "turn off the trade plan check"
 **Uninstall**
 
 - Plugin install: tell the user it is removed with `/plugin uninstall second-opinion@second-opinion`. The installer refuses `--uninstall` there.
-- Guided install: run `node <installer> --uninstall --json --yes` only after the user confirms in chat. Add `--purge-data` only if they explicitly ask to delete their ledger, journal, and snapshots.
+- Guided install: ask with the confirmation block in Reply format, then run `node <installer> --uninstall --json --yes` only after the user confirms in chat. Add `--purge-data` only if they explicitly ask to delete their ledger, journal, and snapshots.
+
+## Reply format
+
+**Confirmation block.** A reply that waits on the user's yes ends with this block. It is the last thing in the reply: no follow-up questions, notes or disclaimers after it, so the question is never buried.
+
+```markdown
+---
+### ⚠️ ACTION NEEDED: reply to confirm
+**Nothing has been uninstalled yet.** Reply `yes` to uninstall Second Opinion, or `no` to keep it. Say whether the ledger, journal and snapshots are kept or deleted (`--purge-data`).
+```
 
 ## Rules
 

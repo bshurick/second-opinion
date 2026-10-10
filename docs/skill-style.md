@@ -38,6 +38,7 @@ Use `###` headings or bold lead-ins inside a section when it needs parts. Do not
 - Name script output fields in backticks exactly as the script prints them.
 - Use one term for one thing throughout the file.
 - Commands go in fenced `bash` blocks, each starting with `"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/<name>/scripts/` **(tested)**.
+- A reply that waits on the user's yes before a `--confirm` run ends with the `### ⚠️ ACTION NEEDED` confirmation block, defined in each such skill's Reply format. Nothing follows it **(tested)**.
 - No section tags such as `<protocol>`. The one exception is `<research_dating>`, which the tests look for by name; it sits inside `## Rules`.
 - No dates, "measured on", "as of this year", or release history. A figure that goes stale belongs in a reference file with a "verify the current figure" note.
 

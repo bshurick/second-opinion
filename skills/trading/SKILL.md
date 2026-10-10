@@ -185,7 +185,7 @@ NEVER place an order without, in this exact order:
 1. Only when the trade-journal skill is installed (it is an optional extra): running the trading skill's `gate.py <symbol> <BUY|SELL> <qty> [--limit X]` and showing its `decision` and `reasons`. A SKIP decision (the journal is not installed) is not shown. The gate never blocks and never replaces the steps below.
    - On NO_GO or REVIEW, state the reason in one sentence and ask whether to proceed anyway or journal the plan first (trade-journal skill); the user's answer in their own message decides.
 2. Running the trading skill's `preview-order.py <account_id> <symbol> <BUY|SELL> <qty> [--type ... --limit ... --stop ... --term ...]`.
-3. Showing the preview output (trade id, price, units, estimated cost, estimated commission, remaining cash, and any warnings) to the user.
+3. Showing the preview output (trade id, price, units, estimated cost, estimated commission, remaining cash, and any warnings) to the user. End that reply with the confirmation block in Reply format.
 4. Receiving explicit confirmation of that specific order in the user's own message.
 5. Only then running `place-order.py` with the exact same arguments plus `--confirm`. Without `--confirm` the script prints the preview and exits 3 — that is the gate, not a bug to work around. `place-order.py` re-runs the preview itself before placing, so the trade id you saw may differ; that is expected.
 
@@ -204,7 +204,7 @@ When `gate.py` runs:
 
 **The user wants to cancel an order**
 
-Cancelling requires the exact order id (`order_id` on each `orders.py` row) and the user's confirmation before running `cancel-order.py <account_id> <order_id> --confirm`.
+Cancelling requires the exact order id (`order_id` on each `orders.py` row) and the user's confirmation before running `cancel-order.py <account_id> <order_id> --confirm`. Ask for it with the confirmation block in Reply format.
 
 ## Reply format
 
@@ -229,7 +229,22 @@ The page carries the chart, the returns, the full signals table and the pivots. 
 9. The same bull and bear reading.
 10. The reminder that market analysis is not financial advice.
 
-**For an order preview:** trade id, price, units, estimated cost, estimated commission, remaining cash, and any warnings.
+**For an order preview:** trade id, price, units, estimated cost, estimated commission, remaining cash, and any warnings. Then the confirmation block.
+
+**Confirmation block.** A reply that waits on the user's yes ends with this block. It is the last thing in the reply: no follow-up questions, notes or disclaimers after it, so the question is never buried.
+
+```markdown
+---
+### ⚠️ ACTION NEEDED: reply to confirm
+**Nothing has been placed yet.** Reply with the line for each order you want placed:
+- `yes GL`: BUY 10.867 GL, market, about $1,811.31
+- `yes CI`: BUY 6.452 CI, market, about $1,811.53
+Reply `no` to place nothing.
+```
+
+- One line per order, each with its own reply text, so every yes names one specific order.
+- Warnings (`UNSETTLED_CASH`, a cash shortfall, a NO_GO or REVIEW gate reason) go above the block, never after it.
+- For a cancellation, the line reads `` `yes cancel ORDER_ID` ``: cancel the open order and what it was.
 
 **In every reply:**
 

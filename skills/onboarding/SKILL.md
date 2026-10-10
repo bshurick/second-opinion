@@ -112,7 +112,7 @@ Level lookup for question 5: if a profile file already exists and the financial-
 | "Forget ..." | Run `unset`. |
 | "What should I try next" | Run `next-steps`. |
 | "Stop learning about me" | Run `learning off`. Declared answers stay. |
-| "Delete my profile" | Ask once in plain words, then run `delete --confirm`. |
+| "Delete my profile" | Ask once with the confirmation block in Reply format, then run `delete --confirm` on a yes. |
 
 **`show` lists pending proposals**
 
@@ -125,6 +125,14 @@ Level lookup for question 5: if a profile file already exists and the financial-
 **For "show my profile":** a table of field, value, source, date. Then pending proposals and whether learning is on.
 
 **For next steps:** the two groups from `next-steps`, verbatim, under "Set up" and "Try asking", one item per line.
+
+**Confirmation block.** A reply that waits on the user's yes ends with this block. It is the last thing in the reply: no follow-up questions, notes or disclaimers after it, so the question is never buried.
+
+```markdown
+---
+### ⚠️ ACTION NEEDED: reply to confirm
+**Nothing has been deleted yet.** Reply `yes` to delete your Second Opinion profile, or `no` to keep it.
+```
 
 ## Rules
 

@@ -326,6 +326,20 @@ def test_safety_rules_verbatim(skill_name: str) -> None:
         assert rule in text, f"{skill_name}: missing safety rule: {rule}"
 
 
+# Every skill that waits on a user's yes before a --confirm run. A confirmation asked in an
+# ordinary sentence mid-reply was missed in real use, so each one ends the reply with the same
+# call-to-action block.
+CONFIRMATION_SKILLS = ["connect", "onboarding", "portfolio-analysis", "setup", "trading"]
+CONFIRMATION_HEADING = "### ⚠️ ACTION NEEDED"
+
+
+@pytest.mark.parametrize("skill_name", CONFIRMATION_SKILLS)
+def test_confirmations_use_the_call_to_action_block(skill_name: str) -> None:
+    text = _skill_md_path(skill_name).read_text()
+    assert CONFIRMATION_HEADING in text, f"{skill_name}: confirmation prompts need the '{CONFIRMATION_HEADING}' block"
+    assert "last thing in the reply" in text, f"{skill_name}: the confirmation block must close the reply"
+
+
 @pytest.mark.parametrize("skill_name", SKILL_NAMES)
 def test_no_hosted_app_infrastructure_references(skill_name: str) -> None:
     text = _skill_md_path(skill_name).read_text()
