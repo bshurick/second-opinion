@@ -1,10 +1,12 @@
 ---
 name: stock-screener
-description: Screens US filers on growth, value, quality, GARP, magic-formula, Graham or payout presets, checks past picks, or runs a deep pick with industry news and deep valuation. Use when asked to find stocks, for growth or value ideas or best opportunities.
+description: Screens US filers on growth, value, quality, GARP, magic, Graham or payout presets, runs a deep pick with deep valuation, and re-checks saved picks against their valuation. Use when asked to find stocks, for best opportunities, or how picks are doing.
 ---
 Takes a person from "no list" to one to three researched companies. It screens every US filer on a preset's tests, can check the same screen against history, and then walks a five-step research funnel whose later steps hand off to the fundamental-research and valuation skills.
 
 Its deep picker mode adds an industry scan, quick reads of each candidate and deep valuation of the finalists, and surfaces only the finalists that pass a downside test.
+
+Saved picks are re-checked later against the valuation they were picked on, without rerunning it.
 
 ## Background
 
@@ -94,6 +96,47 @@ Its deep picker mode adds an industry scan, quick reads of each candidate and de
 
   - Each finalist's deep valuation keeps its own `DIR/deep-SYMBOL/` folder and page.
 
+### Re-checking picks
+
+- **The store.** `picks.py` keeps each pick in `picks.json` in the plugin data dir, with its baseline in `picks/`. The session scratchpad is cleared, so a pick is only re-checkable once saved.
+  - A deep pick's baseline is its deep valuation: `page.json` and `model.json` from the case folder.
+  - A deep page published earlier embeds the same data, so `save-deep --page` recovers a pick whose folder is gone.
+  - A light pick's baseline is its thesis, the bear / base / bull fair values from the funnel's price check, and the TTM revenue growth and operating margin on the day it was picked.
+- **What `check` measures (deep).** From SEC EDGAR company facts:
+  - the base year: the fiscal year the valuation started from
+  - the latest four reported quarters (TTM)
+  - Each scenario's yearly path gives an expected TTM revenue growth and operating margin (ROE for a bank or insurer). `nearest` is the scenario the actuals sit closest to.
+
+  | `status` | Meaning |
+  |---|---|
+  | `on_track` | The actuals sit nearest the central (first) scenario |
+  | `shifting` | They sit clearly nearer another scenario: the story is moving toward it |
+  | `outside` | Below or above every scenario: the valuation no longer brackets what is happening |
+  | `no_new_data` | No quarter reported since the base year |
+
+- **`rerun_deep`** is true when `outside`, when the valuation is over 15 months old, or when dated evidence contradicts a high-stakes belief or a condition of the central scenario. It means the deep valuation is due again, not that anything about the holding changed.
+- **The watch list.** `result.watch` names the central and nearest scenarios' must-be-true conditions and the ledger beliefs still in play. Evidence on them is what `--evidence` takes.
+- **The price level.** Every check also places today's price against the valuation, apart from `status`. `result.price.levels` gives each threshold price.
+
+  | `level` | Meaning |
+  |---|---|
+  | `above_all` | Above the best scenario's value |
+  | `above_central` | Above the central scenario's value |
+  | `hurdle` | Above the price at which the central scenario earns the hurdle (10%) a year, the test the deep picker admitted the pick on |
+  | `normal` | Between the worst scenario's value and the hurdle price |
+  | `below_worst` | Below the worst scenario's value |
+
+  A light pick uses its bear / base / bull values as worst / central / best, with no hurdle level.
+- **What `check` measures (light).** Growth and margin now against the day of the pick, and the price against the fair values. `weakening` (growth down over 5 points or margin over 2) sets `deep_review`: a deep valuation is the next step.
+- **When a pick is due.** A 10-Q or 10-K is filed after its last check, the price moved 15% or more since then, or the price crossed into a new level other than `normal` (PRICE_LEVEL). The SessionStart hook prints the due picks from the stored earnings date and the watchlist's last prices, with no network. `due` checks EDGAR and live prices.
+- **Limits.**
+  - Company totals are compared, since segment figures are not in XBRL. Segment actuals from the 10-Q segment note go in with `--segments`, in the model's units.
+  - `NO_OPERATING_INCOME` means the filer does not tag operating income, so only revenue is compared.
+  - `APPROX_BASE` means no `model.json` was saved, so the model's starting revenue is backed out of its yearly path.
+  - `FORWARD_BASE` means the model started from an estimate of the year in progress (a guidance midpoint, say), so that year is compared with the estimate. `save-deep --base-end` sets the starting year's end when the guess is wrong.
+  - A segment that is not in reported results yet, such as an acquisition that has not closed, makes every scenario look high. `check --exclude SEGMENT --record` leaves it out of this and later checks.
+  - `ROE_DEFINITION` means reported ROE runs on another basis than the model's (GAAP equity with unrealized losses, against an ex-AOCI model), so the scenarios are shifted by the base-year gap.
+
 ### Reference files
 
 - `references/picker-roles.md` holds the brief for each deep-picker subagent: Shared rules, Industry scanner, Quick reader. Name its absolute path and the two sections in each prompt.
@@ -126,6 +169,11 @@ Run with the Bash tool. Scripts print JSON.
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/gate.py" < DIR/pick-DATE/gate.json
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/render_pick.py" --in DIR/pick-DATE/pick.json --out DIR/pick-DATE/page.html
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/sentiment.py" SYM[,SYM...] [--days 20] [--news-days 30] [--news 10]
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/picks.py" save-deep SYM (--case DIR/deep-SYM | --page FILE) [--thesis TEXT] [--source URL] [--added-price P] [--base-end YYYY-MM-DD]
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/picks.py" save-light SYM --in DIR/light-SYM.json
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/picks.py" list | remove SYM | due [--move 0.15]
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/picks.py" check SYM [--segments FILE] [--evidence FILE] [--exclude SEG,SEG] [--record]
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/track_math.py" < track.json
 ```
 
 | Script | What it does |
@@ -137,10 +185,13 @@ Run with the Bash tool. Scripts print JSON.
 | `gate.py` | The deep picker's downside gate: `pass`, `pass_flagged` or `fail` per finalist, with reasons. |
 | `render_pick.py` | The deep picker's page: picks, near misses, funnel, industry map, candidates. |
 | `sentiment.py` | Per symbol, FINRA daily short-sale volume (not short interest) and dated Yahoo headlines, with flags when either is missing. |
+| `picks.py` | The saved picks: save a deep or light baseline, list, remove, `check` one against its baseline (`--record` keeps the result), and `due`. |
+| `track_math.py` | The re-check arithmetic `picks.py check` runs. Its docstring is the contract. |
 
 | Exit code | Meaning | What to show |
 |---|---|---|
-| 2 | Bad input | `error` |
+| 2 | Bad input; for `picks.py`, also an unknown pick or a page without embedded data | `error` |
+| 4 | `picks.py` only. `SKILL_MISSING`: the fundamental-research skill is not installed | `error` |
 | 5 | EDGAR or Yahoo error | `hint` |
 | 6 | Python deps missing | the error |
 
@@ -187,6 +238,7 @@ The funnel has five steps, in order. Say which step you are on.
    2. Challenge `inputs.py`'s defaults: its discount rate can be too low for a concentrated or volatile company.
    3. A company whose price sits at or above its base case has no margin of safety on these assumptions. Say which ones pass on that test.
 5. **Write it down** (trade-journal, when installed): thesis, what would prove it wrong, planned size, before any order.
+6. **Keep it for re-checks.** Offer to save each company the person picks. On yes, write `DIR/light-SYM.json` with `thesis`, `preset` and `fair_values` (`bear`, `base`, `bull` from step 4), then run `picks.py save-light SYM --in DIR/light-SYM.json`.
 
 **The user wants the best opportunities (the deep picker)**
 
@@ -241,7 +293,25 @@ The funnel has five steps, in order. Say which step you are on.
     - `candidates`: each `cards/<TICKER>.json`, plus `held` from `pool.json` and `finalist: true` or `false`
     - `picks`: a thesis and a "bad pick" sentence for each passing finalist, from its deep valuation
     - `missing_roles` and `notes`, including searches used against the budget
-13. Run `render_pick.py`. Publish with the Artifact tool (icon search, description "Deep picks as of DATE"). Reply in the deep-picker format.
+13. Run `render_pick.py`. Publish with the Artifact tool (icon search, description "Deep picks as of DATE").
+14. Save each pick for re-checks: `picks.py save-deep SYM --case DIR/deep-SYM --thesis "<its thesis>" --source <its deep page link>`.
+15. Reply in the deep-picker format.
+
+**The person asks how their picks are doing, or the session says a pick is due**
+
+1. Run `picks.py list`. When it is empty, say re-checks start from a saved pick, and stop.
+   - When the person names a pick that is not saved and its deep page was published, read the page with the Artifact tool and save its HTML to `DIR/deep-SYM.html`.
+   - Then run `picks.py save-deep SYM --page DIR/deep-SYM.html --source <link>`, with `--added-price` from their cost when they hold it.
+2. Without a named pick, run `picks.py due` and re-check the due ones. Re-check every pick when the person asks for all of them.
+3. For each pick, run `picks.py check SYM`.
+   - When every metric sits far from every scenario in the same direction, look at the model's segments first. Leave out a segment the company does not report yet (`--exclude`).
+4. For a deep pick whose status is not `no_new_data`, look for dated evidence on its `result.watch` items:
+   - Read the latest 10-Q's MD&A with the fundamental-research skill's `filing.py`, and use at most 4 web searches per pick.
+   - Write what you find to `DIR/evidence-SYM.json` in `track_math.py`'s evidence shape. Every item needs a source and a date. An item without one is left out.
+5. When the scenarios differ mainly by segment, read the segment note of that 10-Q and write `DIR/segments-SYM.json` (each segment's TTM revenue and EBIT, in the model's units).
+6. Run `picks.py check SYM --record`, adding `--evidence` and `--segments` when step 4 or 5 wrote them.
+7. If `rerun_deep` is true, say the deep valuation is due again and why, from `reasons`. Offer to run the valuation skill's Deep steps, which replace the baseline when saved. For a light pick with `deep_review`, offer a deep valuation the same way.
+8. Reply with the re-check format below.
 
 **The user asks whether a screen works, or you are about to lean on a ranking**
 
@@ -276,6 +346,18 @@ The funnel has five steps, in order. Say which step you are on.
 4. **Flags**: missing roles, searches used against `budget.json` and anything cut to stay within it, names the health check could not cover, and concentration against the person's portfolio. Or "None".
 5. One sentence, once: the picks are general information at the stated assumptions, not financial, tax, or legal advice.
 
+**For a re-check:** in chat.
+
+1. One table, a row per pick: ticker · status · nearest scenario (deep) · price level · since added · central return a year at today's price against at the valuation (`irr` and `baseline_irr`) · next step (re-run the deep valuation, or none).
+   - For a level other than `normal`, one line under the table per pick: the price against the threshold it crossed, from `result.price.levels`.
+2. Per deep pick, two or three lines:
+   - each metric's actual against the central scenario's expectation and the scenario range (`metrics`)
+   - the evidence found, each item with its source and date
+   - where the price sits against the scenario values
+3. Per light pick, one line: growth and margin at pick against now, and the price against bear / base / bull.
+4. **Flags**: `flags` and `reasons` messages, and picks skipped for missing data. Or "None".
+5. One sentence, once: the re-check is general information at the stated assumptions, not financial, tax, or legal advice.
+
 **For a look-back:** in chat, every time.
 
 1. A small table of the result.
@@ -291,6 +373,9 @@ The funnel has five steps, in order. Say which step you are on.
 - In the deep picker, industry verdicts and candidate scores are judgement backed by dated evidence. They are not forecasts.
 - Surface only gate passes as picks, and never call a pick a recommendation.
 - Name a `pass_flagged` warning beside the pick every time.
+- A price level states where the price sits against the valuation. Name the threshold and leave the decision to the person.
+- A re-check status describes the valuation, not the holding. `outside` or `rerun_deep` says the scenarios need redoing; it is never a signal to buy or sell.
+- In a re-check, evidence without a dated source changes nothing.
 - Never provide buy, sell, or hold recommendations. If a user asks whether they should buy, sell, or hold a security, state clearly that you cannot make investment recommendations, then present relevant analysis they can use to make their own decision.
 - Never use the words "recommend", "advise", "should", or "suggest" when referring to financial actions. Use "the data shows", "analysis indicates", "one factor to consider" instead.
 - Always present both bull and bear cases when analyzing a security or market condition.

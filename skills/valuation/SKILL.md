@@ -202,6 +202,7 @@ Run with the Bash tool. All print JSON on stdout.
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/valuation/scripts/returns.py" <<< '<input json>'
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/valuation/scripts/model.py" < DIR/deep-SYMBOL/model.json
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/valuation/scripts/render_deep.py" --in DIR/deep-SYMBOL/page.json --out DIR/deep-SYMBOL/page.html
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/picks.py" save-deep SYMBOL --case DIR/deep-SYMBOL [--source URL]
 ```
 
 | Script | What it does |
@@ -218,6 +219,7 @@ Run with the Bash tool. All print JSON on stdout.
 | `returns.py` | Annualized return at today's price per scenario, in `convergence` or `paths` mode. |
 | `model.py` | Segment-by-segment, scenario-by-scenario valuation with the path to the horizon and `returns_input`. |
 | `render_deep.py` | The deep-mode page: scenario table, price strip, then the chosen blocks. |
+| `picks.py save-deep` | The stock-screener skill's pick store: keeps the deep valuation as the baseline its re-checks measure against. |
 
 | Exit code | Meaning | What to show |
 |---|---|---|
@@ -326,7 +328,8 @@ Run with the Bash tool. All print JSON on stdout.
     3. Show it as a `custom` block. Never fold it silently into a total.
 12. Write `page.json`. Pick the blocks that tell this company's story, in the order a reader needs them. Run `render_deep.py --in DIR/deep-SYMBOL/page.json --out DIR/deep-SYMBOL/page.html`.
 13. Publish with the Artifact tool: icon chart, description "Deep valuation: SYMBOL at PRICE". Republish the same path on later runs.
-14. Reply in the deep format below. If the Artifact tool is unavailable, use the deep markdown fallback.
+14. If the stock-screener skill is installed and the company is already a saved pick, or the person holds it or asks to track it, save the baseline: `picks.py save-deep SYMBOL --case DIR/deep-SYMBOL --source <page link>`. The case folder lives in the session scratchpad, which is cleared, so this is what later re-checks measure against. The deep picker saves its own picks.
+15. Reply in the deep format below. If the Artifact tool is unavailable, use the deep markdown fallback. When the baseline was not saved, end with one line offering to save it for re-checks.
 
 ## Reply format
 

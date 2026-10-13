@@ -43,8 +43,9 @@ def test_hook_json_registers_the_watchlist_summary() -> None:
 
     data = json.loads((PLUGIN_ROOT / "hooks" / "hooks.json").read_text())
     hooks = data["hooks"]["SessionStart"][0]["hooks"]
-    assert [h["args"][0].rsplit("/", 1)[1] for h in hooks] == ["session-start.sh", "watchlist-summary.sh"]
+    assert [h["args"][0].rsplit("/", 1)[1] for h in hooks] == ["session-start.sh", "watchlist-summary.sh", "picks-summary.sh"]
     assert hooks[1] == {"type": "command", "command": "bash", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/watchlist-summary.sh"], "timeout": 15}
+    assert hooks[2] == {"type": "command", "command": "bash", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/picks-summary.sh"], "timeout": 15}
 
 
 def _run_watchlist_hook(tmp_path: Path, root: Path, **env: str) -> subprocess.CompletedProcess:
@@ -102,6 +103,46 @@ def test_watchlist_summary_hook_prefers_the_managed_venv(tmp_path: Path) -> None
     proc = _run_watchlist_hook(tmp_path, root)
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == "venv-python watchlist.py summary"
+
+
+PICKS_HOOK = PLUGIN_ROOT / "hooks" / "picks-summary.sh"
+
+
+def _run_picks_hook(tmp_path: Path, root: Path, **env: str) -> subprocess.CompletedProcess:
+    full = {**_base_env(), "CLAUDE_PLUGIN_ROOT": str(root), "SECOND_OPINION_DATA": str(tmp_path / "data"), **env}
+    return subprocess.run(["bash", str(PICKS_HOOK)], capture_output=True, text=True, env=full, timeout=60)
+
+
+def _stub_picks(root: Path, body: str, *, saved: bool = True) -> None:
+    script = root / "skills" / "stock-screener" / "scripts" / "picks.py"
+    script.parent.mkdir(parents=True)
+    script.write_text(body)
+    if saved:  # the hook stays silent until a pick has been saved
+        data = root.parent / "data"
+        data.mkdir(exist_ok=True)
+        (data / "picks.json").write_text("{}")
+
+
+def test_picks_summary_hook_is_silent_without_saved_picks(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    _stub_picks(root, "print('Pick re-check: nothing')\n", saved=False)
+    proc = _run_picks_hook(tmp_path, root, SECOND_OPINION_PYTHON=sys.executable)
+    assert proc.returncode == 0 and proc.stdout == "" and proc.stderr == ""
+
+
+def test_picks_summary_hook_prints_the_summary(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    _stub_picks(root, "import sys\nassert sys.argv[1:] == ['summary'], sys.argv\nprint('Pick re-check: 1 of 3 picks due')\n")
+    proc = _run_picks_hook(tmp_path, root, SECOND_OPINION_PYTHON=sys.executable)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "Pick re-check: 1 of 3 picks due" and proc.stderr == ""
+
+
+def test_picks_summary_hook_never_fails_the_session(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    _stub_picks(root, "import sys\nprint('boom', file=sys.stderr)\nsys.exit(4)\n")
+    proc = _run_picks_hook(tmp_path, root, SECOND_OPINION_PYTHON=sys.executable)
+    assert proc.returncode == 0 and proc.stdout == "" and proc.stderr == ""
 
 
 @pytest.mark.parametrize("var", ["SECOND_OPINION_PYTHON", "FINANCE_ANALYST_PYTHON", "PROFICI_PYTHON"])
