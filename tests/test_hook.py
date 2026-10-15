@@ -145,6 +145,59 @@ def test_picks_summary_hook_never_fails_the_session(tmp_path: Path) -> None:
     assert proc.returncode == 0 and proc.stdout == "" and proc.stderr == ""
 
 
+FRESHNESS_HOOK = PLUGIN_ROOT / "hooks" / "portfolio-freshness.sh"
+PORTFOLIO_RULE = PLUGIN_ROOT / "hooks" / "portfolio-check.md"
+
+
+def _run_freshness(tmp_path: Path) -> subprocess.CompletedProcess:
+    full = {**_base_env(), "CLAUDE_PLUGIN_ROOT": str(PLUGIN_ROOT), "SECOND_OPINION_DATA": str(tmp_path / "data"),
+            "SECOND_OPINION_PYTHON": sys.executable}
+    return subprocess.run(["bash", str(FRESHNESS_HOOK)], capture_output=True, text=True, env=full, timeout=60)
+
+
+def test_hook_json_registers_the_portfolio_freshness_hook() -> None:
+    import json
+
+    data = json.loads((PLUGIN_ROOT / "hooks" / "hooks.json").read_text())
+    hooks = data["hooks"]["UserPromptSubmit"][0]["hooks"]
+    assert hooks == [{"type": "command", "command": "bash", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/portfolio-freshness.sh"], "timeout": 10}]
+
+
+def test_freshness_hook_prints_a_stale_read_and_is_silent_when_fresh(tmp_path: Path) -> None:
+    import json
+    from datetime import datetime, timedelta
+
+    data = tmp_path / "data"
+    data.mkdir()
+    marker = data / "portfolio-last-check.json"
+    marker.write_text(json.dumps({"as_of": (datetime.now().astimezone() - timedelta(days=3)).isoformat()}))
+    proc = _run_freshness(tmp_path)
+    assert proc.returncode == 0 and "the portfolio was last read" in proc.stdout and "(3 days ago)" in proc.stdout
+    marker.write_text(json.dumps({"as_of": datetime.now().astimezone().isoformat()}))
+    proc = _run_freshness(tmp_path)
+    assert proc.returncode == 0 and proc.stdout == "" and proc.stderr == ""
+
+
+def test_freshness_hook_is_silent_without_a_data_dir(tmp_path: Path) -> None:
+    proc = _run_freshness(tmp_path)
+    assert proc.returncode == 0 and proc.stdout == ""
+
+
+def test_session_start_prints_portfolio_rule_when_a_brokerage_is_connected(tmp_path: Path) -> None:
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "brokers.json").write_text("{}")
+    proc, _ = _run(tmp_path, SECOND_OPINION_PYTHON=sys.executable)
+    assert proc.returncode == 0, proc.stderr
+    assert PORTFOLIO_RULE.read_text().rstrip() in proc.stdout
+
+
+def test_portfolio_rule_wording() -> None:
+    text = PORTFOLIO_RULE.read_text()
+    assert "brief.py --no-headlines" in text and "last read" in text
+    for banned in ("recommend", "advise", "should", "suggest"):
+        assert banned not in text.lower(), f"portfolio-check rule must not use '{banned}'"
+
+
 @pytest.mark.parametrize("var", ["SECOND_OPINION_PYTHON", "FINANCE_ANALYST_PYTHON", "PROFICI_PYTHON"])
 def test_python_override_skips_venv(tmp_path: Path, var: str) -> None:
     proc, env_file = _run(tmp_path, **{var: sys.executable})

@@ -255,6 +255,8 @@ Reply `no` to place nothing.
 
 ## Rules
 
+- Before discussing entry or exit timing for a position, or an order, follow the session's portfolio check rule: work from holdings read today.
+
 - Every indicator value comes from a script. Present the script's numbers; do not recompute them.
 - Interpret the numbers with the horizon map. Always state the horizon when discussing momentum or reversal.
 - Surface round-trip costs and turnover whenever a short-horizon strategy comes up.

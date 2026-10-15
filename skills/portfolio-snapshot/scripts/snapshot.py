@@ -25,6 +25,8 @@ bucket}}) for the page's per-holding detail panel.
              call per symbol, so slower)
 --no-quotes  skip the Yahoo quote and history fetches; prices are the broker's
              last values and the 1w/1m change columns are omitted
+Every run over all accounts (no --account) writes ``portfolio-last-check.json`` in the plugin
+data dir: {as_of, total_value, positions, partial}. The portfolio-freshness hook reads it.
 --save       append a dated record to ``snapshots.json`` in the plugin data
              dir: {"as_of", "total_value", "cash", "symbols": {symbol:
              market_value}}, all values 2 dp
@@ -67,6 +69,7 @@ from second_opinion.brokers import router  # noqa: E402
 from second_opinion.errors import ApiError, InvalidInput  # noqa: E402
 
 SNAPSHOTS_FILE = "snapshots.json"
+LAST_CHECK_FILE = "portfolio-last-check.json"
 _HISTORY_DAYS = 370  # one year: 1w/1m changes for summary.py and the per-holding price history
 _COMPARE_CAP = 25
 
@@ -181,6 +184,18 @@ def _compare(result: dict, now: datetime) -> tuple[dict | None, list[dict]]:
         },
         [],
     )
+
+
+def _mark_checked(result: dict, partial: bool) -> None:
+    """Record when the whole portfolio was last read (hooks/portfolio-freshness.sh reads it). Best effort."""
+    path = ledger.ledger_path().parent / LAST_CHECK_FILE
+    record = {"as_of": result["as_of"], "total_value": result["totals"].get("total_value"),
+              "positions": len(result.get("positions") or []), "partial": partial}
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(record))
+    except OSError:
+        pass
 
 
 def _save(result: dict) -> None:
@@ -379,6 +394,8 @@ def build(args: list[str]) -> dict:
         out["comparison"] = comparison
     if ns.save:
         _save(out)
+    if not ns.account:
+        _mark_checked(out, partial=bool(ns.partial))
     return out
 
 

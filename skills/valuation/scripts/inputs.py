@@ -61,7 +61,9 @@ so every one can be challenged):
   Diluted Average Shares with today's share count; a ratio below 0.75 or above
   1.33 raises CORPORATE_ACTION_SUSPECTED (a split, reverse split or spin-off may
   separate the statements from today's share count, so per-share DCF values are
-  not meaningful until a post-action year is reported).
+  not meaningful until a post-action year is reported). Yahoo restates share history
+  for splits and spin-offs, so the same flag also fires when its split record shows an
+  adjustment (spin-offs appear as fractional ratios) dated after the latest annual statement.
 - nci_share is the share of net income that goes to noncontrolling interests
   (Yahoo's "Minority Interests", reported negative, over "Net Income Including
   Noncontrolling Interests"); null when the rows are absent. At 10% or more
@@ -385,6 +387,20 @@ def main(argv: list[str] | None = None) -> int:
             ratio = float(shares) / statement_shares
             if ratio < 0.75 or ratio > 1.33:
                 flags.append({"code": "CORPORATE_ACTION_SUSPECTED", "message": f"today's share count {float(shares):.0f} is {ratio:.2f}x the latest annual statement's diluted average shares {statement_shares:.0f}; a split, reverse split or spin-off may separate the statements from today's share count, and the DCF per-share values are not meaningful until a post-action year is reported"})
+        # Yahoo restates past share counts for splits and spin-offs, which hides them from the ratio
+        # above; its split record (spin-offs appear as fractional ratios) dated after the latest
+        # annual statement still gives them away.
+        annual_periods = sorted(str(p)[:10] for p, row in (stmts.get("income_statement") or {}).items() if isinstance(row, dict))
+        if annual_periods and not any(f["code"] == "CORPORATE_ACTION_SUSPECTED" for f in flags):
+            try:
+                split_rows = (market.splits(symbol) or {}).get("splits") or []
+            except Exception:  # noqa: BLE001 - the split record is a cross-check, never a failure
+                split_rows = []
+            later = [r for r in split_rows if str(r.get("date") or "")[:10] > annual_periods[-1]
+                     and isinstance(r.get("split_ratio"), (int, float)) and abs(float(r["split_ratio"]) - 1) > 0.001]
+            if later:
+                events = ", ".join(f"{str(r['date'])[:10]} (ratio {float(r['split_ratio']):g})" for r in later)
+                flags.append({"code": "CORPORATE_ACTION_SUSPECTED", "message": f"Yahoo records a split or spin-off adjustment after the latest annual statement ({annual_periods[-1]}): {events}; the statements may describe a business or share count that no longer exists, and the DCF per-share values are not meaningful until a post-action year is reported"})
 
         div_rows = market.dividend_histories([symbol], years=6).get(symbol) or []
         dividend0 = _ttm_dividend(div_rows, as_of)

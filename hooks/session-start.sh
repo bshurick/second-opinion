@@ -34,12 +34,16 @@ profile_context() {
   "$py" "$script" context 2>/dev/null || true
 }
 
-# Print the standing rules (hooks/broker-login.md only when an E*Trade key is configured, then
-# hooks/follow-ups.md only when that opt-in extra is on) on every exit path, after whatever
+# Print the standing rules (hooks/broker-login.md only when an E*Trade key is configured,
+# hooks/portfolio-check.md when a brokerage is connected, then hooks/follow-ups.md only when that
+# opt-in extra is on) on every exit path, after whatever
 # profile context was printed. Editing those files changes the rule for all skills at once.
 standing_rules() {
   if so_etrade_configured && [ -f "$PLUGIN_ROOT/hooks/broker-login.md" ]; then
     printf '%s\n' "$(<"$PLUGIN_ROOT/hooks/broker-login.md")"
+  fi
+  if { [ -f "$DATA_DIR/brokers.json" ] || so_etrade_configured; } && [ -f "$PLUGIN_ROOT/hooks/portfolio-check.md" ]; then
+    printf '%s\n' "$(<"$PLUGIN_ROOT/hooks/portfolio-check.md")"
   fi
   if so_extra_on follow_ups && [ -f "$PLUGIN_ROOT/hooks/follow-ups.md" ]; then
     printf '%s\n' "$(<"$PLUGIN_ROOT/hooks/follow-ups.md")"

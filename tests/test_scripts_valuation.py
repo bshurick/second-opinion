@@ -265,7 +265,7 @@ def _dividend_history() -> list[dict]:
 @pytest.fixture
 def fake_yahoo(monkeypatch):
     calls: list[str] = []
-    state = {"info": dict(INFO), "statements": dict(STATEMENTS), "yields": {"^TNX": 4.5, "^IRX": 4.0}}
+    state = {"info": dict(INFO), "statements": dict(STATEMENTS), "yields": {"^TNX": 4.5, "^IRX": 4.0}, "splits": []}
 
     def company_info(symbol):
         calls.append(f"info:{symbol}")
@@ -286,7 +286,12 @@ def fake_yahoo(monkeypatch):
     monkeypatch.setattr(market, "company_info", company_info)
     monkeypatch.setattr(market, "financials", financials)
     monkeypatch.setattr(market, "quote", quote)
+    def splits(symbol):
+        calls.append(f"splits:{symbol}")
+        return {"symbol": symbol.upper(), "count": len(state["splits"]), "splits": list(state["splits"])}
+
     monkeypatch.setattr(market, "dividend_histories", dividend_histories)
+    monkeypatch.setattr(market, "splits", splits)
     return _Calls(calls, state)
 
 
@@ -312,7 +317,7 @@ def test_inputs_script_fills_dcf_and_ddm_inputs(fake_yahoo, capsys) -> None:
     assert rc == 0, out
     assert out["symbol"] == "KO" and out["business_type"] == "industrial" and _codes(out) == []
     # exactly one call each: info, statements, the 10-year quote, dividend history
-    assert fake_yahoo.seen() == ["info:KO", "financials:KO", "quote:^TNX", "dividends:KO"]
+    assert fake_yahoo.seen() == ["info:KO", "financials:KO", "quote:^TNX", "splits:KO", "dividends:KO"]
 
     a = out["assumptions"]
     assert a["risk_free"]["value"] == 0.045 and out["sources"]["risk_free"] == "yahoo (^TNX)"
@@ -657,6 +662,33 @@ def test_inputs_flags_a_share_count_that_halved_against_the_statements(fake_yaho
     flag = next(f for f in out["flags"] if f["code"] == "CORPORATE_ACTION_SUSPECTED")
     assert "split, reverse split or spin-off" in flag["message"]
     assert "not meaningful until a post-action year is reported" in flag["message"]
+
+
+def test_inputs_flags_a_split_or_spin_off_after_the_latest_annual_statement(fake_yahoo, capsys) -> None:
+    """A spin-off or reverse split that Yahoo restates into the share history leaves the share-count
+    ratio near 1; the split record dated after the statements still gives it away (HON, 2026-06-29)."""
+    latest = max(STATEMENTS["income_statement"])[:10]
+    after = (date.fromisoformat(latest) + timedelta(days=180)).isoformat()
+    fake_yahoo.state["splits"] = [{"date": "1997-09-16", "split_ratio": 2.0}, {"date": after, "split_ratio": 0.9535}]
+    rc, out = run_json(load_script(INPUTS), ["hon"], capsys)
+    assert rc == 0, out
+    flag = next(f for f in out["flags"] if f["code"] == "CORPORATE_ACTION_SUSPECTED")
+    assert after in flag["message"] and "0.9535" in flag["message"] and "spin-off" in flag["message"]
+
+
+def test_inputs_ignores_splits_before_the_latest_annual_statement(fake_yahoo, capsys) -> None:
+    fake_yahoo.state["splits"] = [{"date": "1997-09-16", "split_ratio": 2.0}]
+    rc, out = run_json(load_script(INPUTS), ["ko"], capsys)
+    assert rc == 0, out
+    assert "CORPORATE_ACTION_SUSPECTED" not in _codes(out)
+
+
+def test_inputs_survives_a_split_lookup_failure(fake_yahoo, capsys, monkeypatch) -> None:
+    def boom(symbol):
+        raise RuntimeError("yahoo down")
+    monkeypatch.setattr(market, "splits", boom)
+    rc, out = run_json(load_script(INPUTS), ["ko"], capsys)
+    assert rc == 0, out
 
 
 def test_inputs_does_not_flag_a_stable_share_count(fake_yahoo, capsys) -> None:

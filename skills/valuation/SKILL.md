@@ -29,7 +29,7 @@ Quick mode runs a discounted-cash-flow range cross-checked against comparable mu
 | `flags` | For a bank or insurer, a REIT, or a regulated utility, a `DCF_NOT_MEANINGFUL_FOR_…` flag says the cash-flow DCF says little and names what to use. `NEGATIVE_FCF` says the same for any company burning cash. |
 | `shares_outstanding` (in `assumptions`) | Yahoo's implied count across every share class when present, else `sharesOutstanding`, else the statement figure. `SHARE_CLASSES_COMBINED` fires when the implied count is more than 5% above the one-class figure. |
 | `assumptions.nci_share`, `LARGE_MINORITY_INTEREST` | The share of net income that goes to noncontrolling interests. At 10% or more the flag fires, `fcf0` is scaled to the parent's share, and the tax rate excludes the partners' earnings. Book value understates the claim, so a deep model values it from the minority's earnings. |
-| `CORPORATE_ACTION_SUSPECTED` | Today's share count is under 0.75 or over 1.33 times the latest statement's diluted average shares: a split, reverse split or spin-off may separate the statements from the share count. Per-share values are not meaningful until a post-action year is reported. |
+| `CORPORATE_ACTION_SUSPECTED` | Today's share count is under 0.75 or over 1.33 times the latest statement's diluted average shares, or Yahoo's split record shows an adjustment after the latest annual statement (spin-offs appear as fractional ratios; Yahoo restates share history, which hides them from the ratio). The statements may describe a business or share count that no longer exists. Per-share values are not meaningful until a post-action year is reported. |
 | `assumptions.fcf0_latest`, `dcf_input_latest`, `CYCLICAL`, `CYCLE_BASE_SPLIT` | `CYCLICAL` fires when the cash-flow margin swings widely across the statements. `dcf_input_latest` then reruns the DCF on the latest year's cash flow. `CYCLE_BASE_SPLIT` fires when the two bases differ more than 2x: present both values, never one base. `intrinsic.py`'s `normalized` block gives a mid-cycle view. |
 | `ddm_input` | Discounts at the cost of equity. `dividend_cagr` runs over complete calendar years. |
 
@@ -388,6 +388,8 @@ The page carries the sensitivity grids, checklists, owner earnings, normalized b
 **Deep mode, markdown fallback:** the same parts without the link, plus the full ledger as a list (belief, verdict, the deciding evidence with sources).
 
 ## Rules
+
+- Before discussing whether to add to, trim or size a position, follow the session's portfolio check rule: work from holdings read today.
 
 - Every number comes from the scripts, or from a `custom/*.py` the Red team reran and the page labels. Present those numbers; do not recompute them by hand.
 - In deep mode, a belief without a dated source changes nothing in the model.

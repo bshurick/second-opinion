@@ -284,6 +284,20 @@ def test_snapshot_save_appends_a_dated_record(sdk, yahoo, data_dir, capsys) -> N
     assert "comparison" not in out
 
 
+def test_every_full_run_records_the_last_portfolio_read(sdk, yahoo, data_dir, capsys) -> None:
+    rc, out = run_json(load_script("portfolio-snapshot/scripts/snapshot.py"), [], capsys)
+    assert rc == 0
+    rec = json.loads((data_dir / "portfolio-last-check.json").read_text())
+    assert rec == {"as_of": out["as_of"], "total_value": 3500.0, "positions": len(out["positions"]), "partial": False}
+
+
+def test_a_one_account_run_does_not_count_as_a_portfolio_read(sdk, yahoo, data_dir, capsys) -> None:
+    acct = run_json(load_script("portfolio-snapshot/scripts/snapshot.py"), [], capsys)[1]["accounts"][0]["account_id"]
+    (data_dir / "portfolio-last-check.json").unlink()
+    rc, _ = run_json(load_script("portfolio-snapshot/scripts/snapshot.py"), ["--account", acct], capsys)
+    assert rc == 0 and not (data_dir / "portfolio-last-check.json").exists()
+
+
 def test_snapshot_save_updates_an_existing_file(sdk, yahoo, data_dir, capsys) -> None:
     (data_dir / "snapshots.json").write_text(json.dumps({"snapshots": [{"as_of": "2026-09-01T00:00:00+00:00", "total_value": 3400.0, "cash": 500.0, "symbols": {}}]}))
     rc, out = run_json(load_script("portfolio-snapshot/scripts/snapshot.py"), ["--save"], capsys)

@@ -204,7 +204,7 @@ Pick the case that matches the request.
 The funnel has five steps, in order. Say which step you are on.
 
 1. **Screen** (this skill).
-   1. If a brokerage is connected and the portfolio-analysis skill is installed, get the held symbols first (its aggregate report) and pass `--held SYM,SYM`. Survivors already owned are marked. Add `--exclude-held` when the person wants new names only.
+   1. If a brokerage is connected, read today's holdings first: portfolio-snapshot's `brief.py --no-headlines`, unless a read from today is already in the conversation. Pass the held symbols as `--held SYM,SYM`. Survivors already owned are marked. Add `--exclude-held` when the person wants new names only.
    2. Pick the preset that matches the ask. Translate the person's words into `--set` overrides; do not invent a preset:
 
       | The person says | Override |
@@ -244,7 +244,7 @@ The funnel has five steps, in order. Say which step you are on.
 
 1. Run `edgar.py` from the fundamental-research skill on any ticker. If it exits 4, stop, say the deep picker needs SEC EDGAR, and offer the funnel.
 2. Make `DIR/pick-DATE/` and its `context/`, `screen/`, `industries/` and `cards/` folders.
-   - When a brokerage is connected, take held symbols and sector weights from the portfolio-snapshot brief.
+   - When a brokerage is connected, take held symbols and sector weights from a portfolio-snapshot read taken today (`brief.py --no-headlines` when there is none yet). The person buys outside these sessions, so the pick store and the watchlist are not a list of holdings.
    - Note the profile, and any theme or sector limit the person gives.
 3. Tell the person the run has started, and its size from Background.
    - Write `budget.json` in the run folder. The session has one shared pool of about 200 web searches, so plan at most 160 and keep 40 in reserve. Every plan below sums to 160 or less:
@@ -300,6 +300,7 @@ The funnel has five steps, in order. Say which step you are on.
 **The person asks how their picks are doing, or the session says a pick is due**
 
 1. Run `picks.py list`. When it is empty, say re-checks start from a saved pick, and stop.
+   - When a brokerage is connected, compare the list with today's holdings (portfolio-snapshot's `brief.py --no-headlines` when there is no read from today). Name held single stocks that are not saved picks, and offer to save the ones with a published deep page.
    - When the person names a pick that is not saved and its deep page was published, read the page with the Artifact tool and save its HTML to `DIR/deep-SYM.html`.
    - Then run `picks.py save-deep SYM --page DIR/deep-SYM.html --source <link>`, with `--added-price` from their cost when they hold it.
 2. Without a named pick, run `picks.py due` and re-check the due ones. Re-check every pick when the person asks for all of them.
