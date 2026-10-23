@@ -128,6 +128,10 @@ Saved picks are re-checked later against the valuation they were picked on, with
 
   A light pick uses its bear / base / bull values as worst / central / best, with no hurdle level.
 - **What `check` measures (light).** Growth and margin now against the day of the pick, and the price against the fair values. `weakening` (growth down over 5 points or margin over 2) sets `deep_review`: a deep valuation is the next step.
+- **Before the 10-Q.** The earnings release (8-K Exhibit 99.1) comes out days to weeks before the 10-Q reaches EDGAR.
+  - `check --release FILE` rolls the TTM forward one quarter with the release's GAAP income statement, and the result carries `PRESS_RELEASE_FIGURES`.
+  - A recorded release check stays `awaiting_filing`, so the 10-Q check is still due; the 10-Q's figures replace the release's.
+- **A new deep valuation over a saved pick** keeps the pick's `added` date and `added_price`, so "since added" still measures from the original pick. `--date` and `--added-price` override them.
 - **When a pick is due.** A 10-Q or 10-K is filed after its last check, the price moved 15% or more since then, or the price crossed into a new level other than `normal` (PRICE_LEVEL). The SessionStart hook prints the due picks from the stored earnings date and the watchlist's last prices, with no network. `due` checks EDGAR and live prices.
 - **Limits.**
   - Company totals are compared, since segment figures are not in XBRL. Segment actuals from the 10-Q segment note go in with `--segments`, in the model's units.
@@ -172,7 +176,7 @@ Run with the Bash tool. Scripts print JSON.
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/picks.py" save-deep SYM (--case DIR/deep-SYM | --page FILE) [--thesis TEXT] [--source URL] [--added-price P] [--base-end YYYY-MM-DD]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/picks.py" save-light SYM --in DIR/light-SYM.json
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/picks.py" list | remove SYM | due [--move 0.15]
-"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/picks.py" check SYM [--segments FILE] [--evidence FILE] [--exclude SEG,SEG] [--record]
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/picks.py" check SYM [--release FILE] [--segments FILE] [--evidence FILE] [--exclude SEG,SEG] [--record]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/track_math.py" < track.json
 ```
 
@@ -185,7 +189,7 @@ Run with the Bash tool. Scripts print JSON.
 | `gate.py` | The deep picker's downside gate: `pass`, `pass_flagged` or `fail` per finalist, with reasons. |
 | `render_pick.py` | The deep picker's page: picks, near misses, funnel, industry map, candidates. |
 | `sentiment.py` | Per symbol, FINRA daily short-sale volume (not short interest) and dated Yahoo headlines, with flags when either is missing. |
-| `picks.py` | The saved picks: save a deep or light baseline, list, remove, `check` one against its baseline (`--record` keeps the result), and `due`. |
+| `picks.py` | The saved picks: save a deep or light baseline, list, remove, `check` one against its baseline (`--record` keeps the result; `--release` uses an earnings release before the 10-Q), and `due`. |
 | `track_math.py` | The re-check arithmetic `picks.py check` runs. Its docstring is the contract. |
 
 | Exit code | Meaning | What to show |
@@ -306,11 +310,16 @@ The funnel has five steps, in order. Say which step you are on.
 2. Without a named pick, run `picks.py due` and re-check the due ones. Re-check every pick when the person asks for all of them.
 3. For each pick, run `picks.py check SYM`.
    - When every metric sits far from every scenario in the same direction, look at the model's segments first. Leave out a segment the company does not report yet (`--exclude`).
-4. For a deep pick whose status is not `no_new_data`, look for dated evidence on its `result.watch` items:
-   - Read the latest 10-Q's MD&A with the fundamental-research skill's `filing.py`, and use at most 4 web searches per pick.
+   - When the pick has reported but the quarter is not in EDGAR yet (`no_new_data`, or `awaiting_filing` on the pick), read the release instead of waiting:
+     1. Run the fundamental-research skill's `earnings.py SYM --last 1 --max-chars 80000`.
+     2. From its GAAP income statement, write `DIR/release-SYM.json` in the shape `picks.py`'s docstring gives. Take `equity_year_ago` from its balance-sheet or book-value table when it shows one.
+     3. Pass it as `--release DIR/release-SYM.json` here and in step 6.
+   - Take figures from the GAAP statement, not the headline or adjusted figures. A one-off the release names (a refund, a remeasurement gain) stays in; name it in the reply.
+4. For a deep pick whose status is not `no_new_data`, or that has a release from step 3, look for dated evidence on its `result.watch` items:
+   - Read the latest 10-Q's MD&A with the fundamental-research skill's `filing.py`, or the release and its guidance before the 10-Q, and use at most 4 web searches per pick.
    - Write what you find to `DIR/evidence-SYM.json` in `track_math.py`'s evidence shape. Every item needs a source and a date. An item without one is left out.
 5. When the scenarios differ mainly by segment, read the segment note of that 10-Q and write `DIR/segments-SYM.json` (each segment's TTM revenue and EBIT, in the model's units).
-6. Run `picks.py check SYM --record`, adding `--evidence` and `--segments` when step 4 or 5 wrote them.
+6. Run `picks.py check SYM --record`, adding `--release`, `--evidence` and `--segments` when step 3, 4 or 5 wrote them.
 7. If `rerun_deep` is true, say the deep valuation is due again and why, from `reasons`. Offer to run the valuation skill's Deep steps, which replace the baseline when saved. For a light pick with `deep_review`, offer a deep valuation the same way.
 8. Reply with the re-check format below.
 
@@ -356,7 +365,7 @@ The funnel has five steps, in order. Say which step you are on.
    - the evidence found, each item with its source and date
    - where the price sits against the scenario values
 3. Per light pick, one line: growth and margin at pick against now, and the price against bear / base / bull.
-4. **Flags**: `flags` and `reasons` messages, and picks skipped for missing data. Or "None".
+4. **Flags**: `flags` and `reasons` messages, and picks skipped for missing data. Or "None". Name `PRESS_RELEASE_FIGURES` every time it appears: the figures are the release's until the 10-Q.
 5. One sentence, once: the re-check is general information at the stated assumptions, not financial, tax, or legal advice.
 
 **For a look-back:** in chat, every time.

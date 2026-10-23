@@ -3,7 +3,7 @@
        picks.py save-light SYMBOL --in FILE [--date YYYY-MM-DD]
        picks.py list
        picks.py remove SYMBOL
-       picks.py check SYMBOL [--segments FILE] [--evidence FILE] [--exclude SEG,SEG] [--record]
+       picks.py check SYMBOL [--release FILE] [--segments FILE] [--evidence FILE] [--exclude SEG,SEG] [--record]
        picks.py due [--move R]
        picks.py summary
 
@@ -13,7 +13,9 @@ in ``picks/SYMBOL-DATE.json`` beside it, so they outlive the session scratchpad.
 ``save-deep`` stores a deep valuation as the baseline: ``--case`` reads the case folder's
 ``page.json`` (and ``model.json`` when present, which pins the base-year revenue); ``--page`` reads
 a rendered deep page's HTML and takes its embedded ``window.DATA`` (how a pick is recovered from its
-published page once the folder is gone). ``added_price`` defaults to the valuation's price.
+published page once the folder is gone). ``added_price`` defaults to the valuation's price. Saving a
+new valuation over an existing pick keeps its ``added`` date and ``added_price`` unless ``--date`` or
+``--added-price`` is given, so "since added" still measures from the original pick.
 ``save-light`` stores a funnel pick: the input file holds {"thesis", "preset", "fair_values":
 {"bear", "base", "bull"}, "added_price"?}; the script measures ``metrics_at_pick`` (TTM revenue
 growth and operating margin) from EDGAR. Saving again replaces the baseline and keeps the checks.
@@ -31,6 +33,17 @@ segment actuals read from the 10-Q segment note, ``--evidence`` dated findings o
 (both JSON files in track_math.py's shapes). ``--record`` appends the check to the pick and moves
 ``next_earnings`` on, unless the quarter that earnings date reported is not in EDGAR yet
 (``awaiting_filing``).
+
+``--release`` rolls the TTM forward one quarter from an earnings release (8-K Exhibit 99.1) before
+the 10-Q reaches EDGAR. The file holds the quarter after EDGAR's latest, in the company's dollars:
+{"period_end", "date", "source", "revenue", "revenue_year_ago", "operating_income"?,
+"operating_income_year_ago"?, "net_income"?, "net_income_year_ago"?, "equity_year_ago"?}. The new
+TTM is EDGAR's TTM less the year-ago quarter plus the released one; operating income (and net
+income) roll only when both quarters are given, else they are left out; ``equity_year_ago`` is
+equity at the year-ago quarter end, the base for ROE. The result carries PRESS_RELEASE_FIGURES and
+``actuals.ttm.basis`` "press_release"; a recorded check keeps ``basis`` and stays
+``awaiting_filing``, so the 10-Q re-check is still due. A release for a quarter EDGAR already has
+is ignored (RELEASE_IN_EDGAR); one that is not the next quarter is bad input. Deep picks only.
 
 ``due`` (network) lists the picks with a 10-Q or 10-K filed after their last check (or since they
 were added), or whose price moved ``--move`` (default 0.15) or more since then. ``summary`` (no
@@ -73,6 +86,7 @@ DEFAULT_MOVE = 0.15
 TTM_SPAN = (250, 300)  # days between the first and last period ends of four consecutive quarters
 YEAR_TOLERANCE = 15
 REPORT_LAG_DAYS = 100  # a quarter reported on an earnings date ended no more than this long before it
+NEXT_QUARTER_DAYS = (80, 100)  # a release's quarter end after EDGAR's latest one
 
 
 class _Parser(argparse.ArgumentParser):
@@ -375,8 +389,11 @@ def _save_deep(ns: argparse.Namespace) -> dict:
                 "returns": data.get("returns"), "ledger": data.get("ledger") or [], "model_input": model_input}
     if ns.base_end:
         baseline["base_period_end"] = ns.base_end
-    added_price = ns.added_price if ns.added_price is not None else data.get("price")
-    fields = {"added": ns.date or as_of, "added_price": added_price, "thesis": ns.thesis, "source": ns.source or str(ns.case or ns.page)}
+    existing = find(load(), symbol)
+    keep = existing is not None and existing.get("kind") == "deep" and ns.date is None and ns.added_price is None
+    added = existing.get("added") if keep else ns.date or as_of
+    added_price = existing.get("added_price") if keep else ns.added_price if ns.added_price is not None else data.get("price")
+    fields = {"added": added, "added_price": added_price, "thesis": ns.thesis, "source": ns.source or str(ns.case or ns.page)}
     return _upsert(symbol, "deep", baseline, as_of, fields)
 
 
@@ -406,11 +423,61 @@ def _read_json(path: str | None, what: str):
         raise InvalidInput(f"{what} file {path}: {exc}") from exc
 
 
+def roll_release(ttm: dict, rel: dict) -> tuple[dict, dict]:
+    """EDGAR's TTM rolled forward by one released quarter, and the flag that says so.
+
+    Returns ``ttm`` unchanged with RELEASE_IN_EDGAR when EDGAR already has the quarter."""
+    if not isinstance(rel, dict):
+        raise InvalidInput("the release file must be a JSON object")
+    try:
+        end = _d(rel.get("period_end"))
+    except (TypeError, ValueError) as exc:
+        raise InvalidInput("the release needs period_end as YYYY-MM-DD") from exc
+    last = _d(ttm["period_end"])
+    if end <= last:
+        return ttm, {"code": "RELEASE_IN_EDGAR", "message": f"EDGAR already has the quarter to {end}; the release was not used"}
+    lo, hi = NEXT_QUARTER_DAYS
+    if not lo <= (end - last).days <= hi:
+        raise InvalidInput(f"the release must be for the quarter after EDGAR's latest ({ttm['period_end']}), not {end}")
+
+    def val(key: str) -> float | None:
+        v = rel.get(key)
+        if v is None:
+            return None
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            raise InvalidInput(f"release {key} must be a number")
+        return float(v)
+
+    for key in ("revenue", "revenue_year_ago"):
+        if val(key) is None:
+            raise InvalidInput(f"the release needs {key}")
+
+    def roll(key: str) -> float | None:
+        cur, ago = val(key), val(f"{key}_year_ago")
+        if ttm.get(key) is None or cur is None or ago is None:
+            return None
+        return ttm[key] - ago + cur
+
+    out = dict(ttm, period_end=end.isoformat(), revenue=roll("revenue"), operating_income=roll("operating_income"),
+               net_income=roll("net_income"), basis="press_release", release_source=rel.get("source"), release_date=rel.get("date"))
+    if val("equity_year_ago") is not None:
+        out["equity_start"] = val("equity_year_ago")
+    flag = {"code": "PRESS_RELEASE_FIGURES",
+            "message": f"TTM to {end} uses the earnings release of {rel.get('date') or 'unknown date'} ({rel.get('source') or 'no source'}); "
+                       "the 10-Q replaces it once it is in EDGAR"}
+    return out, flag
+
+
 def _record(pick: dict, result: dict, actuals: dict, price: float, today: str) -> dict:
     ttm_end = actuals["ttm"]["period_end"] if pick["kind"] == "deep" else actuals["light"]["period_end"]
     entry = {"date": today, "price": price, "period_end": ttm_end, "status": result["status"],
              "nearest": result.get("nearest"), "rerun_deep": result.get("rerun_deep", result.get("deep_review", False)),
              "reasons": [r["code"] for r in result.get("reasons", [])], "price_level": result["price"].get("level")}
+    if pick["kind"] == "deep" and actuals["ttm"].get("basis") == "press_release":
+        entry["basis"] = "press_release"
+        pick.setdefault("checks", []).append(entry)
+        pick["awaiting_filing"] = True  # the figures are the release's: the 10-Q check is still due
+        return entry
     pick.setdefault("checks", []).append(entry)
     old = pick.get("next_earnings")
     if old and old <= today and _d(ttm_end) < _d(old) - timedelta(days=REPORT_LAG_DAYS):
@@ -431,8 +498,14 @@ def _check(ns: argparse.Namespace) -> dict:
     baseline = load_baseline(pick)
     today = date.today().isoformat()
     price = _price(symbol)
+    release = _read_json(ns.release, "release")
+    if release is not None and pick["kind"] != "deep":
+        raise InvalidInput(f"{symbol}: --release applies to deep picks only")
+    release_flag = None
     if pick["kind"] == "deep":
         actuals = edgar_actuals(symbol, baseline["as_of"])
+        if release is not None:
+            actuals["ttm"], release_flag = roll_release(actuals["ttm"], release)
         params = {"mode": "deep", "as_of": today, "price": price, "baseline": baseline,
                   "actuals": {"annual": actuals["annual"], "ttm": actuals["ttm"], "known_at_baseline": actuals["known_at_baseline"],
                               "ttm_at_baseline": actuals.get("ttm_at_baseline")}}
@@ -454,6 +527,8 @@ def _check(ns: argparse.Namespace) -> dict:
         result = track_math.run_track(params)
     except (ValueError, KeyError, TypeError) as exc:
         raise InvalidInput(f"{symbol}: {exc}") from exc
+    if release_flag:
+        result.setdefault("flags", []).append(release_flag)
     recorded = None
     if ns.record:
         recorded = _record(pick, result, actuals, price, today)
@@ -595,6 +670,7 @@ def main(argv: list[str] | None = None) -> int:
         rm.add_argument("symbol")
         ck = sub.add_parser("check", add_help=False)
         ck.add_argument("symbol")
+        ck.add_argument("--release")
         ck.add_argument("--segments")
         ck.add_argument("--evidence")
         ck.add_argument("--exclude")

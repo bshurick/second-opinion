@@ -394,3 +394,92 @@ def test_due_flags_a_price_level_crossing(env, capsys, tmp_path) -> None:
     out = run(["due", "--move", "0.99"], capsys)[1]
     codes = [r["code"] for d in out["due"] for r in d["reasons"]]
     assert "PRICE_LEVEL" in codes
+
+
+# --- press-release figures -------------------------------------------------------------------
+
+
+def release_file(tmp_path, **over) -> str:
+    rel = {"period_end": "2026-09-30", "date": "2026-10-21", "source": "https://www.sec.gov/ex99.htm",
+           "revenue": 270.0, "revenue_year_ago": 250.0, "operating_income": 37.0, "operating_income_year_ago": 33.0,
+           "net_income": 25.0, "net_income_year_ago": 22.0, "equity_year_ago": 630.0}
+    rel.update(over)
+    path = tmp_path / "release.json"
+    path.write_text(json.dumps({k: v for k, v in rel.items() if v is not None}))
+    return str(path)
+
+
+def test_release_rolls_the_ttm_forward_one_quarter(env, capsys, tmp_path) -> None:
+    case, _ = case_folder(tmp_path)
+    run(["save-deep", "ACME", "--case", str(case)], capsys)
+    rc, out = run(["check", "ACME", "--release", release_file(tmp_path)], capsys)
+    assert rc == 0
+    ttm = out["actuals"]["ttm"]
+    assert ttm["period_end"] == "2026-09-30" and ttm["revenue"] == 1045.0 and ttm["operating_income"] == 138.0
+    assert ttm["net_income"] == 93.0 and ttm["equity_start"] == 630.0 and ttm["basis"] == "press_release"
+    assert out["result"]["elapsed_years"] == pytest.approx(0.75, abs=0.01)
+    flag = next(f for f in out["result"]["flags"] if f["code"] == "PRESS_RELEASE_FIGURES")
+    assert "2026-10-21" in flag["message"] and "10-Q" in flag["message"]
+
+
+def test_a_recorded_release_check_stays_due_for_the_filing(env, capsys, tmp_path) -> None:
+    case, _ = case_folder(tmp_path)
+    run(["save-deep", "ACME", "--case", str(case)], capsys)
+    book = json.loads((env["dir"] / "picks.json").read_text())
+    book["picks"][0]["next_earnings"] = "2026-10-21"
+    (env["dir"] / "picks.json").write_text(json.dumps(book))
+    rc, out = run(["check", "ACME", "--release", release_file(tmp_path), "--record"], capsys)
+    assert rc == 0 and out["recorded"]["basis"] == "press_release" and out["recorded"]["period_end"] == "2026-09-30"
+    pick = run(["list"], capsys)[1]["picks"][0]
+    assert pick["awaiting_filing"] is True and pick["next_earnings"] == "2026-10-21"
+
+
+def test_a_release_without_operating_income_compares_revenue_only(env, capsys, tmp_path) -> None:
+    case, _ = case_folder(tmp_path)
+    run(["save-deep", "ACME", "--case", str(case)], capsys)
+    path = release_file(tmp_path, operating_income=None, operating_income_year_ago=None)
+    rc, out = run(["check", "ACME", "--release", path], capsys)
+    assert rc == 0 and out["actuals"]["ttm"]["operating_income"] is None
+
+
+def test_a_release_for_a_quarter_already_in_edgar_is_ignored(env, capsys, tmp_path) -> None:
+    case, _ = case_folder(tmp_path)
+    run(["save-deep", "ACME", "--case", str(case)], capsys)
+    path = release_file(tmp_path, period_end="2026-06-30")
+    rc, out = run(["check", "ACME", "--release", path], capsys)
+    assert rc == 0 and out["actuals"]["ttm"]["revenue"] == 1025.0 and "basis" not in out["actuals"]["ttm"]
+    assert any(f["code"] == "RELEASE_IN_EDGAR" for f in out["result"]["flags"])
+
+
+def test_a_release_that_skips_a_quarter_is_bad_input(env, capsys, tmp_path) -> None:
+    case, _ = case_folder(tmp_path)
+    run(["save-deep", "ACME", "--case", str(case)], capsys)
+    rc, out = run(["check", "ACME", "--release", release_file(tmp_path, period_end="2026-12-31")], capsys)
+    assert rc == 2 and "2026-06-30" in out["error"]
+
+
+def test_a_release_needs_revenue_and_its_year_ago_quarter(env, capsys, tmp_path) -> None:
+    case, _ = case_folder(tmp_path)
+    run(["save-deep", "ACME", "--case", str(case)], capsys)
+    rc, out = run(["check", "ACME", "--release", release_file(tmp_path, revenue_year_ago=None)], capsys)
+    assert rc == 2 and "revenue_year_ago" in out["error"]
+
+
+def test_a_release_is_for_deep_picks_only(env, capsys, tmp_path) -> None:
+    spec = tmp_path / "light.json"
+    spec.write_text(json.dumps({"thesis": "x", "fair_values": {"bear": 15, "base": 24, "bull": 30}}))
+    run(["save-light", "ACME", "--in", str(spec)], capsys)
+    rc, out = run(["check", "ACME", "--release", release_file(tmp_path)], capsys)
+    assert rc == 2 and "--release applies to deep picks only" in out["error"]
+
+
+def test_saving_a_new_valuation_keeps_the_original_added_date_and_price(env, capsys, tmp_path) -> None:
+    case, page = case_folder(tmp_path)
+    run(["save-deep", "ACME", "--case", str(case), "--added-price", "18.5"], capsys)
+    page["as_of"], page["price"] = "2026-10-22", 25.0
+    (case / "page.json").write_text(json.dumps(page))
+    rc, out = run(["save-deep", "ACME", "--case", str(case)], capsys)
+    assert rc == 0 and out["pick"]["added"] == "2026-03-01" and out["pick"]["added_price"] == 18.5
+    assert out["pick"]["baseline_as_of"] == "2026-10-22"
+    rc, out = run(["save-deep", "ACME", "--case", str(case), "--added-price", "24", "--date", "2026-10-22"], capsys)
+    assert out["pick"]["added"] == "2026-10-22" and out["pick"]["added_price"] == 24.0
