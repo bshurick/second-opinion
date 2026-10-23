@@ -1567,6 +1567,24 @@ def test_render_puts_the_account_column_beside_symbol(tmp_path, capsys) -> None:
     assert sym < acct < units
 
 
+def test_render_keeps_units_price_and_total_in_view(tmp_path, capsys) -> None:
+    # A long fund name or a holding spread over four accounts no longer pushes the
+    # money columns off the right edge: the text cells wrap, and Value reads "Total".
+    import json
+
+    snapshot = {"as_of": "2026-10-22T18:28:32+00:00", "sources": {}, "totals": {"total_value": 1.0}, "accounts": [], "positions": [], "top_holdings": [],
+                "concentration": {}, "sector_weights": {}, "movers": {"up": [], "down": []}, "events": None, "comparison": None, "flags": []}
+    src = tmp_path / "snap.json"
+    src.write_text(json.dumps(snapshot))
+    out = tmp_path / "page.html"
+    rc, _ = run_json(load_script("portfolio-snapshot/scripts/render.py"), ["--in", str(src), "--out", str(out)], capsys)
+    assert rc == 0
+    html = out.read_text()
+    units, price, total = html.index("{key: 'units'"), html.index("{key: 'price'"), html.index("{key: 'market_value', label: 'Total'")
+    assert units < price < total
+    assert "#holdings td.l{white-space:normal" in html
+
+
 def test_render_cash_tile_shows_cash_like_holdings(tmp_path, capsys) -> None:
     import json
 

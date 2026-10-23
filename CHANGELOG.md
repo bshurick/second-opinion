@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- portfolio-snapshot: the holdings table keeps Units, Price and Total in view. Long fund names and holdings spread over several accounts used to push the money columns off the right edge; those text cells now wrap, and the Value column reads Total.
 - stock-screener: re-checks no longer wait for the 10-Q. `picks.py check --release FILE` rolls the TTM forward one quarter from the earnings release's GAAP income statement (flag `PRESS_RELEASE_FIGURES`); a recorded release check stays `awaiting_filing`, so the 10-Q check is still due. Saving a new deep valuation over a saved pick keeps its added date and price unless `--date` or `--added-price` is given.
 - valuation: `inputs.py` also raises `CORPORATE_ACTION_SUSPECTED` when Yahoo's split record shows an adjustment after the latest annual statement. Yahoo restates share history for splits and spin-offs, so Honeywell's June 2026 spin-off passed the share-count ratio and its pre-spin cash flow was valued against today's company.
 - portfolio-snapshot, stock-screener, valuation, trading: holdings are read before any change is discussed. A standing rule (`hooks/portfolio-check.md`, printed when a brokerage is connected) has the model work from a portfolio read taken today, never from the watchlist or pick store alone. A new UserPromptSubmit hook (`hooks/portfolio-freshness.sh`, `freshness.py`) adds one line with the local time and the age of the last read when it was on an earlier day. `snapshot.py` records every full read in `portfolio-last-check.json`.

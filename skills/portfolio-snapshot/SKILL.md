@@ -131,7 +131,7 @@ Sections, numbered as shown:
    - "none today" when the list is empty.
    - Then "Sources: X of Y checked, Z skipped, W failed" from `coverage`.
 1. **Accounts** — table from `accounts`, in input order: Account · Institution · Type · Trading · Value · Cash · Weight.
-2. **Top holdings** — table from `top_holdings`: Symbol · Name · Units · Price · Value · Weight · Unrealized P&L · Day % · 1w % · 1m %.
+2. **Top holdings** — table from `top_holdings`: Symbol · Name · Units · Price · Total · Weight · Unrealized P&L · Day % · 1w % · 1m %.
    - The 1w and 1m columns appear only when the run included them; "—" otherwise.
    - If `positions` is longer than `top_holdings`, add one line: "N more positions not shown."
 3. **Allocation** — these parts, in order:

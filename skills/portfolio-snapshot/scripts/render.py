@@ -32,6 +32,7 @@ from second_opinion.errors import InvalidInput  # noqa: E402
 TITLE = "Portfolio Snapshot"
 
 BODY = """
+<style>#holdings td.l{white-space:normal;min-width:120px}</style>
 <h1>Portfolio Snapshot</h1>
 <p class="sub" id="asof"></p>
 <div id="explain"></div>
@@ -201,7 +202,7 @@ SCRIPT = r"""
     {key: 'accounts_txt', label: 'Account', left: true, fmt: v => F.esc(v)},
     {key: 'units', label: 'Units', fmt: v => F.num(v, 3)},
     {key: 'price', label: 'Price', fmt: v => F.money(v)},
-    {key: 'market_value', label: 'Value', fmt: v => F.money(v)},
+    {key: 'market_value', label: 'Total', fmt: v => F.money(v)},
     {key: 'weight', label: 'Weight', fmt: v => F.pct(v)},
     {key: 'unrealized_pnl', label: 'Unrealized', fmt: v => F.moneyS(v), cls: F.cls},
     {key: 'day_change_pct', label: 'Day', fmt: v => F.pct(v, 2, true), cls: F.cls},
