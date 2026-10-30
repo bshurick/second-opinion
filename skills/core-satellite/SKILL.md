@@ -12,10 +12,10 @@ Treats the connected accounts as two sleeves, index funds (the core) and individ
 |---|---|
 | core | ETFs, mutual funds and other fund holdings, including a fund Yahoo labels a plain stock with no sector when its name is fund-shaped (SPYM) |
 | satellite | individual stocks (plain equities) other than the employer stock |
-| employer | the saved `employer_symbol`, in every account |
+| employer | the saved `employer_symbol`, in every account, unless it has a saved deep pick (then it is a satellite pick) |
 | cash | account cash and money market funds; a sweep fund the broker also reports as the account's cash (Fidelity's SPAXX) is counted once |
 
-- **Employer stock is its own bucket.** It is outside the satellite, the ceiling, `n_eff` and `tracking_error`, and never receives satellite money. `mix.single_stock_total` adds it to the satellite. `EMPLOYER_CONCENTRATION` fires when it is above 10% of total value.
+- **Employer stock is its own bucket.** It is outside the satellite, the ceiling, `n_eff` and `tracking_error`, and never receives satellite money, unless the pick store holds a deep pick for it: then it is a pick like any other (`new-pick` takes it). `mix.single_stock_total` adds it to the satellite. `EMPLOYER_CONCENTRATION` fires when it is above 10% of total value, held as a pick or not.
 - **Picks live in trading accounts only.** Retirement accounts hold core. A stock already held in a retirement account counts toward the satellite, gets `PICK_IN_RETIREMENT` and no trades.
 - **Each sale and buy stay in the same account.** A trading account funds its pick buys from its own cash, then by selling its own core funds: any funds named with `--sell` first, in that order, then US equity funds, then international, other, and bond funds last (`BOND_FUND_SOLD`), smallest gain first within each. Retirement core is never sold.
 - **Account roles.** The profile's `account_roles` (set in onboarding) decides trading vs retirement. Without one, the raw account type decides.
@@ -36,6 +36,11 @@ Treats the connected accounts as two sleeves, index funds (the core) and individ
 - **The default ceiling.** 0.20 of total value is a starting point the person decides on, not a target. `mix.proposed_size` is the size the tracking-error budget gives at the current `n_eff`, cut when `SECTOR_HEAVY`. Where both come from is in `references/research.md`.
 - **Size weighting is the default.** Research finds equal or size weights hard to beat and estimated returns the weakest input, so valuation weighting runs only when the person asks for it or has saved it (`references/research.md`).
 - **Valuation weighting** uses deep picks from the stock-screener pick store only. It tilts toward higher `expected_return`, shrinks the tilt as the valuation ages (half-life 182 days), gives no tilt to a pick due for a recheck, trims a pick priced more than 5% above its central value (by its confidence), and caps picks. Light picks and held stocks with no saved valuation keep their size share.
+- **Rebalance is the default under valuation weighting.** `add`, `grow`, `plan-step`, the picks part of `deposit` and `new-pick` move every pick toward a target: an equal share of the new sleeve total times its valuation tilt. New money is always placed, furthest-below-target first.
+  - **Bands** apply only to moves between held picks: a pick is trimmed, or topped up from trims, only when it is at least max(25% of its target, $250) away (`IN_BAND` otherwise).
+  - **Held picks.** A pick due for a recheck holds its value and is not traded (`HELD_FOR_RECHECK`); one whose deep valuation needs a rerun holds the same way (`DEEP_VALUATION_NEEDED`), also when the plan falls back to size weighting.
+  - **Trims stay placeable.** Trims go no further than the picks below target can take, are taken where the buys land, and a sale's proceeds buy picks in its own account only.
+  - `--no-rebalance` keeps new money only, as before; `new-pick --same-size` keeps the sleeve total and trims other picks to pay for the new one.
   - A new pick with an eligible saved valuation opens at the median pick times the same tilt (`new_pick.valuation_multiplier`), capped at 5%.
 - **The 5% cap.** A pick's target never goes above 5% of total value. A pick already above 5% that is not overvalued is never trimmed for being over the cap.
 - **Who receives money.** Only satellite stocks already held in a trading account. A new position opens only through `new-pick`, in the trading account that holds the most pick value (where the picks are kept); with no picks yet, the one with the most cash plus core.
@@ -85,6 +90,8 @@ Common flags: `[--weighting size|valuation] [--include-light] [--over-ceiling] [
 | `--include-light` | This run only; light valuations enter the tilt. |
 | `--over-ceiling` | Lets the satellite pass the ceiling. Only when the person asked for that in their own words. |
 | `--whole-shares` | Whole-share trades. Pass it when the person says their broker does not take fractional orders, or when an order preview rejects fractional units. |
+| `--no-rebalance` | This run only: valuation weighting splits new money only and sells a pick only when it is overvalued, as before rebalancing became the default. |
+| `--same-size` | `new-pick` only: the sleeve total stays the same and other picks are trimmed to pay for the new one. Needs valuation weighting with rebalance on, takes no `--amount`, and exits 2 when no pick has an eligible valuation. |
 | `--sell SYM[,SYM]` | Core funds sold first, in that order, when an account's cash falls short ("sell BND for it"). Each must be a core fund held in a trading account, else exit 2. Cash is still used first. |
 | `--short-term R`, `--long-term R` | Tax rates behind `est_tax`. Defaults 0.24 and 0.15. |
 | `--partial` | Run without E*Trade when its login is pending. |
@@ -93,7 +100,7 @@ All commands print JSON except `settings.py summary`. `add` and `deposit` amount
 
 | Exit code | Meaning | What to do |
 |---|---|---|
-| 2 | Bad input: an amount above trading cash; for `new-pick`, a symbol already held, the employer symbol, or anything other than a single stock (a fund, option or unknown type); no active plan for `plan-step`; an unknown settings key | Show `error`. |
+| 2 | Bad input: an amount above trading cash; for `new-pick`, `--same-size` without valuation weighting and rebalance, with `--amount`, or with no eligible valuation; a symbol already held, the employer symbol, or anything other than a single stock (a fund, option or unknown type); no active plan for `plan-step`; an unknown settings key | Show `error`. |
 | 4 | Credentials missing | Show the `hint`. |
 | 4, code `ETRADE_REAUTH` | An E*Trade login is needed | Follow the session's broker-login rule: show the `url`, get the verifier code, run the connect skill's `etrade-login.py --verifier CODE`, rerun once. `--partial` runs without E*Trade. |
 | 5 | SnapTrade error, or an unreadable `core-satellite.json` | Show the error and the `hint`. |
@@ -102,6 +109,8 @@ All commands print JSON except `settings.py summary`. `add` and `deposit` amount
 ## Steps
 
 Every case starts with a `run.py` call, which is the same-day holdings read. After each `run.py` call, apply the checks under **After every run**, in order, before showing any split or trades.
+
+**Before `add`, `deposit --satellite`, `grow`, `plan-step` or `new-pick` under valuation weighting:** run stock-screener's `picks.py due`, and follow its re-check steps for each due pick, recording each check. Then run the plan. A pick whose check cannot finish yet (no 10-Q and no earnings release to check against) is held by the plan.
 
 **The user asks their mix ("what's my ETF vs stock mix")**
 
@@ -190,7 +199,7 @@ Every case starts with a `run.py` call, which is the same-day holdings read. Aft
    Run `settings.py decide` only after the person answers in their own words.
 3. After every `settings.py decide`, rerun the same `run.py` command before any trades are shown.
 4. If `UNCLASSIFIED`, `NO_PRICE`, `PICK_STORE_UNREADABLE`, `PICK_BASELINE_MISSING` or `NO_PICK_STORE` is in `flags`, name the symbols from its `message` and continue. Never guess a classification.
-5. If `LIGHT_VALUATION` or `NO_SAVED_VALUATION` is in `flags`, offer a deep valuation of those symbols (the valuation skill's Deep steps, saved with stock-screener's `picks.py save-deep`). If `RECHECK_DUE`, offer the stock-screener re-check.
+5. If `LIGHT_VALUATION` or `NO_SAVED_VALUATION` is in `flags`, offer a deep valuation of those symbols (the valuation skill's Deep steps, saved with stock-screener's `picks.py save-deep`). If `RECHECK_DUE`, offer the stock-screener re-check. Name each `HELD_FOR_RECHECK` and `DEEP_VALUATION_NEEDED` pick and why it is held, and offer the deep valuation rerun for the second.
 
 **After the person approves trades**
 
@@ -234,7 +243,7 @@ For `mix` alone, show sections 1, 2, 6 and 7.
 - Never plan a satellite above the ceiling. Pass `--over-ceiling` only when the person asked in their own words to go above it.
 - Run `settings.py decide` only after the person answers in their own words. Never change a saved setting silently.
 - Never treat a light valuation as deep. A light pick in the tilt keeps its `LIGHT_VALUATION` flag in the reply.
-- Never send satellite money to a retirement account or to the employer symbol.
+- Never send satellite money to a retirement account, or to the employer symbol unless it has a saved deep pick.
 - Every number comes from the scripts. The only arithmetic is converting the person's percentages to fractions or dollars, and summing placed trade values for `record-increase` when only some trades were placed.
 - Run each `run.py` command once per answer. The exceptions are a rerun after a `decide`, a reading choice or an E*Trade login, and the `run.py mix` after orders are placed.
 - Never provide buy, sell, or hold recommendations. If a user asks whether they should buy, sell, or hold a security, state clearly that you cannot make investment recommendations, then present relevant analysis they can use to make their own decision.

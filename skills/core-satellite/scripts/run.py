@@ -6,7 +6,8 @@
        run.py new-pick SYMBOL [--amount A]
        run.py plan-step
        common: [--weighting size|valuation] [--include-light] [--over-ceiling] [--whole-shares]
-               [--sell SYM[,SYM]] [--short-term R] [--long-term R] [--partial]
+               [--sell SYM[,SYM]] [--no-rebalance] [--short-term R] [--long-term R] [--partial]
+       new-pick also: [--same-size]
 
 Core/satellite sleeves on the connected accounts: reads positions, per-account cash, quotes and
 tax lots once (rebalancing's plan.read_book), the saved core-satellite settings, the account roles
@@ -16,7 +17,8 @@ sleeves.py. stdin is unused.
 A saved employer_symbol of "none" (any case) means no employer stock.
 
 Account role: the profile's ``account_roles`` entry, else retirement when the raw account type
-looks tax-advantaged, else trading. Bucket: employer for the saved employer symbol; core when the
+looks tax-advantaged, else trading. Bucket: employer for the saved employer symbol (satellite
+instead when the pick store has a deep pick for it); core when the
 quote type is ETF or MUTUALFUND, the sector entry carries fund_sectors or a look-through proxy, or
 it is an EQUITY with no sector and a fund-shaped name (market.looks_like_a_fund_name: Yahoo
 reports SPYM, "SPDR Portfolio S&P 500 ETF", that way); cash for MONEYMARKET; satellite only for
@@ -36,7 +38,8 @@ is fair_values.base and its expected_return is the 3-year convergence estimate (
 recheck_due is set when the pick is awaiting a filing, its next earnings date has passed with no
 check on or after it, it has no next earnings date and is more than 120 days old
 (STALE_NO_EARNINGS_DAYS), or its last check status is "outside"; sleeves.py treats an unknown
-age as due too. A baseline that cannot be read
+age as due too. needs_valuation marks the last two, which a re-check cannot clear.
+``--no-rebalance`` passes rebalance false; ``--same-size`` passes same_size (new-pick). A baseline that cannot be read
 (or a deep model with no scenarios) leaves the symbol out of picks (PICK_BASELINE_MISSING);
 without the stock-screener skill there are no picks (NO_PICK_STORE), and an unreadable pick
 store gives no picks (PICK_STORE_UNREADABLE). A holding with no price is left out (NO_PRICE). The grow values
@@ -214,7 +217,8 @@ def _employer_candidate(hub, accounts: list[dict], roles: dict[str, dict], today
             "sold_within_days": round(statistics.median(waits)) if waits else None}
 
 
-def _classify(positions: list[dict], info: dict, employer: str | None) -> tuple[list[dict], list[str]]:
+def _classify(positions: list[dict], info: dict, employer: str | None,
+              deep: set[str] | frozenset[str] = frozenset()) -> tuple[list[dict], list[str]]:
     """Each position with its bucket, plus the symbols of unknown type (left out).
 
     employer for the saved employer symbol; core for quote type ETF or MUTUALFUND or a
@@ -225,7 +229,7 @@ def _classify(positions: list[dict], info: dict, employer: str | None) -> tuple[
         sym = p["symbol"]
         entry = info.get(sym) or {}
         qt = str(entry.get("quote_type") or "").upper()
-        if employer and sym == employer:
+        if employer and sym == employer and sym not in deep:
             bucket = "employer"
         elif qt in _FUND_TYPES or _fund_marked(entry):
             bucket = "core"
@@ -267,6 +271,28 @@ def _employer_symbol(store: dict) -> str | None:
     """The saved employer ticker, upper case; None when unset or saved as "none" (any case)."""
     sym = str(store.get("employer_symbol") or "").strip().upper()
     return None if sym in ("", "NONE") else sym
+
+
+def _needs_valuation(pick: dict, today: str, age_days: int | None = None) -> bool:
+    """A re-check cannot clear it: the last check left every scenario ("outside"), or the pick
+    has no next earnings date and is older than STALE_NO_EARNINGS_DAYS."""
+    checks = pick.get("checks") or []
+    if not pick.get("next_earnings") and age_days is not None and age_days > STALE_NO_EARNINGS_DAYS:
+        return True
+    return bool(checks) and (checks[-1] or {}).get("status") == "outside"
+
+
+def _deep_symbols() -> set[str]:
+    """Symbols with a saved deep pick; empty when the pick store is missing or unreadable
+    (_picks raises the flag for that)."""
+    pk = _screener()
+    if pk is None:
+        return set()
+    try:
+        store = pk.load()
+    except ApiError:
+        return set()
+    return {str(p.get("symbol") or "").upper() for p in store.get("picks") or [] if p.get("kind") == "deep"}
 
 
 def _recheck_due(pick: dict, today: str, age_days: int | None = None) -> bool:
@@ -324,7 +350,8 @@ def _picks(satellite: dict[str, float], today: str, flags: list[dict]) -> dict:
             continue
         age = _age_days(pick.get("baseline_as_of"), today)
         out[sym] = {"kind": pick.get("kind"), "central_value": central, "expected_return": expected,
-                    "age_days": age, "recheck_due": _recheck_due(pick, today, age)}
+                    "age_days": age, "recheck_due": _recheck_due(pick, today, age),
+                    "needs_valuation": _needs_valuation(pick, today, age)}
     return out
 
 
@@ -343,6 +370,7 @@ def _parser() -> _Parser:
     common.add_argument("--over-ceiling", action="store_true")
     common.add_argument("--whole-shares", action="store_true")
     common.add_argument("--sell", default=None)
+    common.add_argument("--no-rebalance", action="store_true", dest="no_rebalance")
     common.add_argument("--short-term", type=float, default=0.24)
     common.add_argument("--long-term", type=float, default=0.15)
     common.add_argument("--partial", action="store_true")
@@ -364,6 +392,7 @@ def _parser() -> _Parser:
     n = sub.add_parser("new-pick", add_help=False, parents=[common])
     n.add_argument("symbol")
     n.add_argument("--amount", type=float, default=None)
+    n.add_argument("--same-size", action="store_true", dest="same_size")
     sub.add_parser("plan-step", add_help=False, parents=[common])
     return p
 
@@ -398,7 +427,7 @@ def main(argv: list[str] | None = None) -> int:
         info = market.sectors(symbols) if symbols else {}
         if new_sym:
             _check_new_pick(new_sym, info.get(new_sym))
-        positions, unclassified = _classify(book["positions"], info, employer)
+        positions, unclassified = _classify(book["positions"], info, employer, _deep_symbols() if employer else set())
         positions = _drop_sweep_copies(positions, book["cash_by_account"])
         sell_first = _sell_first(ns.sell, positions, roles)
         if unclassified:
@@ -414,6 +443,7 @@ def main(argv: list[str] | None = None) -> int:
             "picks": _picks({**prices, new_sym: new_price} if new_sym else prices, today, flags),
             "sectors": sectors, "employer_sector": employer_sector,
             "core_rank": _core_rank(positions, info), "sell_first": sell_first,
+            "rebalance": not ns.no_rebalance,
             "lots": book["lots"], "rates": {"short_term": ns.short_term, "long_term": ns.long_term},
             "today": today, "over_ceiling": ns.over_ceiling, "whole_shares": ns.whole_shares,
         }
@@ -434,6 +464,7 @@ def main(argv: list[str] | None = None) -> int:
             if ns.amount is not None:
                 params["new_pick"]["amount"] = ns.amount
             params["excluded_symbols"] = sorted(set(unclassified) | set(book["no_price"]))
+            params["same_size"] = ns.same_size
         try:
             result = sleeves.run_sleeves(params)
         except (ValueError, TypeError) as exc:     # KeyError and the like are bugs, not bad input

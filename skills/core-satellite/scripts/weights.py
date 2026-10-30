@@ -16,6 +16,15 @@ uncapped, non-overvalued eligible picks with a_i above 0, else to any pick with 
 new_pick_multiplier: the same tilt for one pick not yet held, as a multiple of its size share:
 the trim factor when overvalued, else max(0, 1 + TILT_LAMBDA x a / TILT_SCALE); 1 when it is not
 eligible or its confidence is 0.
+
+rebalance_targets: targets for a full rebalance of the picks. Symbols in ``fixed`` take the
+target given (held picks, size shares). Every other pick starts from the same base weight
+(equal weight, not its current value, so a second run on unchanged inputs gives the same
+targets) times new_pick_multiplier, scaled to target_total less the fixed targets. A target
+above PICK_CAP x portfolio_total (or the pick's own value, when that is higher) is held there
+and the excess goes to the other picks pro rata to their factors, never to an overvalued one;
+budget no pick can take is left unassigned. band(target) is the distance from target inside which a held pick is not
+moved between holdings: max(BAND_REL x target, BAND_MIN).
 """
 from __future__ import annotations
 
@@ -36,6 +45,8 @@ TILT_LAMBDA = 0.5
 HALF_LIFE_DAYS = 182
 TILT_SCALE = 0.10      # a score of 0.10 moves a pick's raw weight by TILT_LAMBDA
 TRIM_MIN_GAP = 0.05    # overvalued only when price is above central_value x (1 + this)
+BAND_REL = 0.25        # rebalance band: 25% of the target ...
+BAND_MIN = 250.0       # ... or $250, whichever is larger
 
 _EPS = 1e-9
 
@@ -101,6 +112,40 @@ def new_pick_multiplier(pick: dict) -> float:
     if price > central * (1 + TRIM_MIN_GAP):
         return 1 - conf * (1 - central / price)
     return max(0.0, 1 + TILT_LAMBDA * SHRINK_K * conf * (pick["expected_return"] - MARKET_RETURN) / TILT_SCALE)
+
+
+def band(target: float) -> float:
+    return max(BAND_REL * target, BAND_MIN)
+
+
+def rebalance_targets(picks: list[dict], fixed: dict[str, float], target_total: float,
+                      portfolio_total: float) -> dict:
+    factor = {p["symbol"]: new_pick_multiplier(p) for p in picks if p["symbol"] not in fixed}
+    value = {p["symbol"]: float(p["value"]) for p in picks}
+    budget = target_total - sum(fixed.values())
+    cap = PICK_CAP * portfolio_total
+    hi = {s: max(cap, value[s]) for s in factor}
+    t = {s: 0.0 for s in factor}
+    capped: set[str] = set()
+    # an overvalued pick takes its own share only, never another pick's overflow
+    closed = {p["symbol"] for p in picks if p["symbol"] in factor and p.get("eligible") and p.get("confidence", 0) > 0
+              and p["price"] > p["central_value"] * (1 + TRIM_MIN_GAP)}
+    left = max(0.0, budget)
+    for round_ in range(100):
+        open_ = [s for s in factor if s not in capped and (round_ == 0 or s not in closed)]
+        weight = sum(factor[s] for s in open_)
+        if left <= _EPS or weight <= 0:
+            break
+        for s in open_:
+            t[s] += left * factor[s] / weight
+        left = 0.0
+        for s in open_:
+            if t[s] > hi[s] - _EPS:
+                left += t[s] - hi[s]
+                t[s] = hi[s]
+                capped.add(s)
+    targets = {**{s: _r2(v) for s, v in t.items()}, **{s: _r2(v) for s, v in fixed.items()}}
+    return {"targets": targets, "capped": [p["symbol"] for p in picks if p["symbol"] in capped]}
 
 
 def valuation_targets(picks: list[dict], target_total: float, portfolio_total: float) -> dict:

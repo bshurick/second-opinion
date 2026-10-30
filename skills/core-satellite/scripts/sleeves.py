@@ -31,13 +31,16 @@ Input JSON contract (stdin)::
       "core_rank": {SYM: int},               # core sale order: 0 US equity, 1 international,
                                              # 2 other or unknown (the default), 3 bonds
       "sell_first": [SYM],                   # optional: core funds sold first, in this order
+      "rebalance": true,                     # optional, default true: valuation weighting rebalances
+                                             # every pick (false: new money only, as before)
+      "same_size": false,                    # new-pick only: the sleeve total stays put
       "weighting": "size" | "valuation",     # optional; wins over settings.weighting
       "include_light": bool,                 # optional; wins over settings.include_light
       "over_ceiling": false, "whole_shares": false
     }
 
     picks[SYM] = {"kind": "deep" | "light", "central_value", "expected_return",
-                  "age_days", "recheck_due"}
+                  "age_days", "recheck_due", "needs_valuation"?}
 
 Output JSON contract (stdout)::
 
@@ -49,7 +52,8 @@ Output JSON contract (stdout)::
       "weighting_used": "size" | "valuation",   # valuation only when the tilt ran or sized the new pick
       "splits": [{symbol, current, size_target, valuation_target, target, delta,
                   account, flags}],   # split flags: PICK_CAP, TRIM_HELD_BACK,
-                                      # LIGHT_VALUATION, NO_SAVED_VALUATION, RECHECK_DUE
+                                      # LIGHT_VALUATION, NO_SAVED_VALUATION, RECHECK_DUE,
+                                      # HELD_FOR_RECHECK, DEEP_VALUATION_NEEDED, IN_BAND
       "held_back": [{symbol, value, account, long_term_date}],
       "accounts": [{account, funding: {cash, core_sells}, rebalance}],
       "trades": [every account's rebalance trades, each with account],
@@ -65,7 +69,7 @@ Output JSON contract (stdout)::
                                       # buys scaled down by ACCOUNT_SHORT
       "satellite_net",                # satellite-pick BUY values less SELL values in trades
       "settings_used": {ceiling, weighting, include_light, short_term_gain_policy,
-                        employer_symbol},
+                        employer_symbol, rebalance, same_size},
       "flags": [{code, message}]   # DECISION_NEEDED, PICK_IN_RETIREMENT,
                                    # EMPLOYER_CONCENTRATION, LOW_N_EFF, SECTOR_HEAVY,
                                    # ABOVE_CEILING, NO_SATELLITE, ACCOUNT_SHORT,
@@ -90,6 +94,22 @@ trading account that holds the same pick, else its buys are scaled down
 use the smallest-gain order. ``deposit`` without ``satellite_amount`` returns
 a proposal only; with it, the satellite part is planned as ``add`` and the
 core part buys core funds pro rata in the same accounts from their own cash.
+
+Rebalance (valuation weighting with ``rebalance`` true, the default) replaces the new-money
+split in ``add``, ``deposit`` with ``satellite_amount``, ``grow``, ``plan-step`` and
+``new-pick``: the trading picks (and the new pick) go to weights.rebalance_targets for a
+sleeve total of their value plus the amount (``same_size``: plus nothing). A pick due for a
+recheck (or of unknown age) holds its value and is not traded (HELD_FOR_RECHECK, or
+DEEP_VALUATION_NEEDED when ``needs_valuation``); a pick without an eligible valuation keeps its
+size share (the new pick counted at its seed); a pick above the 5% cap that is not overvalued
+keeps its value. New money goes to the new pick, then to the picks furthest below target, with
+no band. A held pick at least weights.band(target) above its target is trimmed; with
+``same_size`` the new pick's need is trimmed first from the picks furthest above target,
+ignoring bands. Trim proceeds go to the new pick, then picks a band or more below target, then
+the rest below target. A pick with no trade inside its band is IN_BAND. ``new-pick`` grows the
+sleeve by the median seed (``amount`` when given); ``needed`` still reports median x
+``valuation_multiplier``. The employer symbol can be a new pick when ``picks`` has a deep entry
+for it, and EMPLOYER_CONCENTRATION counts it in every bucket.
 
 An unset (null) ``settings.employer_symbol`` raises DECISION_NEEDED ("employer_symbol is
 unset: ..."); a saved "none" means no employer stock.
@@ -287,7 +307,7 @@ def _settings_used(settings: dict, params: dict) -> tuple[dict, str]:
 
 def _classify(positions: list[dict], cash: dict[str, float], roles: dict[str, str],
               ceiling: float, source: str, sectors: dict, employer_sector: str | None,
-              flags: list[dict]) -> dict:
+              flags: list[dict], employer_symbol: str | None = None) -> dict:
     """The sleeve mix across all accounts, plus the flags it raises."""
     buckets = {b: sum(p["value"] for p in positions if p["bucket"] == b) for b in _BUCKETS}
     buckets["cash"] += sum(cash.values())
@@ -316,8 +336,11 @@ def _classify(positions: list[dict], cash: dict[str, float], roles: dict[str, st
     for p in positions:
         if p["bucket"] == "satellite" and p["role"] == "retirement":
             _flag(flags, "PICK_IN_RETIREMENT", f"{p['symbol']} in retirement account {p['account']} counts toward the satellite and gets no trades")
-    if buckets["employer"] / total > _EMPLOYER_LIMIT:
-        _flag(flags, "EMPLOYER_CONCENTRATION", f"employer stock is {buckets['employer'] / total:.1%} of total value, above {_EMPLOYER_LIMIT:.0%}")
+    employer = str(employer_symbol or "").upper()
+    held = buckets["employer"] + sum(p["value"] for p in positions
+                                     if p["bucket"] == "satellite" and employer and p["symbol"] == employer)
+    if held / total > _EMPLOYER_LIMIT:
+        _flag(flags, "EMPLOYER_CONCENTRATION", f"employer stock is {held / total:.1%} of total value, above {_EMPLOYER_LIMIT:.0%}")
     if not any(p["bucket"] == "satellite" and p["role"] == "trading" for p in positions):
         _flag(flags, "NO_SATELLITE", "no satellite holdings in trading accounts")
     elif n < weights.MIN_N_EFF:
@@ -632,6 +655,80 @@ def _trim_account(sym: str, aid: str, value: float, price: float, units_held: fl
     return sell_units * price, rows, sellable
 
 
+def _hold(sym: str, value: float, pick: object, flags: list[dict], pick_flags: dict[str, list[str]]) -> bool:
+    """Flag and return True when ``pick`` is due for a recheck (or has no age): it holds at ``value``."""
+    if not isinstance(pick, dict) or not (pick.get("recheck_due") or pick.get("age_days") is None):
+        return False
+    code = "DEEP_VALUATION_NEEDED" if pick.get("needs_valuation") else "HELD_FOR_RECHECK"
+    pick_flags.setdefault(sym, []).append(code)
+    why = "its deep valuation is rerun" if code == "DEEP_VALUATION_NEEDED" else "its recheck completes"
+    _flag(flags, code, f"{sym} holds at its current value ({value:.2f}) until {why}; it is not traded")
+    return True
+
+
+def _trim_split(cuts: dict[str, float], sat: dict[str, dict[str, float]],
+                demand: dict[str, float]) -> dict[str, dict[str, float]]:
+    """Split each cut across the accounts holding the pick: first where ``demand`` (money the
+    account's buys still need) is largest, then pro rata to what is left in each account."""
+    demand = dict(demand)
+    out: dict[str, dict[str, float]] = {}
+    for sym in sorted(cuts):
+        left, parts = cuts[sym], {a: 0.0 for a in sat[sym]}
+        for aid in sorted(sat[sym], key=lambda a: (-demand.get(a, 0.0), a)):
+            take = max(0.0, min(left, sat[sym][aid], demand.get(aid, 0.0)))
+            parts[aid] += take
+            demand[aid] = demand.get(aid, 0.0) - take
+            left -= take
+        room = {a: sat[sym][a] - parts[a] for a in parts}
+        total = sum(room.values())
+        for aid in parts:
+            parts[aid] += left * room[aid] / total if total > 0 else 0.0
+        out[sym] = parts
+    return out
+
+
+def _apply_trims(cuts: dict[str, float], sat: dict[str, dict[str, float]], price: dict[str, float],
+                 units: dict[tuple[str, str], float], params: dict, used: dict, spare: dict[str, float],
+                 flags: list[dict], pick_flags: dict[str, list[str]],
+                 split: dict[str, dict[str, float]] | None = None) -> tuple[dict, list[dict], dict, dict]:
+    """Sell ``cuts`` ({symbol: value}) across the trading accounts holding each pick, pro rata to
+    value, or as ``split`` ({symbol: {account: value}}) gives.
+
+    Each account's part goes through ``_trim_account`` under the short-term-gain policy; its
+    proceeds are added to that account's ``spare``. Returns (trims {account: {symbol: sold}},
+    held_back rows, lot_override, kept {symbol: value the policy kept unsold}).
+    """
+    lots_in = params.get("lots") or {}
+    policy = used["short_term_gain_policy"]
+    trims: dict[str, dict[str, float]] = {}
+    held_back: list[dict] = []
+    lot_override: dict[str, dict[str, list[dict]]] = {}
+    kept: dict[str, float] = {}
+    for sym in sorted(cuts):
+        current = sum(sat[sym].values())
+        for aid in sorted(sat[sym]):
+            part = split[sym][aid] if split else cuts[sym] * sat[sym][aid] / current
+            lots = [lot for lot in lots_in.get(sym) or [] if lot.get("account") in (None, aid)]
+            sold, rows, sellable = _trim_account(sym, aid, part, price[sym], units[(sym, aid)],
+                                                 lots, policy == "allow", bool(params.get("whole_shares")))
+            kept[sym] = kept.get(sym, 0.0) + part - sold
+            held_back.extend(rows)
+            if sold > _EPS:
+                trims.setdefault(aid, {})[sym] = sold
+                spare[aid] = spare.get(aid, 0.0) + sold
+                if policy != "allow":
+                    lot_override.setdefault(aid, {})[sym] = sellable
+    if held_back:
+        syms = {r["symbol"] for r in held_back}
+        for sym in syms:
+            pick_flags.setdefault(sym, []).append("TRIM_HELD_BACK")
+        total = sum(r["value"] for r in held_back)
+        _flag(flags, "TRIM_HELD_BACK", f"{total:.2f} of trims in {', '.join(sorted(syms))} is held back: those units are short-term or unknown-term gains")
+        if policy is None:
+            _policy_needed(flags)
+    return trims, held_back, lot_override, kept
+
+
 def _valuation_add(amount: float, ctx: dict, positions: list[dict], spare: dict[str, float],
                    params: dict, used: dict, flags: list[dict],
                    pick_flags: dict[str, list[str]],
@@ -658,36 +755,11 @@ def _valuation_add(amount: float, ctx: dict, positions: list[dict], spare: dict[
     for p in positions:
         if p["bucket"] == "satellite" and p["role"] == "trading":
             units[(p["symbol"], p["account"])] = units.get((p["symbol"], p["account"]), 0.0) + p["units"]
-    lots_in = params.get("lots") or {}
-    policy = used["short_term_gain_policy"]
     targets = {s: float(vt["targets"][s]) for s in current}
-    trims: dict[str, dict[str, float]] = {}
-    held_back: list[dict] = []
-    lot_override: dict[str, dict[str, list[dict]]] = {}
-    for sym in sorted(current):
-        cut = current[sym] - targets[sym]
-        if cut <= _EPS:
-            continue
-        for aid in sorted(sat[sym]):
-            part = cut * sat[sym][aid] / current[sym]
-            lots = [lot for lot in lots_in.get(sym) or [] if lot.get("account") in (None, aid)]
-            sold, rows, sellable = _trim_account(sym, aid, part, price[sym], units[(sym, aid)],
-                                                 lots, policy == "allow", bool(params.get("whole_shares")))
-            targets[sym] += part - sold
-            held_back.extend(rows)
-            if sold > _EPS:
-                trims.setdefault(aid, {})[sym] = sold
-                spare[aid] = spare.get(aid, 0.0) + sold
-                if policy != "allow":
-                    lot_override.setdefault(aid, {})[sym] = sellable
-    if held_back:
-        pick_flags_syms = {r["symbol"] for r in held_back}
-        for sym in pick_flags_syms:
-            pick_flags.setdefault(sym, []).append("TRIM_HELD_BACK")
-        total = sum(r["value"] for r in held_back)
-        _flag(flags, "TRIM_HELD_BACK", f"{total:.2f} of trims in {', '.join(sorted(pick_flags_syms))} is held back: those units are short-term or unknown-term gains")
-        if policy is None:
-            _policy_needed(flags)
+    cuts = {sym: current[sym] - targets[sym] for sym in current if current[sym] - targets[sym] > _EPS}
+    trims, held_back, lot_override, kept = _apply_trims(cuts, sat, price, units, params, used, spare, flags, pick_flags)
+    for sym, v in kept.items():
+        targets[sym] += v
     buys = {s: targets[s] - current[s] for s in current if targets[s] - current[s] > _EPS}
     excess = sum(targets.values()) - target_total     # > 0 when held-back value exceeds the cap leftover
     want = sum(buys.values())
@@ -704,6 +776,170 @@ def _valuation_add(amount: float, ctx: dict, positions: list[dict], spare: dict[
         "held_back": held_back,
         "lot_override": lot_override,
         "val": {"targets": vt["targets"], "size": _size_split(sat, amount)},
+    }
+
+
+def _valuation_rebalance(amount: float, ctx: dict, positions: list[dict], spare: dict[str, float],
+                         params: dict, used: dict, flags: list[dict],
+                         pick_flags: dict[str, list[str]], shorts: dict[str, float] | None = None,
+                         new: dict | None = None, same_size: bool = False) -> dict | None:
+    """Rebalance every trading-account pick (and ``new``) to equal-weight-times-tilt targets.
+
+    The sleeve total becomes the trading picks' value plus ``amount`` (``same_size``: plus 0).
+    Held picks (due for a recheck) keep their value; picks without an eligible valuation
+    keep their size share; a pick above the 5% cap that is not overvalued keeps its value.
+    New money goes to the new pick, then to the picks furthest below target. Picks at least
+    one band above target are trimmed (``same_size`` first trims, ignoring bands, what the
+    new pick needs), no further than the picks below target can take, and from the accounts
+    their buys route to; each account's proceeds go to its new pick, then its picks a band or
+    more below target, then the rest below target, and proceeds no buy spends are not sold.
+    Returns None when no pick is eligible with confidence above 0,
+    else the ``_valuation_add`` shape.
+    """
+    sat = _holdings(positions, "satellite")
+    rows = list(positions)
+    nsym = None
+    if new is not None:
+        nsym = new["symbol"]
+        sat = {**sat, nsym: {new["account"]: 0.0}}
+        rows.append({"symbol": nsym, "units": 0.0, "price": new["price"], "account": new["account"],
+                     "bucket": "satellite", "role": "trading"})
+    if not sat:
+        return None
+    picks = params.get("picks") or {}
+    scratch: list[dict] = []
+    scratch_pf: dict[str, list[str]] = {}
+    inputs = _pick_inputs(sat, rows, picks, used["include_light"], scratch, scratch_pf)
+    # the new pick's own valuation flags were raised when it was sized
+    flags.extend(f for f in scratch if nsym is None or not f["message"].startswith(f"{nsym} "))
+    for sym, codes in scratch_pf.items():
+        if sym != nsym:
+            pick_flags.setdefault(sym, []).extend(codes)
+    if not any(r["eligible"] and r["confidence"] > 0 for r in inputs):
+        return None
+
+    current = {sym: sum(a.values()) for sym, a in sat.items()}
+    sleeve = sum(current.values())
+    total_t = sleeve + (0.0 if same_size else amount)
+    cap = weights.PICK_CAP * ctx["total"]
+    fixed: dict[str, float] = {}
+    held: set[str] = set()
+    for r in inputs:
+        sym = r["symbol"]
+        pick = picks.get(sym) if isinstance(picks.get(sym), dict) else None
+        trusted = r["eligible"] and r["confidence"] > 0
+        if sym == nsym:
+            if not trusted:
+                fixed[sym] = new["seed"]
+        elif _hold(sym, current[sym], pick, flags, pick_flags):
+            fixed[sym] = current[sym]
+            held.add(sym)
+        elif not trusted:     # its size share, the new pick counted at its seed
+            base = sleeve + (new["seed"] if nsym is not None else 0.0)
+            fixed[sym] = current[sym] * total_t / base if base > 0 else 0.0
+        elif current[sym] > cap and not r["price"] > r["central_value"] * (1 + weights.TRIM_MIN_GAP):
+            fixed[sym] = current[sym]
+    vt = weights.rebalance_targets(inputs, fixed, total_t, ctx["total"])
+    for sym in vt["capped"]:
+        pick_flags.setdefault(sym, []).append("PICK_CAP")
+    targets = {sym: float(v) for sym, v in vt["targets"].items()}
+    movable = sorted(sym for sym in sat if sym not in held)
+
+    buys = {sym: 0.0 for sym in movable}
+
+    def short(sym: str) -> float:
+        return targets[sym] - current[sym] - buys[sym]
+
+    def place(money: float, order: list[str]) -> float:
+        for sym in order:
+            if money <= _EPS:
+                break
+            give = min(max(0.0, short(sym)), money)
+            buys[sym] += give
+            money -= give
+        return money
+
+    money = 0.0 if same_size else amount
+    if nsym is not None:
+        money = place(money, [nsym])
+    money = place(money, sorted(movable, key=lambda x: (-short(x), x)))
+
+    cuts: dict[str, float] = {}
+    olds = [sym for sym in movable if sym != nsym]
+    if same_size and nsym is not None:
+        need = short(nsym)
+        for sym in sorted(olds, key=lambda x: (targets[x] - current[x], x)):
+            over = current[sym] - targets[sym]
+            if need <= _EPS or over <= _EPS:
+                break
+            take = min(over, need)
+            cuts[sym] = take
+            need -= take
+    paid = sum(cuts.values())          # same-size trims: each pays for the new pick
+    band_cuts: dict[str, float] = {}
+    for sym in olds:
+        over = current[sym] - targets[sym] - cuts.get(sym, 0.0)
+        if current[sym] - targets[sym] >= weights.band(targets[sym]) and over > _EPS:
+            band_cuts[sym] = over
+    # trim no more than the picks below target can take, so no proceeds are left as cash
+    # (when capped picks leave part of the total unassigned, trimming more would repeat every run)
+    absorb = max(0.0, sum(max(0.0, short(sym)) for sym in movable) - paid)
+    want = sum(band_cuts.values())
+    scale = min(1.0, absorb / want) if want > _EPS else 0.0
+    for sym, v in band_cuts.items():
+        if v * scale > _EPS:
+            cuts[sym] = cuts.get(sym, 0.0) + v * scale
+    demand: dict[str, float] = {}
+    for sym in movable:
+        if short(sym) > _EPS:
+            aid = _route(sat[sym])
+            demand[aid] = demand.get(aid, 0.0) + short(sym)
+    price = {r["symbol"]: r["price"] for r in inputs}
+    units: dict[tuple[str, str], float] = {}
+    for p in positions:
+        if p["bucket"] == "satellite" and p["role"] == "trading":
+            units[(p["symbol"], p["account"])] = units.get((p["symbol"], p["account"]), 0.0) + p["units"]
+    before = dict(spare)
+    trims, held_back, lot_override, _ = _apply_trims(cuts, sat, price, units, params, used, spare, flags, pick_flags,
+                                                     _trim_split(cuts, sat, demand))
+    sold_total = sum(v for a in trims.values() for v in a.values())
+    outside = [sym for sym in olds if short(sym) >= weights.band(targets[sym])]
+    rest = [sym for sym in olds if sym not in outside]
+    for aid in sorted(trims):        # a sale's proceeds buy only picks routed to its own account
+        here = {sym for sym in movable if _route(sat[sym]) == aid}
+        proceeds = sum(trims[aid].values())
+        if nsym in here:
+            proceeds = place(proceeds, [nsym])
+        proceeds = place(proceeds, sorted((x for x in outside if x in here), key=lambda x: (-short(x), x)))
+        place(proceeds, sorted((x for x in rest if x in here), key=lambda x: (-short(x), x)))
+
+    for sym in olds:
+        if buys[sym] <= _EPS and sym not in cuts and abs(current[sym] - targets[sym]) > _EPS:
+            pick_flags.setdefault(sym, []).append("IN_BAND")
+    alloc = _fund({sym: v for sym, v in buys.items() if v > _EPS}, sat, spare, flags, shorts)
+    whole = bool(params.get("whole_shares"))
+    for aid in sorted(trims):        # proceeds no buy in this account spends are not sold
+        idle = min(sum(trims[aid].values()), spare.get(aid, 0.0) - before.get(aid, 0.0))
+        for sym in sorted(trims[aid]):
+            back = min(idle, trims[aid][sym])
+            if whole:
+                back = math.floor(back / price[sym] + 1e-9) * price[sym]
+            if back > _EPS:
+                trims[aid][sym] -= back
+                spare[aid] -= back
+                idle -= back
+        trims[aid] = {sym: v for sym, v in trims[aid].items() if v > _EPS}
+    sold_total = sum(v for a in trims.values() for v in a.values())
+    for aid, by_sym in trims.items():
+        for sym, v in by_sym.items():
+            alloc.setdefault(aid, {})[sym] = alloc.get(aid, {}).get(sym, 0.0) - v
+    base = {sym: a for sym, a in sat.items() if sym != nsym}
+    return {
+        "alloc": alloc,
+        "unplaced": max(0.0, (0.0 if same_size else amount) + sold_total - _placed(alloc)),
+        "held_back": held_back,
+        "lot_override": lot_override,
+        "val": {"targets": vt["targets"], "size": _size_split(base, amount) if base else {}},
     }
 
 
@@ -962,9 +1198,9 @@ def _placed(alloc: dict[str, dict[str, float]]) -> float:
     return sum(v for a in alloc.values() for v in a.values() if v > 0)
 
 
-def _add(amount: float, positions, spare, flags, shorts=None) -> tuple[dict, float]:
-    """Split ``amount`` by size and place it per account; returns (alloc, unplaced)."""
-    sat = _holdings(positions, "satellite")
+def _add(amount: float, positions, spare, flags, shorts=None, skip=frozenset()) -> tuple[dict, float]:
+    """Split ``amount`` by size over the picks not in ``skip`` and place it per account; returns (alloc, unplaced)."""
+    sat = {s: a for s, a in _holdings(positions, "satellite").items() if s not in skip}
     if not sat:
         return {}, amount
     alloc = _fund(_size_split(sat, amount), sat, spare, flags, shorts)
@@ -988,7 +1224,8 @@ def run_sleeves(params: dict) -> dict:
     today = _day(params["today"], "today") if params.get("today") else date.today()
     flags: list[dict] = []
     ctx = _classify(positions, cash, roles, used["ceiling"], source,
-                    params.get("sectors") or {}, params.get("employer_sector"), flags)
+                    params.get("sectors") or {}, params.get("employer_sector"), flags,
+                    None if str(settings.get("employer_symbol") or "").upper() == "NONE" else settings.get("employer_symbol"))
     ctx["ceiling"] = used["ceiling"]
     if settings.get("employer_symbol") is None:
         _flag(flags, "DECISION_NEEDED", "employer_symbol is unset: employer stock, if any, counts as a pick and can receive satellite money until a ticker or none is saved")
@@ -1010,18 +1247,44 @@ def run_sleeves(params: dict) -> dict:
     val = None
     pick_flags: dict[str, list[str]] = {}
     new_sized = False          # the new pick was sized by its own valuation
+    rebalance = params.get("rebalance", True)
+    same_size = params.get("same_size", False)
+    if not isinstance(rebalance, bool) or not isinstance(same_size, bool):
+        raise ValueError("rebalance and same_size must be true or false")
+    if same_size and mode != "new-pick":
+        raise ValueError("same_size applies to new-pick only")
+    rebalancing = rebalance and used["weighting"] == "valuation"
+    if same_size and not rebalancing:
+        raise ValueError("same_size needs the valuation rebalance: valuation weighting with rebalance on")
+    if same_size and (params.get("new_pick") or {}).get("amount") is not None:
+        raise ValueError("same_size keeps the sleeve total, so it takes no new_pick.amount")
+    rb_fell_back = False
     fallback_why: str | None = f"mode {mode} plans no trades, so the valuation tilt did not run"
 
-    def satellite(amount: float, left_out: float | None = None) -> tuple[dict, float]:
-        nonlocal unplaced, held_back, lot_override, val, fallback_why
+    def satellite(amount: float, left_out: float | None = None, new: dict | None = None) -> tuple[dict | None, float]:
+        """Plan ``amount`` into the picks; with ``new`` (rebalance only) None when it falls back."""
+        nonlocal unplaced, held_back, lot_override, val, fallback_why, rb_fell_back
         if left_out is None:
             amount, left_out = _limit(amount, ctx, params, flags)
         res = None
-        if used["weighting"] == "valuation":
+        if rebalancing and not rb_fell_back:
+            res = _valuation_rebalance(amount, ctx, positions, spare, params, used, flags, pick_flags, shorts,
+                                       new, same_size)
+            fallback_why = "no trading-account pick has an eligible valuation with confidence above 0"
+        elif used["weighting"] == "valuation" and not rebalancing:
             res = _valuation_add(amount, ctx, positions, spare, params, used, flags, pick_flags, shorts)
             fallback_why = "no trading-account pick has an eligible valuation with confidence above 0"
+        if res is None and new is not None:
+            rb_fell_back = True       # its flags are raised; the size path below does not repeat them
+            return None, left_out
         if res is None:
-            plan, short = _add(amount, positions, spare, flags, shorts)
+            skip = set()
+            if rebalancing:      # a pick waiting on its recheck is not bought on the size path either
+                picks = params.get("picks") or {}
+                for sym, by in sorted(_holdings(positions, "satellite").items()):
+                    if _hold(sym, sum(by.values()), picks.get(sym), flags, pick_flags):
+                        skip.add(sym)
+            plan, short = _add(amount, positions, spare, flags, shorts, skip)
             unplaced += short
             return plan, left_out
         unplaced += res["unplaced"]
@@ -1035,6 +1298,15 @@ def run_sleeves(params: dict) -> dict:
         for aid, rows in capacity.items():
             spare[aid] = spare.get(aid, 0.0) + sum(r["cap"] for r in rows)
         amount, over = _limit(amount, ctx, params, flags)
+        if new is not None and rebalancing:
+            plan, _ = satellite(amount, 0.0, new)
+            if plan is not None:
+                alloc = plan
+                core_sells = _core_funding(alloc, cash, capacity, policy, shorts, held_back, lot_override, flags, whole)
+                return
+            if same_size:
+                raise ValueError("same_size needs at least one pick with an eligible valuation to rebalance against; "
+                                 "none has one, so the new pick could only be funded by growing the sleeve")
         got = 0.0
         if new is not None:
             want = min(amount, new["needed"])
@@ -1098,8 +1370,9 @@ def run_sleeves(params: dict) -> dict:
             raise ValueError("new_pick requires symbol and price")
         sym = str(np_in["symbol"]).upper()
         employer = str(settings.get("employer_symbol") or "").upper()
-        if employer not in ("", "NONE") and sym == employer:
-            raise ValueError(f"{sym} is the employer symbol; it never receives satellite money")
+        employer_pick = ((params.get("picks") or {}).get(sym) or {}).get("kind") == "deep"
+        if employer not in ("", "NONE") and sym == employer and not employer_pick:
+            raise ValueError(f"{sym} is the employer symbol; it receives satellite money only as a saved deep pick")
         if any(p["symbol"] == sym for p in positions):
             raise ValueError(f"{sym} is already held; use add")
         excluded = params.get("excluded_symbols") or []
@@ -1138,7 +1411,10 @@ def run_sleeves(params: dict) -> dict:
         new_pick = {"symbol": sym, "needed": _r2(needed), "size_needed": _r2(size_needed),
                     "valuation_multiplier": _r4(mult), "allocated": 0.0, "account": account}
         new_positions = [{"symbol": sym, "price": price, "account": account}]
-        funded(needed if amount is None else amount, True, {"symbol": sym, "needed": needed, "account": account})
+        seed = size_needed if amount is None else min(size_needed, amount)
+        grow_by = seed if rebalancing and amount is None else (needed if amount is None else amount)
+        funded(grow_by, True,
+               {"symbol": sym, "needed": needed, "account": account, "price": price, "seed": seed})
         new_pick["allocated"] = _r2(sum(a.get(sym, 0.0) for a in alloc.values()))
 
     if used["weighting"] == "valuation" and val is None and fallback_why:
@@ -1167,7 +1443,7 @@ def run_sleeves(params: dict) -> dict:
         "over_ceiling_amount": _r2(over),
         "unallocated_amount": _r2(unplaced),
         "satellite_net": _r2(_satellite_net(positions, accounts, (new_pick or {}).get("symbol"))),
-        "settings_used": {**used, "ceiling": _r4(used["ceiling"])},
+        "settings_used": {**used, "ceiling": _r4(used["ceiling"]), "rebalance": rebalance, "same_size": same_size},
         "flags": flags,
     }
 

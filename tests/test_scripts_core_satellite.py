@@ -280,7 +280,7 @@ def _light() -> dict:
 
 
 def test_valuation_mode_tilts_and_trims() -> None:
-    p = _params(mode="add", amount=1000, weighting="valuation", settings={"short_term_gain_policy": "allow"},
+    p = _params(rebalance=False, mode="add", amount=1000, weighting="valuation", settings={"short_term_gain_policy": "allow"},
                 picks={"AAA": _deep(central=150, er=0.20), "BBB": _deep(central=40, er=0.02)})   # BBB price 50 -> overvalued
     out = load_script(SL).run_sleeves(p)
     sides = {(t["symbol"], t["side"]) for t in out["trades"]}
@@ -289,7 +289,7 @@ def test_valuation_mode_tilts_and_trims() -> None:
 
 
 def test_overvalued_short_term_lots_are_held_back() -> None:
-    p = _params(mode="add", amount=1000, weighting="valuation",
+    p = _params(rebalance=False, mode="add", amount=1000, weighting="valuation",
                 picks={"AAA": _deep(central=150, er=0.20), "BBB": _deep(central=40, er=0.02)},
                 lots={"BBB": [{"units": 20, "cost_per_unit": 30.0, "term": "short", "acquired": "2026-03-01", "account": "t1"},
                               {"units": 20, "cost_per_unit": 30.0, "term": "short", "acquired": "2026-03-01", "account": "t2"}]})
@@ -326,7 +326,7 @@ def test_account_short_money_is_unallocated() -> None:
 
 def test_trim_takes_loss_lots_and_holds_short_term_gains() -> None:
     # BBB at age 0 has confidence 1, so its trim is the full 2000 x (1 - 40/50) = 400
-    p = _params(mode="add", amount=1000, weighting="valuation", settings={"short_term_gain_policy": "hold"},
+    p = _params(rebalance=False, mode="add", amount=1000, weighting="valuation", settings={"short_term_gain_policy": "hold"},
                 picks={"AAA": _deep(central=150, er=0.20), "BBB": _deep(central=40, er=0.02, age_days=0)},
                 lots={"BBB": [{"units": 20, "cost_per_unit": 60.0, "term": "short", "acquired": "2026-06-01", "account": "t1"},
                               {"units": 20, "cost_per_unit": 30.0, "term": "short", "acquired": "2026-02-01", "account": "t2"}]})
@@ -556,7 +556,7 @@ def test_whole_share_grow_core_sale_rounds_up_and_never_overspends() -> None:
 
 
 def test_whole_share_valuation_trim_never_overspends() -> None:
-    p = _pricey_etfs(_params(mode="grow", grow={"amount": 1000}, whole_shares=True, weighting="valuation",
+    p = _pricey_etfs(_params(rebalance=False, mode="grow", grow={"amount": 1000}, whole_shares=True, weighting="valuation",
                              settings={"ceiling": 0.30, "short_term_gain_policy": "allow"},
                              picks={"AAA": _deep(central=150, er=0.20), "BBB": _deep(central=43, er=0.02)},
                              cash_by_account={"t1": 0.0, "t2": 0.0, "r1": 0.0}))
@@ -799,7 +799,13 @@ def test_run_corrupt_pick_store_continues(cs_sdk, capsys, tmp_path) -> None:
 
 def test_run_employer_symbol_is_its_own_bucket(cs_sdk, capsys, tmp_path) -> None:
     (tmp_path / "core-satellite.json").write_text(json.dumps({"employer_symbol": "BBB"}))
-    rc, out = run_json(load_script(R), ["mix"], capsys)
+    rc, out = run_json(load_script(R), ["mix"], capsys)      # BBB has a saved deep pick: it is a pick
+    assert rc == 0, out
+    assert out["mix"]["employer"]["value"] == 0.0 and out["mix"]["satellite"]["value"] == 1500.0
+    store = json.loads((tmp_path / "picks.json").read_text())
+    store["picks"] = [pk for pk in store["picks"] if pk["symbol"] != "BBB"]
+    (tmp_path / "picks.json").write_text(json.dumps(store))
+    rc, out = run_json(load_script(R), ["mix"], capsys)      # no deep pick: its own bucket
     assert rc == 0, out
     assert out["mix"]["employer"]["value"] == 500.0 and out["mix"]["satellite"]["value"] == 1000.0
 
@@ -944,7 +950,8 @@ def _fuzz_case(rng) -> dict:
     p = {"mode": mode, "positions": pos, "accounts": accts, "cash_by_account": cash, "settings": settings,
          "picks": picks, "lots": lots, "today": "2026-10-29", "whole_shares": rng.random() < 0.4,
          "include_light": rng.random() < 0.3, "rates": {"short_term": 0.24, "long_term": 0.15},
-         "core_rank": {s: r for s, r in _CORE_SYMS.items() if rng.random() < 0.8}}
+         "core_rank": {s: r for s, r in _CORE_SYMS.items() if rng.random() < 0.8},
+         "rebalance": rng.random() < 0.6}
     trading_cash = cash["t1"] + cash["t2"]
     if mode == "add":
         p["amount"] = rng.uniform(1, max(2, trading_cash))
@@ -957,6 +964,7 @@ def _fuzz_case(rng) -> dict:
                            "by_relative": rng.uniform(0.05, 1.0), "amount": rng.uniform(100, 20000)}[key]}
     elif mode == "new-pick":
         p["new_pick"] = {"symbol": "NEWP", "price": 40.0, **({"amount": rng.uniform(500, 8000)} if rng.random() < 0.5 else {})}
+        p["same_size"] = rng.random() < 0.5
     else:
         settings["plan"] = {"status": "active", "target": rng.choice([0.15, 0.25]), "by_date": "2027-06-01",
                             "cadence": rng.choice(["monthly", "quarterly"]), "funding": rng.choice(["cash", "core"])}
@@ -980,6 +988,10 @@ def _invariant_errors(p: dict, out: dict) -> list[str]:
         if t["symbol"] in employer:                                                      # 2
             errs.append(f"employer symbol {t['symbol']} traded")
         net[a] = net.get(a, 0.0) + (t["value"] if t["side"] == "BUY" else -t["value"])
+        held = p["picks"].get(t["symbol"]) or {}
+        if (t["symbol"] in sat_syms and p["rebalance"] and p["settings"]["weighting"] == "valuation"
+                and held and (held.get("recheck_due") or held.get("age_days") is None)):   # 6, rebalance
+            errs.append(f"pick {t['symbol']} traded ({t['side']}) though held for its recheck")
         if t["side"] != "SELL":
             continue
         if not allow:                                                                    # 4
@@ -989,7 +1001,12 @@ def _invariant_errors(p: dict, out: dict) -> list[str]:
                 errs.append(f"{t['symbol']} sells {t['units']} units, only {safe} are losses or long-term in {a}")
             if any(lot["term"] != "long" and lot["gain"] > 0.01 for lot in t.get("lots") or []):
                 errs.append(f"{t['symbol']} sells a short-term or unknown-term gain lot")
-        if t["symbol"] in sat_syms:                                                      # 6
+        rebalancing = p["rebalance"] and p["settings"]["weighting"] == "valuation"
+        if t["symbol"] in sat_syms and rebalancing:                                     # 6, rebalance
+            pk = p["picks"].get(t["symbol"]) or {}
+            if pk and (pk.get("recheck_due") or pk.get("age_days") is None):
+                errs.append(f"pick {t['symbol']} sold though held for its recheck")
+        elif t["symbol"] in sat_syms:                                                    # 6
             pk = p["picks"].get(t["symbol"]) or {}
             usable = pk.get("kind") == "deep" or (pk.get("kind") == "light" and p["include_light"])
             fresh = not pk.get("recheck_due") and pk.get("age_days") is not None
@@ -1115,7 +1132,7 @@ def test_new_pick_multiplier_tilts_by_valuation() -> None:
 def test_new_pick_sized_by_its_valuation_under_valuation_weighting() -> None:
     sl = load_script(SL)
     base = dict(mode="new-pick", new_pick={"symbol": "NEW", "price": 80.0}, settings={"weighting": "valuation"})
-    out = sl.run_sleeves(_params(**base, picks={"NEW": _deep(central=100.0, er=0.11, age_days=0)}))
+    out = sl.run_sleeves(_params(rebalance=False, **base, picks={"NEW": _deep(central=100.0, er=0.11, age_days=0)}))
     assert out["new_pick"]["size_needed"] == 2000.0 and out["new_pick"]["valuation_multiplier"] == 1.1
     assert out["new_pick"]["needed"] == 2200.0 and out["new_pick"]["allocated"] == 2200.0
     assert "VALUATION_FALLBACK" not in {f["code"] for f in out["flags"]} and out["weighting_used"] == "valuation"
@@ -1126,3 +1143,265 @@ def test_new_pick_sized_by_its_valuation_under_valuation_weighting() -> None:
     assert out["new_pick"]["needed"] == 2000.0                          # size weighting ignores it
     out = sl.run_sleeves(_params(**base, picks={"NEW": _deep(central=500.0, er=0.60, age_days=0)}))
     assert out["new_pick"]["needed"] == 2350.0                          # 5% pick cap of the 47000 total
+
+
+def test_rebalance_targets_equal_weight_times_tilt() -> None:
+    w = load_script(W)
+    rows = [{"symbol": "A", "value": 5000, "price": 80, "central_value": 100, "expected_return": 0.15, "eligible": True, "confidence": 1.0},
+            {"symbol": "B", "value": 1000, "price": 80, "central_value": 100, "expected_return": 0.07, "eligible": True, "confidence": 1.0},
+            {"symbol": "C", "value": 2000, "price": 50, "central_value": 40, "expected_return": 0.0, "eligible": True, "confidence": 1.0}]
+    out = w.rebalance_targets(rows, {"H": 1000.0}, 9000.0, 1_000_000.0)
+    # base 1 each; tilt A 1.2, B 1.0, C trim factor 0.8 -> 8000 x [1.2, 1.0, 0.8] / 3.0
+    assert out["targets"] == pytest.approx({"A": 3200.0, "B": 2666.67, "C": 2133.33, "H": 1000.0}, abs=0.01)
+    assert out["capped"] == []
+    assert w.band(400.0) == 250.0 and w.band(2000.0) == 500.0
+
+
+def test_rebalance_targets_cap_redistributes() -> None:
+    w = load_script(W)
+    rows = [{"symbol": s, "value": 0, "price": 80, "central_value": 100, "expected_return": er, "eligible": True, "confidence": 1.0}
+            for s, er in (("A", 0.30), ("B", 0.07), ("C", 0.07))]
+    out = w.rebalance_targets(rows, {}, 3000.0, 20000.0)       # cap 1000 each
+    assert out["targets"] == pytest.approx({"A": 1000.0, "B": 1000.0, "C": 1000.0})
+    assert out["capped"] == ["A", "B", "C"]
+
+
+# --- rebalance by valuation (equal weight x tilt, bands on moves between holdings) -----------------
+
+_RB_SETTINGS = {"weighting": "valuation", "short_term_gain_policy": "allow", "ceiling": 1.0, "employer_symbol": "none"}
+
+
+def _rb_params(sat: dict[str, float], picks: dict, cash: float = 0.0, core: float = 300000.0, **over) -> dict:
+    positions = [_pos("VTI", core / 100, "t1", "core")]
+    positions += [{"symbol": s, "units": v / 50.0, "price": 50.0, "account": "t1", "bucket": "satellite"} for s, v in sat.items()]
+    p = {"mode": "add", "positions": positions, "accounts": {"t1": {"role": "trading"}},
+         "cash_by_account": {"t1": cash}, "settings": dict(_RB_SETTINGS), "picks": picks,
+         "sectors": {s: "Industrials" for s in sat}, "lots": {}, "rates": {"short_term": 0.24, "long_term": 0.15},
+         "today": "2026-10-29"}
+    p.update(over)
+    return p
+
+
+def _rb_trades(out: dict) -> dict[str, float]:
+    """Signed trade value by symbol (BUY +, SELL -)."""
+    net: dict[str, float] = {}
+    for t in out["trades"]:
+        net[t["symbol"]] = net.get(t["symbol"], 0.0) + (t["value"] if t["side"] == "BUY" else -t["value"])
+    return net
+
+
+_GOOD, _FAIR = _deep(central=150.0, er=0.20), _deep(central=60.0, er=0.07)   # price 50 is below both centrals
+
+
+def test_rebalance_add_moves_toward_equal_weight_tilt() -> None:
+    out = load_script(SL).run_sleeves(_rb_params({"AAA": 2000, "BBB": 2000}, {"AAA": _GOOD, "BBB": _FAIR}, cash=500, amount=500))
+    assert _rb_trades(out) == pytest.approx({"AAA": 500.0}, abs=0.02)        # AAA target ~2535, BBB ~1965 (inside its band)
+    assert out["satellite_net"] == pytest.approx(500.0, abs=0.02) and out["settings_used"]["rebalance"] is True
+    assert "IN_BAND" in next(s for s in out["splits"] if s["symbol"] == "BBB")["flags"]
+
+
+def test_small_add_is_fully_placed() -> None:
+    out = load_script(SL).run_sleeves(_rb_params({"AAA": 2000, "BBB": 2000}, {"AAA": _GOOD, "BBB": _FAIR}, cash=100, amount=100))
+    assert out["unallocated_amount"] == 0.0 and out["satellite_net"] == pytest.approx(100.0, abs=0.02)
+
+
+def test_rebalance_trims_outside_band() -> None:
+    out = load_script(SL).run_sleeves(_rb_params({"AAA": 1000, "BBB": 6000}, {"AAA": _GOOD, "BBB": _FAIR}, cash=100, amount=100))
+    net = _rb_trades(out)                                                     # T 7100: AAA ~4000, BBB ~3100
+    assert net["BBB"] == pytest.approx(-2900.0, abs=30) and net["AAA"] == pytest.approx(3000.0, abs=30)
+    assert out["satellite_net"] == pytest.approx(100.0, abs=0.05)
+
+
+def test_rebalance_is_idempotent() -> None:
+    sl = load_script(SL)
+    first = sl.run_sleeves(_rb_params({"AAA": 1000, "BBB": 6000}, {"AAA": _GOOD, "BBB": _FAIR}, cash=100, amount=100))
+    after = {s["symbol"]: s["target"] for s in first["splits"]}
+    again = sl.run_sleeves(_rb_params(after, {"AAA": _GOOD, "BBB": _FAIR}, cash=1.0, amount=1.0))
+    assert not any(t["side"] == "SELL" for t in again["trades"])
+    assert sum(t["value"] for t in again["trades"]) <= 1.0 + 0.01
+
+
+def test_held_pick_never_trades() -> None:
+    sl = load_script(SL)
+    for extra, flag in (({}, "HELD_FOR_RECHECK"), ({"needs_valuation": True}, "DEEP_VALUATION_NEEDED")):
+        bbb = {**_deep(central=60.0, er=0.07, recheck_due=True), **extra}
+        out = sl.run_sleeves(_rb_params({"AAA": 1000, "BBB": 6000}, {"AAA": _GOOD, "BBB": bbb}, cash=100, amount=100))
+        assert "BBB" not in _rb_trades(out)
+        assert _rb_trades(out) == pytest.approx({"AAA": 100.0}, abs=0.02)
+        assert flag in next(s for s in out["splits"] if s["symbol"] == "BBB")["flags"]
+        assert any(f["code"] == flag and "BBB" in f["message"] for f in out["flags"])
+
+
+def test_same_size_funds_new_pick_from_trims() -> None:
+    syms = [f"P{i:02d}" for i in range(16)]
+    picks = {s: _deep(central=60.0, er=0.10) for s in syms} | {"NEW": _deep(central=60.0, er=0.10)}
+    p = _rb_params({s: 2000 for s in syms}, picks, mode="new-pick", same_size=True,
+                   new_pick={"symbol": "NEW", "price": 50.0})
+    out = load_script(SL).run_sleeves(p)
+    net = _rb_trades(out)
+    assert net["NEW"] == pytest.approx(32000 / 17, abs=1.0)                  # equal targets, 17 picks, same total
+    assert sum(v for s, v in net.items() if s in syms) == pytest.approx(-net["NEW"], abs=1.0)
+    assert "VTI" not in net and out["new_pick"]["allocated"] == pytest.approx(net["NEW"], abs=0.02)
+
+
+def test_no_rebalance_matches_previous_behaviour() -> None:
+    out = load_script(SL).run_sleeves(_rb_params({"AAA": 1000, "BBB": 6000}, {"AAA": _GOOD, "BBB": _FAIR},
+                                                  cash=100, amount=100, rebalance=False))
+    assert not any(t["side"] == "SELL" for t in out["trades"])               # BBB is not overvalued: never sold
+    assert out["satellite_net"] == pytest.approx(100.0, abs=0.02) and out["settings_used"]["rebalance"] is False
+
+
+def test_new_pick_rebalance_includes_new_pick() -> None:
+    picks = {"AAA": _GOOD, "BBB": _FAIR, "NEW": _deep(central=60.0, er=0.15, age_days=0)}
+    p = _rb_params({"AAA": 2000, "BBB": 6000}, picks, mode="new-pick", new_pick={"symbol": "NEW", "price": 40.0})
+    out = load_script(SL).run_sleeves(p)
+    net = _rb_trades(out)        # seed 4000 (median); T 12000; NEW ~4126, AAA ~4436, BBB ~3438
+    assert net["NEW"] == pytest.approx(4126.0, abs=40) and net["BBB"] == pytest.approx(-2562.0, abs=40)
+    assert net["AAA"] == pytest.approx(2436.0, abs=40) and net["VTI"] == pytest.approx(-4000.0, abs=40)
+    assert out["new_pick"]["allocated"] == pytest.approx(net["NEW"], abs=0.02)
+
+
+def test_employer_new_pick_allowed_with_deep_pick() -> None:
+    sl = load_script(SL)
+    base = _rb_params({"AAA": 2000, "BBB": 2000}, {"AAA": _GOOD, "BBB": _FAIR}, mode="new-pick",
+                      new_pick={"symbol": "AMZN", "price": 200.0}, settings={**_RB_SETTINGS, "employer_symbol": "AMZN"})
+    with pytest.raises(ValueError, match="AMZN is the employer symbol"):
+        sl.run_sleeves(base)
+    out = sl.run_sleeves({**base, "picks": {**base["picks"], "AMZN": _deep(central=300.0, er=0.15)}})
+    assert _rb_trades(out).get("AMZN", 0.0) > 0
+
+
+def test_rebalance_targets_overflow_skips_overvalued() -> None:
+    w = load_script(W)
+    rows = [{"symbol": "A", "value": 0, "price": 80, "central_value": 100, "expected_return": 0.30, "eligible": True, "confidence": 1.0},
+            {"symbol": "B", "value": 0, "price": 50, "central_value": 40, "expected_return": 0.0, "eligible": True, "confidence": 1.0}]
+    out = w.rebalance_targets(rows, {}, 2500.0, 20000.0)      # cap 1000; A 1.575, B trim 0.8
+    assert out["targets"]["A"] == 1000.0
+    assert out["targets"]["B"] == pytest.approx(2500 * 0.8 / 2.375, abs=0.01)   # its own share only; the rest unassigned
+
+
+def test_rebalance_new_pick_beside_unvalued_picks_gets_its_seed() -> None:
+    p = _params(mode="new-pick", new_pick={"symbol": "NEW", "price": 80.0}, settings={"weighting": "valuation"},
+                picks={"NEW": _deep(central=100.0, er=0.11, age_days=0)})      # AAA and BBB have no saved valuation
+    out = load_script(SL).run_sleeves(p)
+    assert out["new_pick"]["allocated"] == pytest.approx(2000.0, abs=0.02)    # the median seed; AAA and BBB keep their value
+    assert sum(1 for f in out["flags"] if f["code"] == "NO_SAVED_VALUATION" and f["message"].startswith("AAA ")) == 1
+
+
+def _captured_params(r, monkeypatch) -> dict:
+    seen: dict = {}
+    real = r.sleeves.run_sleeves
+    monkeypatch.setattr(r.sleeves, "run_sleeves", lambda params: seen.update(p=params) or real(params))
+    return seen
+
+
+def test_run_passes_rebalance_flags(cs_sdk, capsys, monkeypatch) -> None:
+    r = load_script(R)
+    seen = _captured_params(r, monkeypatch)
+    assert run_json(r, ["add", "100"], capsys)[0] == 0
+    assert seen["p"]["rebalance"] is True and seen["p"].get("same_size", False) is False
+    assert run_json(r, ["add", "100", "--no-rebalance"], capsys)[0] == 0
+    assert seen["p"]["rebalance"] is False
+    rc, out = run_json(r, ["new-pick", "ZZZ", "--same-size", "--weighting", "valuation"], capsys)
+    assert rc == 0, out
+    assert seen["p"]["same_size"] is True
+
+
+def test_run_marks_needs_valuation(cs_sdk, capsys, tmp_path, monkeypatch) -> None:
+    picks = [{"symbol": "AAA", "kind": "deep", "baseline": _deep_baseline(tmp_path, "AAA", 120.0), "baseline_as_of": "2026-10-01",
+              "next_earnings": "2027-01-30", "checks": [{"date": "2026-10-20", "status": "outside"}]},
+             {"symbol": "BBB", "kind": "deep", "baseline": _deep_baseline(tmp_path, "BBB", 60.0), "baseline_as_of": "2026-10-01",
+              "next_earnings": "2027-01-30", "checks": []}]
+    (tmp_path / "picks.json").write_text(json.dumps({"picks": picks}))
+    r = load_script(R)
+    seen = _captured_params(r, monkeypatch)
+    assert run_json(r, ["mix"], capsys)[0] == 0
+    assert seen["p"]["picks"]["AAA"]["needs_valuation"] is True and seen["p"]["picks"]["AAA"]["recheck_due"] is True
+    assert seen["p"]["picks"]["BBB"]["needs_valuation"] is False
+
+
+def test_classify_employer_with_deep_pick_is_satellite() -> None:
+    rows = [{"symbol": "EMP", "units": 1.0, "price": 10.0, "account": "acc-1"}]
+    info = {"EMP": {"quote_type": "EQUITY", "sector": "Consumer Cyclical"}}
+    r = load_script(R)
+    assert r._classify(rows, info, "EMP")[0][0]["bucket"] == "employer"
+    assert r._classify(rows, info, "EMP", {"EMP"})[0][0]["bucket"] == "satellite"
+
+
+def test_employer_held_as_a_pick_still_counts_for_concentration() -> None:
+    p = _params(settings={"employer_symbol": "AMZN"})
+    p["positions"] = [dict(r, bucket="satellite") if r["symbol"] == "AMZN" else r for r in p["positions"]]
+    p["positions"].append(_pos("AMZN", 80, "t2", "satellite"))                # 8000 of AMZN as a pick, 51000 total
+    out = load_script(SL).run_sleeves(p)
+    assert any(f["code"] == "EMPLOYER_CONCENTRATION" for f in out["flags"])
+
+
+def test_fallback_never_buys_held_picks() -> None:
+    picks = {"AAA": _deep(central=150.0, er=0.20, recheck_due=True), "BBB": _deep(central=60.0, er=0.07, recheck_due=True)}
+    out = load_script(SL).run_sleeves(_rb_params({"AAA": 2000, "BBB": 6000}, picks, cash=1000, amount=1000))
+    assert out["trades"] == [] and out["unallocated_amount"] == pytest.approx(1000.0)
+    for sym in ("AAA", "BBB"):
+        assert "HELD_FOR_RECHECK" in next(s for s in out["splits"] if s["symbol"] == sym)["flags"]
+
+
+def test_fallback_size_split_skips_held_picks_only() -> None:
+    picks = {"AAA": _deep(central=150.0, er=0.20, recheck_due=True), "BBB": _light()}
+    out = load_script(SL).run_sleeves(_rb_params({"AAA": 2000, "BBB": 6000}, picks, cash=1000, amount=1000))
+    assert _rb_trades(out) == pytest.approx({"BBB": 1000.0}, abs=0.02)
+
+
+def test_cap_binding_rebalance_does_not_ratchet() -> None:
+    sl = load_script(SL)
+    sat = {"S00": 1959.0, "S01": 13803.0, "S02": 3660.0, "S03": 13183.0}
+    picks = {"S00": _deep(central=52.67, er=0.267, age_days=92), "S01": _deep(central=43.42, er=0.098, age_days=132),
+             "S02": _deep(central=69.88, er=0.130, age_days=253), "S03": _deep(central=60.0, er=0.10, recheck_due=True)}
+    p = _rb_params(sat, picks, cash=0.0, core=30000.0, mode="grow", grow={"amount": 4486.9})
+    first = sl.run_sleeves(p)
+    net = _rb_trades(first)
+    sold = -sum(v for s, v in net.items() if s in sat and v < 0)
+    assert sold <= sum(v for s, v in net.items() if s in sat and v > 0) + 0.05   # no trim proceeds left as cash
+    after = {s: v + net.get(s, 0.0) for s, v in sat.items()}
+    again = sl.run_sleeves(_rb_params(after, picks, cash=1.0, core=30000.0 + net.get("VTI", 0.0), amount=1.0))
+    assert not any(t["side"] == "SELL" for t in again["trades"])
+
+
+def _split_params(**over) -> dict:
+    p = _rb_params({"AAA": 1000}, {"AAA": _GOOD, "BBB": _FAIR}, cash=100, amount=100, **over)
+    p["accounts"]["t2"] = {"role": "trading"}
+    p["cash_by_account"]["t2"] = 0.0
+    p["positions"] += [{"symbol": "BBB", "units": 40, "price": 50.0, "account": "t1", "bucket": "satellite"},
+                       {"symbol": "BBB", "units": 80, "price": 50.0, "account": "t2", "bucket": "satellite"}]
+    return p
+
+
+def test_split_pick_trims_where_proceeds_are_spent() -> None:
+    sl = load_script(SL)
+    for over in ({}, {"whole_shares": True}):
+        out = sl.run_sleeves(_split_params(**over))
+        by_acct: dict[str, float] = {}
+        for t in out["trades"]:
+            by_acct[t["account"]] = by_acct.get(t["account"], 0.0) + (t["value"] if t["side"] == "BUY" else -t["value"])
+        assert by_acct.get("t2", 0.0) >= -0.02, out["trades"]       # t2 has nothing to buy: nothing sold there to sit idle
+        assert out["satellite_net"] >= -0.02 and out["unallocated_amount"] <= 100.0 + 0.02
+
+
+@pytest.mark.parametrize("over", [{"rebalance": False}, {"weighting": "size"}])
+def test_same_size_needs_valuation_rebalance(over) -> None:
+    p = _rb_params({"AAA": 2000, "BBB": 6000}, {"AAA": _GOOD, "BBB": _FAIR, "NEW": _deep(central=60.0, er=0.10)},
+                   mode="new-pick", same_size=True, new_pick={"symbol": "NEW", "price": 40.0}, **over)
+    with pytest.raises(ValueError, match="same_size"):
+        load_script(SL).run_sleeves(p)
+
+
+def test_same_size_rejects_amount() -> None:
+    p = _rb_params({"AAA": 2000, "BBB": 6000}, {"AAA": _GOOD, "BBB": _FAIR, "NEW": _deep(central=60.0, er=0.10)},
+                   mode="new-pick", same_size=True, new_pick={"symbol": "NEW", "price": 40.0, "amount": 500})
+    with pytest.raises(ValueError, match="same_size"):
+        load_script(SL).run_sleeves(p)
+
+
+def test_same_size_fallback_is_bad_input() -> None:
+    picks = {"AAA": _deep(central=150.0, er=0.20, recheck_due=True), "BBB": _deep(central=60.0, er=0.07, recheck_due=True)}
+    p = _rb_params({"AAA": 2000, "BBB": 6000}, picks, mode="new-pick", same_size=True, new_pick={"symbol": "NEW", "price": 40.0})
+    with pytest.raises(ValueError, match="same_size"):
+        load_script(SL).run_sleeves(p)
