@@ -38,6 +38,7 @@ SKILL_NAMES = [
     "financial-education",
     "tax-aware",
     "rebalancing",
+    "core-satellite",
     "retirement",
     "risk-analysis",
     "fundamental-research",
@@ -66,6 +67,7 @@ REFERENCE_FILES = [
     "fundamental-research/references/due-diligence.md",
     "fixed-income/references/bond-math.md",
     "fixed-income/references/treasuries.md",
+    "core-satellite/references/research.md",
 ]
 
 # The verbs the compliance block bans for financial actions. A reference file is prose the model
@@ -87,7 +89,7 @@ FORBIDDEN_VERB_RE = re.compile(r"\b(recommend\w*|advis\w*|should|suggest\w*)\b",
 # income section with "not a view on where anyone SHOULD hold one" -- a true negation, and still
 # the banned word in a sentence about holding an instrument. It was reworded rather than
 # allowlisted, so the net can stay absolute and needs no judgement call at the boundary.
-VERB_GUARDED_REFERENCE_SKILLS = ("fixed-income",)
+VERB_GUARDED_REFERENCE_SKILLS = ("fixed-income", "core-satellite")
 GUARDED_REFERENCES = [
     rel for rel in REFERENCE_FILES if rel.split("/")[0] in VERB_GUARDED_REFERENCE_SKILLS
 ]

@@ -13,6 +13,7 @@
     {"name": "tax-aware", "family": "History and decisions", "requires": [], "depends_on": []},
     {"name": "spending", "family": "History and decisions", "requires": [], "depends_on": []},
     {"name": "rebalancing", "family": "Planning", "requires": ["brokerage"], "depends_on": []},
+    {"name": "core-satellite", "family": "Planning", "requires": ["brokerage"], "depends_on": ["rebalancing"]},
     {"name": "retirement", "family": "Planning", "requires": ["brokerage"], "depends_on": []},
     {"name": "real-estate", "family": "Planning", "requires": [], "depends_on": []},
     {"name": "personal-finance", "family": "Planning", "requires": [], "depends_on": []},

@@ -25,7 +25,15 @@ Input JSON contract (stdin)::
       "whole_shares": false, "min_trade": 0,
       "only_if_breached": false,            # true -> no trades unless a band is breached
       "lots": {"VTI": [{"units": 30, "cost_per_unit": 80.0, "term": "long",
-                        "account": "roth-1"}]},   # optional; "account" is optional
+                        "account": "roth-1", "acquired": "2024-01-02"}]},
+                                            # optional; "account" and "acquired" are
+                                            # optional, "acquired" is echoed in picked lots
+      "new_positions": [{"symbol": "NEW", "price": 50.0, "account": "acct-1"}],
+                                            # optional; symbols with a target (or a class)
+                                            # but no holding, each a zero-unit member so
+                                            # buys can reach it; "account" is optional; a
+                                            # symbol also in "positions" is bad input
+      "class_sells": "pro_rata",            # or "smallest_gain" (default pro_rata)
       "rates": {"short_term": 0.24, "long_term": 0.15},   # optional, for est_tax
       "accounts": {"roth-1": {"taxable": false}},         # optional account taxability;
                                             # unlisted accounts count as taxable
@@ -64,6 +72,10 @@ breaches when |drift| >= absolute band or |drift / target| >= relative band
 the target values; class deltas are spread across members pro rata to their
 current value. Contribution mode never sells: it funds shortfalls from the
 cash above the cash target, most underweight first. Whole shares round down.
+With class_sells "smallest_gain" a class's sell amount is filled member by
+member in ascending unrealized gain ratio (price - average lot cost) / price,
+losses first, members without lots last, instead of pro rata; buys are
+unchanged.
 Sells pick the highest-cost lots first when lots are given; est_tax applies
 the term rate to each lot's gain. turnover = (buys + sells) / 2 / total.
 Account-aware routing: when at least one position carries an "account" AND at
@@ -157,6 +169,24 @@ def run_rebalance(params: dict) -> dict:
     whole = bool(params.get("whole_shares", False))
     min_trade = _num(params.get("min_trade"), "min_trade") or 0.0
     lots_in = params.get("lots") or {}
+    class_sells = params.get("class_sells") or "pro_rata"
+    if class_sells not in ("pro_rata", "smallest_gain"):
+        raise ValueError("class_sells must be pro_rata or smallest_gain")
+    new_in = params.get("new_positions") or []
+    if not isinstance(new_in, list):
+        raise ValueError("new_positions must be a list")
+    held = {str(p["symbol"]).upper() for p in positions_in if isinstance(p, dict) and p.get("symbol")}
+    new_rows: list[dict] = []
+    for n in new_in:
+        if not isinstance(n, dict) or not n.get("symbol") or n.get("price") is None:
+            raise ValueError("each new_positions entry requires symbol and price")
+        nsym = str(n["symbol"]).upper()
+        if nsym in held:
+            raise ValueError(f"{nsym} in new_positions is already held in positions")
+        if (_num(n["price"], "price") or 0) <= 0:
+            raise ValueError("new_positions price must be positive")
+        held.add(nsym)
+        new_rows.append({"symbol": nsym, "units": 0.0, "price": n["price"], "account": n.get("account")})
     rates = {
         "short_term": 0.24,
         "long_term": 0.15,
@@ -176,7 +206,7 @@ def run_rebalance(params: dict) -> dict:
     # --- positions -> keys -----------------------------------------------------------------
     positions: list[dict] = []
     frozen: list[dict] = []
-    for p in positions_in:
+    for p in [*positions_in, *new_rows]:
         if (
             not isinstance(p, dict)
             or not p.get("symbol")
@@ -280,6 +310,29 @@ def run_rebalance(params: dict) -> dict:
     drift_by_key = {a["key"]: a["drift"] for a in allocation}
     any_account = any(p["account"] for p in positions)
     routing_active = bool(any_account) and any(not t for t in tax_map.values())
+
+    def gain_order(p: dict) -> tuple[int, float, str]:
+        entries = lots_in.get(p["symbol"]) or []
+        units = sum(float(e.get("units") or 0) for e in entries)
+        if units <= 0:
+            return (1, 0.0, p["symbol"])
+        avg = sum(float(e.get("units") or 0) * float(e.get("cost_per_unit") or 0) for e in entries) / units
+        return (0, (p["price"] - avg) / p["price"], p["symbol"])
+
+    def sell_split(members: list[dict], delta: float, class_value: float) -> list[tuple[dict, float]]:
+        """Signed amount per member for a class delta; smallest_gain fills sells in order."""
+        if delta < 0 and class_sells == "smallest_gain":
+            out, remaining = [], -delta
+            for p in sorted(members, key=gain_order):
+                take = min(p["value"], remaining)
+                out.append((p, -take))
+                remaining -= take
+            return out
+        return [
+            (p, delta * (p["value"] / class_value if class_value > 0 else 1.0 / len(members)))
+            for p in members
+        ]
+
     sells_by_symbol: dict[str, float] = {}  # pre-rounding sell values, for the neutral list
 
     def add_trade(
@@ -335,9 +388,7 @@ def run_rebalance(params: dict) -> dict:
             class_value = sum(p["value"] for p in members)
             if routing_active:
                 amounts: dict[str, float] = {}
-                for p in members:
-                    share = p["value"] / class_value if class_value > 0 else 1.0 / len(members)
-                    amount = delta * share
+                for p, amount in sell_split(members, delta, class_value):
                     if abs(amount) < 0.005:
                         continue
                     amounts[p["symbol"]] = amounts.get(p["symbol"], 0.0) + amount
@@ -370,9 +421,7 @@ def run_rebalance(params: dict) -> dict:
                             accounts_.pop() if len(accounts_) == 1 else None,
                         )
             else:
-                for p in members:
-                    share = p["value"] / class_value if class_value > 0 else 1.0 / len(members)
-                    amount = delta * share
+                for p, amount in sell_split(members, delta, class_value):
                     if abs(amount) < 0.005:
                         continue
                     add_trade(
@@ -468,9 +517,10 @@ def run_rebalance(params: dict) -> dict:
             cost = float(lot.get("cost_per_unit") or 0)
             term = str(lot.get("term") or "short")
             g = take * (price - cost)
-            picked.append(
-                {"units": _r4(take), "cost_per_unit": _r2(cost), "term": term, "gain": _r2(g)}
-            )
+            row = {"units": _r4(take), "cost_per_unit": _r2(cost), "term": term, "gain": _r2(g)}
+            if lot.get("acquired"):
+                row["acquired"] = lot["acquired"]
+            picked.append(row)
             gain += g
             if is_taxable(account):
                 tax += g * (rates["long_term"] if term == "long" else rates["short_term"])

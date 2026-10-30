@@ -71,9 +71,12 @@ def _pairs(items: list[str], flag: str, numeric: bool) -> dict:
     return out
 
 
-def _is_tax_advantaged(raw: object) -> bool:
-    text = str(raw or "").lower()
+def is_tax_advantaged(raw_type: object) -> bool:
+    text = str(raw_type or "").lower()
     return any(k in text for k in TAX_ADV_KEYWORDS)
+
+
+_is_tax_advantaged = is_tax_advantaged
 
 
 def _term(bought: str, today: date) -> str:
@@ -137,10 +140,98 @@ def _replay_lots(transactions: list, today: date) -> dict[str, list[dict]]:
                         "units": e["units"],
                         "cost_per_unit": e["cost"],
                         "term": _term(e["date"], today),
+                        "acquired": e["date"],
                         "account": aid,
                     }
                 )
     return out
+
+
+def read_book(hub, accounts: list[dict], today: date) -> dict:
+    """Read positions, per-account cash, quotes and tax lots for the given accounts.
+    Lots come from the FIFO ledger replay when its open units match the broker,
+    else from the broker's average purchase price (term unknown). A symbol with
+    neither a quote nor a broker price is listed in no_price and left out of
+    positions."""
+    book: dict[str, dict] = {}
+    cash_by_account: dict[str, float] = {}
+    held: dict[str, list[str]] = {}
+    for a in accounts:
+        aid = a["account_id"]
+        for pos in hub.get_portfolio(aid)["positions"] or []:
+            sym = pos.get("symbol")
+            for _ in range(2):
+                if isinstance(sym, dict):
+                    sym = sym.get("symbol")
+            if not isinstance(sym, str) or not sym:
+                continue
+            sym = sym.upper()
+            units = float(pos.get("units") or 0)
+            if units <= 0:
+                continue
+            row = book.setdefault(sym, {"units": 0.0, "price": None, "by_account": {}})
+            row["units"] += units
+            row["price"] = row["price"] if row["price"] is not None else pos.get("price")
+            seg = row["by_account"].setdefault(aid, {"units": 0.0, "avg": None})
+            seg["units"] += units
+            avg = pos.get("average_purchase_price")
+            if avg is not None:
+                seg["avg"] = float(avg)
+            held.setdefault(aid, []).append(sym)
+        total = 0.0
+        for b in hub.get_balance(aid)["balances"] or []:
+            if isinstance(b, dict) and b.get("cash") is not None:
+                total += float(b["cash"])
+        cash_by_account[aid] = total
+
+    sources = {"holdings": router.holdings_source(accounts), "prices": "snaptrade"}
+    try:
+        quotes = market.day_changes(sorted(book), hub=hub)
+        if quotes:
+            sources["prices"] = market.quote_sources(list(quotes.values())) or "yahoo"
+            for sym, q in quotes.items():
+                if sym in book and q.get("price") is not None:
+                    book[sym]["price"] = q["price"]
+    except Exception:  # noqa: BLE001 — broker prices are the fallback
+        pass
+
+    replayed = _replay_lots(ledger.load().get("transactions") or [], today)
+    lots: dict[str, list[dict]] = {}
+    lot_sources: dict[str, str] = {}
+    for sym in sorted(book):
+        row = book[sym]
+        open_units = sum(lot["units"] for lot in replayed.get(sym) or [])
+        if replayed.get(sym) and abs(open_units - row["units"]) <= 0.01 + 0.01 * abs(row["units"]):
+            lots[sym] = replayed[sym]
+            lot_sources[sym] = "ledger"
+        else:
+            fallback = [
+                {"units": seg["units"], "cost_per_unit": seg["avg"], "term": "unknown", "account": aid}
+                for aid, seg in sorted(row["by_account"].items())
+                if seg["avg"] is not None
+            ]
+            if fallback:
+                lots[sym] = fallback
+            lot_sources[sym] = "snaptrade"
+    kinds = set(lot_sources.values())
+    sources["lots"] = "ledger" if kinds == {"ledger"} else "mixed" if kinds == {"ledger", "snaptrade"} else "snaptrade"
+
+    positions = []
+    no_price = []
+    for sym in sorted(book):
+        row = book[sym]
+        if row["price"] is None:
+            no_price.append(sym)
+            continue
+        for aid in sorted(row["by_account"]):
+            seg = row["by_account"][aid]
+            if seg["units"] > 0:
+                positions.append({"symbol": sym, "units": seg["units"], "price": float(row["price"]), "account": aid})
+    return {
+        "positions": positions, "cash_by_account": cash_by_account, "lots": lots, "lot_sources": lot_sources,
+        "sources": sources, "holdings_by_account": {k: sorted(set(v)) for k, v in sorted(held.items())},
+        "no_price": no_price,
+    }
 
 
 def _suggest_bands(
@@ -271,82 +362,21 @@ def main(argv: list[str] | None = None) -> int:
             for w in ids:
                 tax_adv[w] = want
 
+        held = read_book(hub, accounts, date.today())
+        sources = {"holdings": held["sources"]["holdings"], "prices": held["sources"]["prices"], "targets": source, "lots": held["sources"]["lots"]}
+        positions, lots, lot_sources = held["positions"], held["lots"], held["lot_sources"]
+        holdings_by_account = held["holdings_by_account"]
+        # the acquired date is for other callers; plan output stays as before
+        plan_lots = {s: [{k: v for k, v in lot.items() if k != "acquired"} for lot in ls] for s, ls in lots.items()}
+        cash = sum(held["cash_by_account"].values())
         book: dict[str, dict] = {}
-        cash = 0.0
-        holdings_by_account: dict[str, list[str]] = {}
-        for a in accounts:
-            aid = a["account_id"]
-            for pos in hub.get_portfolio(aid)["positions"] or []:
-                sym = pos.get("symbol")
-                for _ in range(2):
-                    if isinstance(sym, dict):
-                        sym = sym.get("symbol")
-                if not isinstance(sym, str) or not sym:
-                    continue
-                sym = sym.upper()
-                units = float(pos.get("units") or 0)
-                if units <= 0:
-                    continue
-                row = book.setdefault(sym, {"units": 0.0, "price": None, "by_account": {}})
-                row["units"] += units
-                row["price"] = row["price"] if row["price"] is not None else pos.get("price")
-                seg = row["by_account"].setdefault(aid, {"units": 0.0, "avg": None})
-                seg["units"] += units
-                avg = pos.get("average_purchase_price")
-                if avg is not None:
-                    seg["avg"] = float(avg)
-                holdings_by_account.setdefault(aid, []).append(sym)
-            for b in hub.get_balance(aid)["balances"] or []:
-                if isinstance(b, dict) and b.get("cash") is not None:
-                    cash += float(b["cash"])
-
-        sources = {"holdings": router.holdings_source(accounts), "prices": "snaptrade", "targets": source}
-        try:
-            quotes = market.day_changes(sorted(book), hub=hub)
-            if quotes:
-                sources["prices"] = market.quote_sources(list(quotes.values())) or "yahoo"
-                for sym, q in quotes.items():
-                    if sym in book and q.get("price") is not None:
-                        book[sym]["price"] = q["price"]
-        except Exception:  # noqa: BLE001 — broker prices are the fallback
-            pass
-
-        # Lots: replay the ledger FIFO when its open units match the broker,
-        # else fall back to SnapTrade's average purchase price (term unknown).
-        replayed = _replay_lots(ledger.load().get("transactions") or [], date.today())
-        lots: dict[str, list[dict]] = {}
-        lot_sources: dict[str, str] = {}
-        for sym in sorted(book):
-            row = book[sym]
-            open_units = sum(lot["units"] for lot in replayed.get(sym) or [])
-            if replayed.get(sym) and abs(open_units - row["units"]) <= 0.01 + 0.01 * abs(row["units"]):
-                lots[sym] = replayed[sym]
-                lot_sources[sym] = "ledger"
-            else:
-                fallback = [
-                    {"units": seg["units"], "cost_per_unit": seg["avg"], "term": "unknown", "account": aid}
-                    for aid, seg in sorted(row["by_account"].items())
-                    if seg["avg"] is not None
-                ]
-                if fallback:
-                    lots[sym] = fallback
-                lot_sources[sym] = "snaptrade"
-        kinds = set(lot_sources.values())
-        sources["lots"] = "ledger" if kinds == {"ledger"} else "mixed" if kinds == {"ledger", "snaptrade"} else "snaptrade"
-
-        positions = []
-        for sym in sorted(book):
-            row = book[sym]
-            if row["price"] is None:
-                continue
-            for aid in sorted(row["by_account"]):
-                seg = row["by_account"][aid]
-                if seg["units"] > 0:
-                    positions.append({"symbol": sym, "units": seg["units"], "price": float(row["price"]), "account": aid})
+        for pos in positions:
+            row = book.setdefault(pos["symbol"], {"units": 0.0, "price": pos["price"]})
+            row["units"] += pos["units"]
         params = {
             "positions": positions, "cash": cash, "targets": targets, "classes": classes,
             "contribution": ns.contribute - ns.withdraw, "allow_sells": not ns.no_sells, "whole_shares": ns.whole_shares,
-            "min_trade": ns.min_trade, "only_if_breached": ns.only_if_breached, "lots": lots,
+            "min_trade": ns.min_trade, "only_if_breached": ns.only_if_breached, "lots": plan_lots,
             "rates": {"short_term": ns.short_term, "long_term": ns.long_term},
             "accounts": {aid: {"taxable": not adv} for aid, adv in sorted(tax_adv.items())},
         }
@@ -362,7 +392,7 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             raise InvalidInput(str(exc)) from exc
         result["flags"] = list(result.get("flags") or []) + hub.unavailable_flags()
-        out = {"sources": sources, "accounts": [a["account_id"] for a in accounts], "holdings_by_account": {k: sorted(set(v)) for k, v in sorted(holdings_by_account.items())}, "lot_sources": lot_sources, **result}
+        out = {"sources": sources, "accounts": [a["account_id"] for a in accounts], "holdings_by_account": holdings_by_account, "lot_sources": lot_sources, **result}
         if ns.suggest_bands:
             out["suggested_bands"] = _suggest_bands(book, targets, classes)
         return out

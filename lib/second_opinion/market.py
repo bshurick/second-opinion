@@ -357,7 +357,9 @@ _MISLABELED_FUND_NAME_PATTERNS = (
 )
 
 
-def _looks_like_a_mislabeled_fund(name: str | None) -> bool:
+def looks_like_a_fund_name(name: str | None) -> bool:
+    """True for a fund-shaped name ("... ETF", "Index Fund", "Portfolio S&P ..."): the tell for a
+    fund Yahoo reports as a sector-less EQUITY."""
     return bool(name) and any(p.search(name) for p in _MISLABELED_FUND_NAME_PATTERNS)
 
 
@@ -412,7 +414,7 @@ def sectors(symbols: list[str], cache_path: Path | None = None) -> dict[str, dic
                 quote_type_cached == "EQUITY"
                 and not hit.get("sector")
                 and hit.get("fund_fetched") is None
-                and _looks_like_a_mislabeled_fund(hit.get("name"))
+                and looks_like_a_fund_name(hit.get("name"))
             )
             if not fund_stale and not mislabel_candidate:
                 out[s] = {k: hit.get(k) for k in _SECTOR_FIELDS}
@@ -430,7 +432,7 @@ def sectors(symbols: list[str], cache_path: Path | None = None) -> dict[str, dic
         if (
             str(quote_type or "").upper() == "EQUITY"
             and not info.get("sector")
-            and _looks_like_a_mislabeled_fund(name)
+            and looks_like_a_fund_name(name)
         ):
             # Retry as if it were a fund; only adopt "ETF" when that actually finds real sector
             # weightings, so a genuine no-sector stock whose name happens to say "Index" is

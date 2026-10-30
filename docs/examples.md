@@ -27,6 +27,7 @@ Say these in plain language; Claude picks the skill. Grouped as in the README's 
 ## Planning
 
 - **rebalancing:** "I'm targeting 60/40. How far off am I?" · "Where does this $5,000 deposit go?"
+- **core-satellite:** "What's my ETF vs individual-stock mix?" · "Add $5k from cash to my picks, split by valuation."
 - **retirement:** "I'm 38 with $400k saved. Am I on track to retire at 60? What if I put $150k into a house first?" · "What withdrawal rate lasts 35 years?" · "Compare claiming Social Security at 62, 67 and 70."
 - **real-estate:** "I'm moving. Run the numbers on selling my condo versus renting it out: cap rate, cash flow, IRR over ten years." · "Rent vs buy on a $750k home at 6.5%, against $3,200 rent." · "Refinance from 6.5% to 5.75%? Where is the breakeven?" · "What are O's FFO and AFFO multiples?"
 - **personal-finance:** "Avalanche or snowball on my recorded debts, with $300 extra a month?" · "Build a monthly budget from my cash flow." · "What does $500 a month grow to in 20 years at 7%?"

@@ -43,9 +43,10 @@ def test_hook_json_registers_the_watchlist_summary() -> None:
 
     data = json.loads((PLUGIN_ROOT / "hooks" / "hooks.json").read_text())
     hooks = data["hooks"]["SessionStart"][0]["hooks"]
-    assert [h["args"][0].rsplit("/", 1)[1] for h in hooks] == ["session-start.sh", "watchlist-summary.sh", "picks-summary.sh"]
+    assert [h["args"][0].rsplit("/", 1)[1] for h in hooks] == ["session-start.sh", "watchlist-summary.sh", "picks-summary.sh", "core-satellite-summary.sh"]
     assert hooks[1] == {"type": "command", "command": "bash", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/watchlist-summary.sh"], "timeout": 15}
     assert hooks[2] == {"type": "command", "command": "bash", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/picks-summary.sh"], "timeout": 15}
+    assert hooks[3] == {"type": "command", "command": "bash", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/core-satellite-summary.sh"], "timeout": 15}
 
 
 def _run_watchlist_hook(tmp_path: Path, root: Path, **env: str) -> subprocess.CompletedProcess:
@@ -466,3 +467,34 @@ def test_broker_login_rule_wording() -> None:
         assert needed in text
     for banned in ("recommend", "advise"):
         assert banned not in text.lower(), f"broker-login rule must not use '{banned}'"
+
+
+CORE_SATELLITE_HOOK = PLUGIN_ROOT / "hooks" / "core-satellite-summary.sh"
+
+
+def _run_core_satellite_hook(tmp_path: Path, store: str | None) -> subprocess.CompletedProcess:
+    data = tmp_path / "data"
+    data.mkdir(exist_ok=True)
+    if store is not None:
+        (data / "core-satellite.json").write_text(store)
+    full = {**_base_env(), "CLAUDE_PLUGIN_ROOT": str(PLUGIN_ROOT), "SECOND_OPINION_DATA": str(data), "SECOND_OPINION_PYTHON": sys.executable}
+    return subprocess.run(["bash", str(CORE_SATELLITE_HOOK)], capture_output=True, text=True, env=full, timeout=60)
+
+
+def test_core_satellite_hook_is_silent_without_store(tmp_path: Path) -> None:
+    proc = _run_core_satellite_hook(tmp_path, None)
+    assert proc.returncode == 0 and proc.stdout == "" and proc.stderr == ""
+
+
+def test_core_satellite_hook_prints_due_step(tmp_path: Path) -> None:
+    import json
+
+    store = {"plan": {"target": 0.18, "by_date": "2027-04-30", "cadence": "monthly", "status": "active", "next_due": "2020-01-31"}}
+    proc = _run_core_satellite_hook(tmp_path, json.dumps(store))
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.startswith("Core/satellite: plan step due")
+
+
+def test_core_satellite_hook_never_fails_the_session(tmp_path: Path) -> None:
+    proc = _run_core_satellite_hook(tmp_path, "{not json")
+    assert proc.returncode == 0 and proc.stderr == ""

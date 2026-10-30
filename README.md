@@ -162,7 +162,7 @@ Skills that produce a report publish an interactive page, hosted as a private Ar
 
 ## Skills
 
-26 skills. `setup` is always installed; `trade-journal` and `financial-education` are opt-in extras, as is suggested follow-up questions, which is not a skill but an instruction loaded at session start. **key** means a SnapTrade or E*Trade key; **EDGAR** means an SEC contact address in `EDGAR_USER_AGENT`.
+27 skills. `setup` is always installed; `trade-journal` and `financial-education` are opt-in extras, as is suggested follow-up questions, which is not a skill but an instruction loaded at session start. **key** means a SnapTrade or E*Trade key; **EDGAR** means an SEC contact address in `EDGAR_USER_AGENT`.
 
 | Family | Skill | What it does | Needs |
 |---|---|---|---|
@@ -180,6 +180,7 @@ Skills that produce a report publish an interactive page, hosted as a private Ar
 | | tax-aware | Realized gains with wash sales, open lots, estimated tax, harvesting, lot choice | |
 | | spending | Card and bank exports or transcribed receipts; categories, recurring charges, cash flow | |
 | Planning | rebalancing | Drift, 5/25 bands, trade list, contribution and tax-aware sell routing | key |
+| | core-satellite | ETF vs individual-stock mix, a satellite ceiling, picks funded by size or deep valuation, new-pick sizing, step-up plans | key |
 | | retirement | Monte Carlo projection, nest egg required, withdrawal rates | key |
 | | real-estate | Mortgage, refinance, rent vs buy, rental underwriting, affordability, REIT metrics | |
 | | personal-finance | Budgeting, debt payoff, cash-flow planning, reminders | |

@@ -276,3 +276,57 @@ def test_term_is_long_only_after_the_one_year_anniversary() -> None:
     assert plan._term("2024-02-29", date(2025, 3, 1)) == "long"
     assert plan._term("2024-06-10", date(2025, 6, 10)) == "short"
     assert plan._term("2024-06-10", date(2025, 6, 11)) == "long"
+
+
+REB = "rebalancing/scripts/rebalance.py"
+
+
+def test_new_position_gets_a_buy() -> None:
+    out = load_script(REB).run_rebalance({
+        "positions": [{"symbol": "VTI", "units": 90, "price": 100.0}], "cash": 1000,
+        "targets": {"VTI": 0.9, "NEW": 0.1}, "new_positions": [{"symbol": "NEW", "price": 50.0}]})
+    assert [(t["symbol"], t["side"], t["value"]) for t in out["trades"]] == [("NEW", "BUY", 1000.0)]
+    assert not any(f["code"] == "NO_HOLDINGS" for f in out["flags"])
+
+
+def test_new_position_already_held_is_bad_input() -> None:
+    with pytest.raises(ValueError, match="already held"):
+        load_script(REB).run_rebalance({"positions": [{"symbol": "VTI", "units": 1, "price": 1.0}],
+            "targets": {"VTI": 1.0}, "new_positions": [{"symbol": "VTI", "price": 1.0}]})
+
+
+_SMALLEST_GAIN = {
+    "positions": [{"symbol": "VTI", "units": 50, "price": 100.0}, {"symbol": "VXUS", "units": 50, "price": 100.0}],
+    "new_positions": [{"symbol": "AAA", "price": 100.0}],
+    "cash": 0, "targets": {"core": 0.8, "AAA": 0.2}, "classes": {"VTI": "core", "VXUS": "core"},
+    "lots": {"VTI": [{"units": 50, "cost_per_unit": 60.0, "term": "long"}],
+             "VXUS": [{"units": 50, "cost_per_unit": 110.0, "term": "long", "acquired": "2024-01-02"}]},
+}
+
+
+def test_class_sells_smallest_gain_sells_loss_member_first() -> None:
+    out = load_script(REB).run_rebalance({**_SMALLEST_GAIN, "class_sells": "smallest_gain"})
+    sells = [(t["symbol"], t["value"]) for t in out["trades"] if t["side"] == "SELL"]
+    assert sells == [("VXUS", 2000.0)]
+    assert out["trades"][0]["lots"][0]["acquired"] == "2024-01-02"
+
+
+def test_class_sells_default_is_still_pro_rata() -> None:
+    out = load_script(REB).run_rebalance(dict(_SMALLEST_GAIN))
+    sells = [(t["symbol"], t["value"]) for t in out["trades"] if t["side"] == "SELL"]
+    assert sorted(sells) == [("VTI", 1000.0), ("VXUS", 1000.0)]
+
+
+def test_read_book_splits_cash_by_account(sdk) -> None:
+    plan = load_script("rebalancing/scripts/plan.py")
+    hub = router.load()
+    book = plan.read_book(hub, hub.list_accounts(), date(2026, 10, 29))
+    assert book["cash_by_account"] == {"acc-1": 300.0, "acc-2": 200.0}
+    assert {(p["symbol"], p["account"]) for p in book["positions"]} == {("VTI", "acc-1"), ("BND", "acc-2")}
+    assert book["no_price"] == []
+
+
+def test_replayed_lots_carry_acquired_date() -> None:
+    plan = load_script("rebalancing/scripts/plan.py")
+    lots = plan._replay_lots([{"type": "BUY", "symbol": "VTI", "units": 5, "price": 10, "date": "2025-03-04", "account_id": "a"}], date(2026, 10, 29))
+    assert lots["VTI"][0]["acquired"] == "2025-03-04"

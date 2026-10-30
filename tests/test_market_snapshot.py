@@ -466,7 +466,7 @@ def test_sectors_does_not_retry_a_mislabel_candidate_once_fund_fetched_is_set(mo
 def test_next_events_from_calendar_dict(monkeypatch) -> None:
     cal = {"Earnings Date": [date(2026, 10, 29), date(2026, 11, 2)], "Ex-Dividend Date": date(2026, 11, 7)}
     _patch(monkeypatch, {"AAPL": _Ticker(calendar=cal)})
-    assert market.next_events("aapl") == {"next_earnings": "2026-10-29", "next_ex_dividend": "2026-11-07"}
+    assert market.next_events("aapl", today=date(2026, 10, 1)) == {"next_earnings": "2026-10-29", "next_ex_dividend": "2026-11-07"}
 
 
 def test_next_events_missing_or_broken_calendar(monkeypatch) -> None:

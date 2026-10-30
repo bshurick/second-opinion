@@ -98,6 +98,15 @@ Every script prints one JSON object to stdout and exits with one of the codes li
 | `render.py` | `render.py [--in plan.json] --out page.html` — one self-contained interactive HTML page (stat tiles, drift-vs-target bars centred on zero with the band edges and breaches marked, sortable allocation and trade tables with account, reason, est. gain/tax and lots on hover, contribution/withdrawal routing, post-trade weights, tax-aware vs pro-rata routing, suggested bands, flags, the "a plan, not orders" note; light/dark; no external assets) from a `plan.py` result, for the Artifact tool; prints `{"out","title","trades","breaches","flags"}`; exit 2 when the input is not a plan result. Shared page toolkit in `lib/second_opinion/page.py` |
 | `rebalance.py` | `python rebalance.py < input.json` — the pure-math half; contract in the docstring |
 
+## core-satellite
+
+| Script | Usage |
+|---|---|
+| `run.py` | `run.py mix \| add AMOUNT \| deposit AMOUNT [--satellite AMOUNT] \| grow [--to-weight W \| --by-points P \| --by-relative R \| --by X \| --amount A] \| new-pick SYMBOL [--amount A] \| plan-step` plus `[--weighting size\|valuation] [--include-light] [--over-ceiling] [--whole-shares] [--short-term R] [--long-term R] [--partial]` — core (funds), satellite (single stocks), employer and cash buckets across accounts with N_eff, tracking error, the ceiling (saved, else the default 0.20) and room; plans pick buys from trading-account cash, then trading-account core sales (smallest gain first), by size or by deep valuations from the stock-screener pick store; grow values are fractions; short-term gains held back unless the saved policy is `allow`. Live read of positions, cash, lots and quotes. A plan, not orders |
+| `sleeves.py` | `python sleeves.py < input.json` — the pure-math half; contract and every flag code in the docstring |
+| `settings.py` | `settings.py show \| decide KEY VALUE \| record-increase --amount A --before W --after W --funded-from TEXT [--date D] \| plan-set --target W --by D --cadence monthly\|quarterly --funding cash\|core \| plan-pause \| plan-resume \| plan-cancel \| plan-advance \| summary` — the saved decisions (ceiling, weighting, include_light, short_term_gain_policy, employer_symbol), past increases and the step-up plan in `core-satellite.json`; `summary` is plain text for the session-start hook; exit 5 when the store is unreadable |
+| `weights.py` | imported by `sleeves.py` — N_eff, tracking error, proposed size, confidence decay and valuation-tilt targets; constants in `references/research.md` |
+
 ## retirement
 
 | Script | Usage |
