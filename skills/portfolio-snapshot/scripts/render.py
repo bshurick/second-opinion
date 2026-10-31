@@ -205,7 +205,7 @@ SCRIPT = r"""
     {key: 'market_value', label: 'Total', fmt: v => F.money(v)},
     {key: 'weight', label: 'Weight', fmt: v => F.pct(v)},
     {key: 'unrealized_pnl', label: 'Unrealized', fmt: v => F.moneyS(v), cls: F.cls},
-    {key: 'day_change_pct', label: 'Day', fmt: v => F.pct(v, 2, true), cls: F.cls},
+    {key: 'day_change_pct', label: 'Day', fmt: (v, r) => F.pct(v, 2, true) + (r.day_change_proxy ? ` <span class="muted" title="No public quote for this fund">est. via ${F.esc(r.day_change_proxy)}</span>` : ''), cls: F.cls},
     {key: 'week_change_pct', label: '1w', fmt: v => F.pct(v, 1, true), cls: F.cls},
     {key: 'month_change_pct', label: '1m', fmt: v => F.pct(v, 1, true), cls: F.cls},
     {key: 'sector', label: 'Sector', left: true, fmt: v => F.esc(v || '—')},

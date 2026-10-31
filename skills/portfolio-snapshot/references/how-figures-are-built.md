@@ -10,6 +10,7 @@ One run does the whole fetch:
 - Positions and balances once per account. SnapTrade allows 10 calls/minute per account.
 - One batched Yahoo download for prices and day changes.
 - One batched Yahoo download for ~5 weeks of closes, which gives the 1w/1m change per position.
+- A holding with no public quote (a 401(k) trust such as ONN5) borrows its day, 1w and 1m moves from the retail ETF tracking the same index, matched by name in `summary.LOOKTHROUGH_PROXIES`. These are estimates: the position carries `day_change_proxy`, `DAY_CHANGE_ESTIMATED` names them, and they stay out of the movers. A holding nothing matches stays uncovered and appears in `PARTIAL_QUOTES`.
 - A sector lookup served from a cache under the plugin data directory. The same cache supplies each symbol's quote type.
 - `news`: up to three dated Yahoo headlines from the last 7 days for each of the day's movers, at most six symbols. `--no-news` skips them.
 

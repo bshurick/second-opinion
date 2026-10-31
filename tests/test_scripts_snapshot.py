@@ -1675,3 +1675,170 @@ def test_render_without_headlines_hides_the_card(tmp_path, capsys) -> None:
 def test_every_card_explains_itself(tmp_path, capsys) -> None:
     a = render_and_audit("portfolio-snapshot/scripts/render.py", ["--in", str(PLUGIN_ROOT / "docs/samples/portfolio-brief.json")], tmp_path, capsys)
     assert_page_help(a)
+
+
+def _proxy_quote_setup(monkeypatch, day_changes, close_histories=None):
+    """A real stock, a real ETF, a 401(k) trust that maps to VOO, and a fund nothing maps to."""
+    positions = {
+        "acc-1": [
+            {"symbol": {"symbol": {"symbol": "AAPL", "description": "Apple Inc."}}, "units": 10, "price": 100.0},
+            {"symbol": {"symbol": {"symbol": "BND", "description": "Vanguard Total Bond Market ETF"}}, "units": 10, "price": 70.0},
+            {"symbol": {"symbol": {"symbol": "QBN5", "description": "VANG INST 500 IDX TR"}}, "units": 10, "price": 400.0},
+            {"symbol": {"symbol": {"symbol": "QZZ9", "description": "ACME STABLE VALUE"}}, "units": 10, "price": 50.0},
+        ],
+        "acc-2": [],
+    }
+    balances = {
+        "acc-1": [{"currency": {"code": "USD"}, "cash": 0.0, "buying_power": 0.0}],
+        "acc-2": [{"currency": {"code": "USD"}, "cash": 0.0, "buying_power": 0.0}],
+    }
+    fake = FakeSdk(
+        list_user_accounts=ACCOUNTS,
+        list_brokerage_authorizations=[TRADE_AUTH, READ_AUTH],
+        get_user_account_positions=lambda account_id: positions[account_id],
+        get_user_account_balance=lambda account_id: balances[account_id],
+    )
+    monkeypatch.setattr(client, "get_client", lambda settings=None: fake)
+    monkeypatch.setattr(router, "load", lambda settings=None: fake_hub(fake))
+    monkeypatch.setenv("SNAPTRADE_CLIENT_ID", "c")
+    monkeypatch.setenv("SNAPTRADE_CONSUMER_KEY", "k")
+    monkeypatch.setattr(market, "day_changes", day_changes)
+    monkeypatch.setattr(market, "close_histories", close_histories or (lambda symbols, start: {}))
+    monkeypatch.setattr(market, "sectors", lambda symbols, cache_path=None: {s.upper(): {"quote_type": None} for s in symbols})
+
+
+def _proxy_day_changes(symbols, hub=None):
+    known = {
+        "AAPL": {"price": 100.0, "previous_close": 99.0},
+        "BND": {"price": 70.0, "previous_close": 70.0},
+        "VOO": {"price": 98.0, "previous_close": 100.0},
+    }
+    return {s: known[s] for s in symbols if s in known}
+
+
+def _position(out, symbol):
+    return next(p for p in out["positions"] if p["symbol"] == symbol)
+
+
+def test_snapshot_estimates_day_change_for_an_unquoted_fund_from_its_proxy(monkeypatch, capsys) -> None:
+    _proxy_quote_setup(monkeypatch, _proxy_day_changes)
+    rc, out = run_json(load_script("portfolio-snapshot/scripts/snapshot.py"), ["--no-news"], capsys)
+    assert rc == 0, out
+    fund = _position(out, "QBN5")
+    assert fund["day_change_pct"] == pytest.approx(-0.02)
+    assert fund["day_change"] == pytest.approx(4000 - 4000 / 0.98, abs=0.01)
+    assert fund["day_change_proxy"] == "VOO"
+    assert fund["price"] == 400.0  # the proxy's price never replaces the fund's own
+
+
+def test_snapshot_flags_estimated_day_change_apart_from_missing_quotes(monkeypatch, capsys) -> None:
+    _proxy_quote_setup(monkeypatch, _proxy_day_changes)
+    rc, out = run_json(load_script("portfolio-snapshot/scripts/snapshot.py"), ["--no-news"], capsys)
+    assert rc == 0, out
+    estimated = next(f for f in out["flags"] if f["code"] == "DAY_CHANGE_ESTIMATED")
+    assert "QBN5 via VOO" in estimated["message"]
+    assert "QZZ9" not in estimated["message"]
+    partial = next(f for f in out["flags"] if f["code"] == "PARTIAL_QUOTES")
+    assert "QZZ9" in partial["message"]
+    assert "QBN5" not in partial["message"]
+    assert out["totals"]["day_change_coverage"] == pytest.approx(5700 / 6200, abs=0.0001)
+
+
+def test_snapshot_leaves_a_fund_with_no_proxy_uncovered(monkeypatch, capsys) -> None:
+    _proxy_quote_setup(monkeypatch, _proxy_day_changes)
+    rc, out = run_json(load_script("portfolio-snapshot/scripts/snapshot.py"), ["--no-news"], capsys)
+    assert rc == 0, out
+    fund = _position(out, "QZZ9")
+    assert fund["day_change_pct"] is None
+    assert "day_change_proxy" not in fund
+
+
+def test_snapshot_never_proxies_a_holding_with_its_own_quote(monkeypatch, capsys) -> None:
+    calls: list[list[str]] = []
+
+    def day_changes(symbols, hub=None):
+        calls.append(list(symbols))
+        return _proxy_day_changes(symbols, hub)
+
+    _proxy_quote_setup(monkeypatch, day_changes)
+    rc, out = run_json(load_script("portfolio-snapshot/scripts/snapshot.py"), ["--no-news"], capsys)
+    assert rc == 0, out
+    assert calls[1] == ["VOO"]  # QBN5's proxy only: BND has its own quote and QZZ9 has no proxy
+    assert _position(out, "BND")["day_change_pct"] == 0.0
+    assert "day_change_proxy" not in _position(out, "BND")
+
+
+def test_snapshot_leaves_estimated_funds_out_of_the_movers(monkeypatch, capsys) -> None:
+    _proxy_quote_setup(monkeypatch, _proxy_day_changes)
+    rc, out = run_json(load_script("portfolio-snapshot/scripts/snapshot.py"), ["--no-news"], capsys)
+    assert rc == 0, out
+    assert [m["symbol"] for m in out["movers"]["up"]] == ["AAPL"]
+    assert out["movers"]["down"] == []
+
+
+def test_snapshot_week_and_month_changes_come_from_the_proxy_but_not_its_price_chart(monkeypatch, capsys) -> None:
+    rows = [{"date": f"2026-09-{d:02d}", "close": 100.0} for d in range(1, 29)] + [{"date": "2026-09-29", "close": 110.0}]
+
+    def close_histories(symbols, start):
+        return {s: rows for s in symbols if s == "VOO"}
+
+    _proxy_quote_setup(monkeypatch, _proxy_day_changes, close_histories)
+    rc, out = run_json(load_script("portfolio-snapshot/scripts/snapshot.py"), ["--no-news"], capsys)
+    assert rc == 0, out
+    fund = _position(out, "QBN5")
+    assert fund["week_change_pct"] == pytest.approx(0.10)
+    assert fund["month_change_pct"] == pytest.approx(0.10)
+    assert "QBN5" not in out["price_history"]  # the page charts a holding's own closes only
+
+
+def test_snapshot_proxy_quote_failure_keeps_the_fund_uncovered_and_flags(monkeypatch, capsys) -> None:
+    def day_changes(symbols, hub=None):
+        if symbols == ["VOO"]:
+            raise RuntimeError("yahoo down")
+        return _proxy_day_changes(symbols, hub)
+
+    _proxy_quote_setup(monkeypatch, day_changes)
+    rc, out = run_json(load_script("portfolio-snapshot/scripts/snapshot.py"), ["--no-news"], capsys)
+    assert rc == 0, out
+    assert _position(out, "QBN5")["day_change_pct"] is None
+    flag = next(f for f in out["flags"] if f["code"] == "PROXY_QUOTES_UNAVAILABLE")
+    assert "yahoo down" in flag["message"]
+    assert "QBN5" in next(f for f in out["flags"] if f["code"] == "PARTIAL_QUOTES")["message"]
+
+
+def test_snapshot_no_quotes_never_fetches_proxy_quotes(monkeypatch, capsys) -> None:
+    _proxy_quote_setup(monkeypatch, lambda symbols, hub=None: pytest.fail("day_changes called"))
+    rc, out = run_json(load_script("portfolio-snapshot/scripts/snapshot.py"), ["--no-quotes", "--no-news"], capsys)
+    assert rc == 0, out
+    assert _position(out, "QBN5")["day_change_pct"] is None
+
+
+def test_summary_no_partial_quotes_flag_when_the_uncovered_share_rounds_to_nothing(capsys) -> None:
+    params = {
+        "accounts": [
+            {
+                "account_id": "a",
+                "positions": [
+                    {"symbol": {"symbol": {"symbol": "AAPL", "description": "Apple Inc."}}, "units": 1000, "price": 100.0},
+                    {"symbol": {"symbol": {"symbol": "FCASH", "description": "Cash"}}, "units": 0.02, "price": 1.0},
+                ],
+                "balances": [],
+            }
+        ],
+        "quotes": {"AAPL": {"price": 100.0, "previous_close": 99.0}},
+    }
+    result = load_script("portfolio-snapshot/scripts/summary.py").run_summary(params)
+    assert "PARTIAL_QUOTES" not in [f["code"] for f in result["flags"]]
+
+
+def test_snapshot_page_marks_an_estimated_day_change(monkeypatch, capsys, tmp_path) -> None:
+    _proxy_quote_setup(monkeypatch, _proxy_day_changes)
+    rc, out = run_json(load_script("portfolio-snapshot/scripts/snapshot.py"), ["--no-news"], capsys)
+    assert rc == 0, out
+    source, page = tmp_path / "snapshot.json", tmp_path / "page.html"
+    source.write_text(json.dumps(out))
+    rc, _ = run_json(load_script("portfolio-snapshot/scripts/render.py"), ["--in", str(source), "--out", str(page)], capsys)
+    assert rc == 0
+    html = page.read_text()
+    assert '"day_change_proxy": "VOO"' in html or '"day_change_proxy":"VOO"' in html
+    assert "est. via ${F.esc(r.day_change_proxy)}" in html

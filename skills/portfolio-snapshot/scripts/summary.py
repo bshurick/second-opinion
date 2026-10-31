@@ -37,7 +37,8 @@ Input JSON contract (stdin)::
       ],
       "quotes":  {"AAPL": {"price": 101.0, "previous_close": 99.0}},  # optional;
                                           # "price" overrides the broker price,
-                                          # "day_change_pct" may replace previous_close
+                                          # "day_change_pct" may replace previous_close;
+                                          # "proxy" names the ETF that move was borrowed from
       "sectors": {"AAPL": "Technology"},  # optional; missing symbol -> "Unknown"
       "events":  {"AAPL": {"next_earnings": "2026-10-01",
                            "next_ex_dividend": "2026-09-10"}},         # optional
@@ -92,14 +93,17 @@ Output JSON contract (stdout)::
       "positions": [{symbol, name, units, price, market_value, weight,
                      cost_basis, unrealized_pnl, unrealized_pnl_pct,
                      day_change, day_change_pct, week_change_pct,
-                     month_change_pct, sector, accounts}],
+                     month_change_pct, sector, accounts, day_change_proxy?}],
                                                        # market_value desc, symbol asc;
                                                        # week/month_change_pct (return of
                                                        # the close ~5/~21 sessions back to
                                                        # the last close, 4 dp, null when
                                                        # that symbol's history is missing
                                                        # or short) appear only when
-                                                       # "history" is given
+                                                       # "history" is given;
+                                                       # day_change_proxy (only when set)
+                                                       # names the ETF an estimated day
+                                                       # change came from
       "top_holdings": first 10 of "positions",
       "concentration": {hhi, hhi_interpretation, top_5_concentration, largest_position,
                         single_stock: {hhi, hhi_interpretation, weight, count, largest}
@@ -732,6 +736,8 @@ def run_summary(params: dict) -> dict:
             entry["month_change_pct"] = _lookback_return(closes, _MONTH_BARS)
         entry["sector"] = sectors.get(r["symbol"]) if isinstance(sectors, dict) else None
         entry["accounts"] = r["accounts"]
+        if day_change is not None and q.get("proxy"):
+            entry["day_change_proxy"] = str(q["proxy"])
         positions.append(entry)
     positions.sort(key=lambda p: (-(p["market_value"] or 0.0), p["symbol"]))
 
@@ -1111,7 +1117,8 @@ def run_summary(params: dict) -> dict:
         }
 
     # --- movers ----------------------------------------------------------------------
-    quoted = [p for p in positions if p["day_change_pct"] is not None]
+    # an estimated move is the proxy ETF's, not news about the holding, so it is not a mover
+    quoted = [p for p in positions if p["day_change_pct"] is not None and "day_change_proxy" not in p]
     ups = sorted(
         (p for p in quoted if p["day_change_pct"] > 0),
         key=lambda p: (-p["day_change_pct"], p["symbol"]),
@@ -1159,10 +1166,21 @@ def run_summary(params: dict) -> dict:
         )
         coverage = round(covered_mv / market_value * 100, 2)
         missing = ", ".join(uncovered)
+        if coverage < 100:  # a few cents in a cash placeholder is not a gap worth flagging
+            flags.append(
+                {
+                    "code": "PARTIAL_QUOTES",
+                    "message": f"day change covers {coverage}% of market value (missing: {missing})",
+                }
+            )
+    estimated = [p for p in positions if "day_change_proxy" in p]
+    if estimated and market_value > 0:
+        share = round(sum(p["market_value"] for p in estimated) / market_value * 100, 2)
+        names = ", ".join(f"{p['symbol']} via {p['day_change_proxy']}" for p in sorted(estimated, key=lambda p: p["symbol"]))
         flags.append(
             {
-                "code": "PARTIAL_QUOTES",
-                "message": f"day change covers {coverage}% of market value (missing: {missing})",
+                "code": "DAY_CHANGE_ESTIMATED",
+                "message": f"day change for {share}% of market value is estimated from the ETF tracking the same index, because these funds have no public quote ({names}); the broker's fund price may lag",
             }
         )
     single = concentration.get("single_stock")

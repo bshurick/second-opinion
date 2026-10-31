@@ -257,6 +257,42 @@ def _apply_lookthrough_proxies(asset_info: dict) -> None:
         }
 
 
+def _proxy_market_data(
+    symbols: list[str], descriptions: dict[str, str], quotes: dict, now: datetime, hub: object
+) -> tuple[dict, dict, list[dict]]:
+    """Estimated day and week/month moves for holdings with no quote of their own (a 401(k) trust),
+    borrowed from the retail ETF ``summary.lookthrough_proxy_for`` matches by name. The quote carries
+    ``day_change_pct`` and no ``price``, because a quote's price replaces the holding's own. Returns
+    (quotes, history, flags) to add; a failed fetch leaves the holding uncovered and flags it."""
+    needed: dict[str, str] = {}
+    for sym in symbols:
+        code = sym.upper()
+        proxy = summary.lookthrough_proxy_for(descriptions.get(code))
+        if code not in quotes and proxy and proxy != code:
+            needed[code] = proxy
+    if not needed:
+        return {}, {}, []
+    tickers = sorted(set(needed.values()))
+    flags: list[dict] = []
+    proxy_quotes: dict = {}
+    proxy_history: dict = {}
+    try:
+        fetched = market.day_changes(tickers, hub=hub)
+        for code, proxy in needed.items():
+            q = fetched.get(proxy) or {}
+            price, prev = q.get("price"), q.get("previous_close")
+            if price is not None and prev:
+                proxy_quotes[code] = {"day_change_pct": price / prev - 1, "proxy": proxy}
+    except Exception as e:  # noqa: BLE001 -- additive: the holding stays uncovered, as it was
+        flags.append({"code": "PROXY_QUOTES_UNAVAILABLE", "message": f"proxy ETF quotes failed ({e}); {', '.join(sorted(needed))} have no estimated day change"})
+    try:
+        closes = market.close_histories(tickers, (now - timedelta(days=_HISTORY_DAYS)).date().isoformat())
+        proxy_history = {code: closes[proxy] for code, proxy in needed.items() if closes.get(proxy)}
+    except Exception as e:  # noqa: BLE001 -- additive: 1w/1m stay empty for these holdings
+        flags.append({"code": "PROXY_QUOTES_UNAVAILABLE", "message": f"proxy ETF history failed ({e}); {', '.join(sorted(needed))} have no estimated 1w/1m change"})
+    return proxy_quotes, proxy_history, flags
+
+
 def build(args: list[str]) -> dict:
     """The whole snapshot for the given CLI args; raises ScriptError subclasses the way main() reports them."""
     p = _Parser(prog="snapshot.py", add_help=False)
@@ -322,6 +358,13 @@ def build(args: list[str]) -> dict:
                 continue
             if code and desc and desc.upper() != code:
                 descriptions.setdefault(code, str(desc))
+    summary_history = history
+    if quotes:
+        proxy_quotes, proxy_history, proxy_flags = _proxy_market_data(symbols, descriptions, quotes, now, hub)
+        quotes = {**quotes, **proxy_quotes}
+        # kept apart from ``history``: price_history below charts a holding's own closes only
+        summary_history = {**history, **proxy_history}
+        extra_flags.extend(proxy_flags)
     if symbols:
         try:
             sector_info = market.sectors(symbols)
@@ -356,8 +399,8 @@ def build(args: list[str]) -> dict:
         params["quote_types"] = quote_types
     if asset_info:
         params["asset_info"] = asset_info
-    if history:
-        params["history"] = history
+    if summary_history:
+        params["history"] = summary_history
     result = summary.run_summary(params)
     news: dict | None = None
     if not ns.no_news:
