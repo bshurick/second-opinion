@@ -180,7 +180,7 @@ Skills that produce a report publish an interactive page, hosted as a private Ar
 | | tax-aware | Realized gains with wash sales, open lots, estimated tax, harvesting, lot choice | |
 | | spending | Card and bank exports or transcribed receipts; categories, recurring charges, cash flow | |
 | Planning | rebalancing | Drift, 5/25 bands, trade list, contribution and tax-aware sell routing | key |
-| | core-satellite | ETF vs individual-stock mix, a satellite ceiling, picks funded by size or deep valuation, new-pick sizing, step-up plans | key |
+| | core-satellite | ETF vs individual-stock mix, a satellite ceiling, picks split equally, by market cap, by deep valuation or by size, new-pick sizing, step-up plans, rebalancing on request | key |
 | | retirement | Monte Carlo projection, nest egg required, withdrawal rates | key |
 | | real-estate | Mortgage, refinance, rent vs buy, rental underwriting, affordability, REIT metrics | |
 | | personal-finance | Budgeting, debt payoff, cash-flow planning, reminders | |

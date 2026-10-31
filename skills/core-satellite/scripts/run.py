@@ -5,9 +5,9 @@
        run.py grow [--to-weight W | --by-points P | --by-relative R | --by X | --amount A]
        run.py new-pick SYMBOL [--amount A]
        run.py plan-step
-       common: [--weighting size|valuation] [--include-light] [--over-ceiling] [--whole-shares]
-               [--sell SYM[,SYM]] [--no-rebalance] [--short-term R] [--long-term R] [--partial]
-       new-pick also: [--same-size]
+       run.py rebalance
+       common: [--weighting equal|market_cap|valuation|size] [--include-light] [--over-ceiling]
+               [--whole-shares] [--sell SYM[,SYM]] [--short-term R] [--long-term R] [--partial]
 
 Core/satellite sleeves on the connected accounts: reads positions, per-account cash, quotes and
 tax lots once (rebalancing's plan.read_book), the saved core-satellite settings, the account roles
@@ -39,10 +39,14 @@ recheck_due is set when the pick is awaiting a filing, its next earnings date ha
 check on or after it, it has no next earnings date and is more than 120 days old
 (STALE_NO_EARNINGS_DAYS), or its last check status is "outside"; sleeves.py treats an unknown
 age as due too. needs_valuation marks the last two, which a re-check cannot clear.
-``--no-rebalance`` passes rebalance false; ``--same-size`` passes same_size (new-pick). A baseline that cannot be read
-(or a deep model with no scenarios) leaves the symbol out of picks (PICK_BASELINE_MISSING);
-without the stock-screener skill there are no picks (NO_PICK_STORE), and an unreadable pick
-store gives no picks (PICK_STORE_UNREADABLE). A holding with no price is left out (NO_PRICE). The grow values
+A baseline that cannot be read
+(or a deep model with no scenarios) leaves the symbol out of picks (PICK_BASELINE_MISSING) and
+puts it in ``unreadable_picks``, so it holds; without the stock-screener skill there are no picks
+(NO_PICK_STORE), and an unreadable pick store gives no picks (PICK_STORE_UNREADABLE) and sets
+``pick_store_unreadable``, which stops ``rebalance``. The effective strategy is ``--weighting``,
+else the saved one, else equal; under market_cap the held picks' company market caps are read
+(``market_caps``, null for one that fails) only for a mode that trades: add, grow, plan-step,
+rebalance, new-pick with --amount, deposit with --satellite. A holding with no price is left out (NO_PRICE). The grow values
 --to-weight, --by-points, --by-relative and --by are fractions (0.05 = 5%); ``--by X`` is a
 percent whose reading (points or relative) is unclear, and both readings are returned. ``new-pick``
 takes only a plain EQUITY that is not fund-marked (else bad input naming its type), prices it
@@ -56,8 +60,9 @@ deposits is ``employer_candidate``: {symbol, deposits (dates), vests (deposits m
 apart count as separate vests), every_days (median days between vests; null with one vest),
 sold_within_days (median days from a vest to the next sale of the symbol; null when none)}, and
 the employer_symbol DECISION_NEEDED message names it. It is never saved without the person's yes.
-``new-pick`` also reads the new symbol's saved valuation into ``picks``, so valuation weighting can
-size it (sleeves.py ``valuation_multiplier``).
+``new-pick`` also reads the new symbol's saved valuation into ``picks``, only so its open re-check
+(RECHECK_DUE) and needed valuation rerun (DEEP_VALUATION_NEEDED) are flagged; the pick still opens
+at the median.
 
 Output: sleeves.py's contract plus ``sources`` (holdings, prices, lots), ``no_price`` and
 ``employer_candidate`` (null when employer_symbol is saved or no vest deposit is found). This is a
@@ -314,8 +319,24 @@ def _age_days(as_of: object, today: str) -> int | None:
         return None
 
 
-def _picks(satellite: dict[str, float], today: str, flags: list[dict]) -> dict:
-    """The sleeves.py ``picks`` input for each held satellite symbol in the pick store."""
+def _market_caps(symbols: list[str]) -> dict[str, float | None]:
+    """Each symbol's company market cap; None for one that cannot be read."""
+    out: dict[str, float | None] = {}
+    for sym in symbols:
+        try:
+            info = market.company_info(sym)
+        except Exception:  # noqa: BLE001 — yfinance raises its own errors; degrade per symbol (NO_MARKET_CAP)
+            out[sym] = None
+            continue
+        cap = info.get("market_cap")
+        out[sym] = float(cap) if isinstance(cap, (int, float)) and not isinstance(cap, bool) else None
+    return out
+
+
+def _picks(satellite: dict[str, float], today: str, flags: list[dict], unreadable: list[str]) -> dict:
+    """The sleeves.py ``picks`` input for each held satellite symbol in the pick store.
+
+    A symbol whose saved valuation cannot be read is left out and appended to ``unreadable``."""
     pk = _screener()
     if pk is None:
         flags.append(_flag("NO_PICK_STORE", "the stock-screener skill is not installed, so there are no saved valuations"))
@@ -347,6 +368,7 @@ def _picks(satellite: dict[str, float], today: str, flags: list[dict]) -> dict:
                 expected = (central / price) ** (1 / 3) - 1 if price > 0 and central > 0 else None
         except (InvalidInput, ValueError, KeyError, TypeError, IndexError, OSError) as exc:
             flags.append(_flag("PICK_BASELINE_MISSING", f"{sym}: the saved valuation could not be read ({exc})"))
+            unreadable.append(sym)
             continue
         age = _age_days(pick.get("baseline_as_of"), today)
         out[sym] = {"kind": pick.get("kind"), "central_value": central, "expected_return": expected,
@@ -365,12 +387,11 @@ def _quote_price(sym: str) -> float:
 
 def _parser() -> _Parser:
     common = _Parser(add_help=False)
-    common.add_argument("--weighting", choices=("size", "valuation"), default=None)
+    common.add_argument("--weighting", choices=("equal", "market_cap", "valuation", "size"), default=None)
     common.add_argument("--include-light", action="store_true")
     common.add_argument("--over-ceiling", action="store_true")
     common.add_argument("--whole-shares", action="store_true")
     common.add_argument("--sell", default=None)
-    common.add_argument("--no-rebalance", action="store_true", dest="no_rebalance")
     common.add_argument("--short-term", type=float, default=0.24)
     common.add_argument("--long-term", type=float, default=0.15)
     common.add_argument("--partial", action="store_true")
@@ -392,8 +413,8 @@ def _parser() -> _Parser:
     n = sub.add_parser("new-pick", add_help=False, parents=[common])
     n.add_argument("symbol")
     n.add_argument("--amount", type=float, default=None)
-    n.add_argument("--same-size", action="store_true", dest="same_size")
     sub.add_parser("plan-step", add_help=False, parents=[common])
+    sub.add_parser("rebalance", add_help=False, parents=[common])
     return p
 
 
@@ -437,13 +458,15 @@ def main(argv: list[str] | None = None) -> int:
         employer_sector = (info.get(employer) or {}).get("sector") if employer and employer in info else None
         new_price = _quote_price(new_sym) if new_sym else None
 
+        unreadable: list[str] = []
+        picks = _picks({**prices, new_sym: new_price} if new_sym else prices, today, flags, unreadable)
         params = {
             "mode": ns.mode, "positions": positions, "accounts": roles,
             "cash_by_account": book["cash_by_account"], "settings": store,
-            "picks": _picks({**prices, new_sym: new_price} if new_sym else prices, today, flags),
+            "picks": picks, "unreadable_picks": unreadable,
+            "pick_store_unreadable": any(f["code"] == "PICK_STORE_UNREADABLE" for f in flags),
             "sectors": sectors, "employer_sector": employer_sector,
             "core_rank": _core_rank(positions, info), "sell_first": sell_first,
-            "rebalance": not ns.no_rebalance,
             "lots": book["lots"], "rates": {"short_term": ns.short_term, "long_term": ns.long_term},
             "today": today, "over_ceiling": ns.over_ceiling, "whole_shares": ns.whole_shares,
         }
@@ -464,7 +487,11 @@ def main(argv: list[str] | None = None) -> int:
             if ns.amount is not None:
                 params["new_pick"]["amount"] = ns.amount
             params["excluded_symbols"] = sorted(set(unclassified) | set(book["no_price"]))
-            params["same_size"] = ns.same_size
+        trades = (ns.mode in ("add", "grow", "plan-step", "rebalance")
+                  or (ns.mode == "new-pick" and ns.amount is not None)
+                  or (ns.mode == "deposit" and ns.satellite is not None))
+        if trades and (ns.weighting or store.get("weighting") or "equal") == "market_cap":
+            params["market_caps"] = _market_caps(sorted(prices))
         try:
             result = sleeves.run_sleeves(params)
         except (ValueError, TypeError) as exc:     # KeyError and the like are bugs, not bad input

@@ -3,28 +3,26 @@
 
 Sizing and weighting math for the core/satellite split: effective number of
 picks, tracking error, proposed satellite size, pro-rata splits, confidence
-decay and valuation-tilted pick targets. All functions are pure.
+decay, strategy weights and rebalance targets. All functions are pure.
 
-valuation_targets: score a_i = SHRINK_K x confidence x (expected_return - MARKET_RETURN), on an
-absolute scale (not standardised across picks), so near-equal returns give near-size weights.
-Raw weight = value x max(0, 1 + TILT_LAMBDA x a_i / TILT_SCALE), scaled to the target total.
-A trusted pick (eligible, confidence above 0, with central_value) is overvalued when price is
-above central_value x (1 + TRIM_MIN_GAP); its target is value x (1 - confidence x (1 -
-central_value / price)). The pick cap limits new money only; excess left by capped picks goes to
-uncapped, non-overvalued eligible picks with a_i above 0, else to any pick with room.
+strategy_weights: raw weight per pick for the saved weighting strategy: equal 1.0, market_cap the
+cap, valuation tilt_factor, size the pick's value. split_capped splits an amount by those weights;
+a pick cannot take more than its room, the overflow goes to the others by weight, and money no
+pick can take is left out of the result. All-zero weights split equally.
 
-new_pick_multiplier: the same tilt for one pick not yet held, as a multiple of its size share:
-the trim factor when overvalued, else max(0, 1 + TILT_LAMBDA x a / TILT_SCALE); 1 when it is not
-eligible or its confidence is 0.
+tilt_factor: one pick's valuation weight, with score a = SHRINK_K x confidence x (expected_return -
+MARKET_RETURN) on an absolute scale (not standardised across picks), so near-equal returns give
+near-equal weights. A pick is overvalued when price is above central_value x (1 + TRIM_MIN_GAP); its
+factor is then the trim factor 1 - confidence x (1 - central_value / price), else max(0, 1 +
+TILT_LAMBDA x a / TILT_SCALE); 1 when it is not eligible or its confidence is 0.
 
-rebalance_targets: targets for a full rebalance of the picks. Symbols in ``fixed`` take the
-target given (held picks, size shares). Every other pick starts from the same base weight
-(equal weight, not its current value, so a second run on unchanged inputs gives the same
-targets) times new_pick_multiplier, scaled to target_total less the fixed targets. A target
-above PICK_CAP x portfolio_total (or the pick's own value, when that is higher) is held there
-and the excess goes to the other picks pro rata to their factors, never to an overvalued one;
-budget no pick can take is left unassigned. band(target) is the distance from target inside which a held pick is not
-moved between holdings: max(BAND_REL x target, BAND_MIN).
+rebalance_targets(rows, raw, fixed, target_total, portfolio_total, closed): targets for a rebalance
+of the picks. Symbols in ``fixed`` take the target given (held picks). Every other pick's target is
+its ``raw`` weight's share of target_total less the fixed targets, so a second run on unchanged inputs
+gives the same targets. A target above PICK_CAP x portfolio_total is held there, whatever the pick
+holds now, and the excess goes to the other picks by ``raw``, never to a symbol in ``closed`` (the
+picks overvalued under valuation); budget no pick can take is left unassigned. band(target) is how far above
+target a pick must be before it is trimmed: max(BAND_REL x target, BAND_MIN).
 """
 from __future__ import annotations
 
@@ -53,10 +51,6 @@ _EPS = 1e-9
 
 def _r2(v: float | None) -> float | None:
     return None if v is None else round(float(v), 2)
-
-
-def _r4(v: float | None) -> float | None:
-    return None if v is None else round(float(v), 4)
 
 
 def n_eff(values: dict[str, float]) -> float:
@@ -98,14 +92,7 @@ def median_pick_value(current: dict[str, float]) -> float:
     return statistics.median(current.values()) if current else 0.0
 
 
-def _fallback(picks: list[dict], target_total: float) -> dict:
-    current = {p["symbol"]: float(p["value"]) for p in picks}
-    extra = size_split(current, target_total - sum(current.values()))
-    targets = {s: _r2(current[s] + extra[s]) for s in current}
-    return {"targets": targets, "scores": {s: None for s in current}, "capped": [], "fallback": True}
-
-
-def new_pick_multiplier(pick: dict) -> float:
+def tilt_factor(pick: dict) -> float:
     if not pick.get("eligible") or pick.get("confidence", 0) <= 0:
         return 1.0
     conf, central, price = pick["confidence"], pick["central_value"], pick["price"]
@@ -114,24 +101,52 @@ def new_pick_multiplier(pick: dict) -> float:
     return max(0.0, 1 + TILT_LAMBDA * SHRINK_K * conf * (pick["expected_return"] - MARKET_RETURN) / TILT_SCALE)
 
 
+def strategy_weights(rows: list[dict], strategy: str, market_caps: dict[str, float] | None = None) -> dict[str, float]:
+    if strategy == "equal":
+        return {r["symbol"]: 1.0 for r in rows}
+    if strategy == "market_cap":
+        caps = market_caps or {}
+        return {r["symbol"]: float(caps.get(r["symbol"], 0.0)) for r in rows}
+    if strategy == "valuation":
+        return {r["symbol"]: tilt_factor(r) for r in rows}
+    return {r["symbol"]: float(r["value"]) for r in rows}
+
+
+def split_capped(raw: dict[str, float], amount: float, room: dict[str, float] | None = None) -> dict[str, float]:
+    out = {s: 0.0 for s in raw}
+    open_ = set(raw)
+    left = amount
+    for _ in range(len(raw) + 1):
+        if not open_ or left <= _EPS:
+            break
+        total = sum(raw[s] for s in open_)
+        share = {s: (raw[s] / total if total > 0 else 1.0 / len(open_)) * left for s in open_}
+        full = {s for s in open_ if room is not None and s in room and out[s] + share[s] > room[s] + _EPS}
+        if not full:
+            for s in open_:
+                out[s] += share[s]
+            break
+        for s in full:
+            left -= max(0.0, room[s] - out[s])
+            out[s] = max(0.0, room[s])
+        open_ -= full
+    return out
+
+
 def band(target: float) -> float:
     return max(BAND_REL * target, BAND_MIN)
 
 
-def rebalance_targets(picks: list[dict], fixed: dict[str, float], target_total: float,
-                      portfolio_total: float) -> dict:
-    factor = {p["symbol"]: new_pick_multiplier(p) for p in picks if p["symbol"] not in fixed}
-    value = {p["symbol"]: float(p["value"]) for p in picks}
+def rebalance_targets(rows: list[dict], raw: dict[str, float], fixed: dict[str, float], target_total: float,
+                      portfolio_total: float, closed: frozenset[str] | set[str] = frozenset()) -> dict:
+    factor = {s: w for s, w in raw.items() if s not in fixed}
     budget = target_total - sum(fixed.values())
-    cap = PICK_CAP * portfolio_total
-    hi = {s: max(cap, value[s]) for s in factor}
+    hi = PICK_CAP * portfolio_total
     t = {s: 0.0 for s in factor}
     capped: set[str] = set()
-    # an overvalued pick takes its own share only, never another pick's overflow
-    closed = {p["symbol"] for p in picks if p["symbol"] in factor and p.get("eligible") and p.get("confidence", 0) > 0
-              and p["price"] > p["central_value"] * (1 + TRIM_MIN_GAP)}
     left = max(0.0, budget)
     for round_ in range(100):
+        # a closed pick takes its own share only, never another pick's overflow
         open_ = [s for s in factor if s not in capped and (round_ == 0 or s not in closed)]
         weight = sum(factor[s] for s in open_)
         if left <= _EPS or weight <= 0:
@@ -140,77 +155,12 @@ def rebalance_targets(picks: list[dict], fixed: dict[str, float], target_total: 
             t[s] += left * factor[s] / weight
         left = 0.0
         for s in open_:
-            if t[s] > hi[s] - _EPS:
-                left += t[s] - hi[s]
-                t[s] = hi[s]
+            if t[s] > hi - _EPS:
+                left += t[s] - hi
+                t[s] = hi
                 capped.add(s)
     targets = {**{s: _r2(v) for s, v in t.items()}, **{s: _r2(v) for s, v in fixed.items()}}
-    return {"targets": targets, "capped": [p["symbol"] for p in picks if p["symbol"] in capped]}
-
-
-def valuation_targets(picks: list[dict], target_total: float, portfolio_total: float) -> dict:
-    elig = [p for p in picks if p.get("eligible") and p.get("confidence", 0) > 0]
-    if not elig:
-        return _fallback(picks, target_total)
-
-    a = {p["symbol"]: SHRINK_K * p["confidence"] * (p["expected_return"] - MARKET_RETURN) for p in elig}
-
-    raw: dict[str, float] = {}
-    fixed: dict[str, float] = {}
-    for p in picks:
-        s, value = p["symbol"], float(p["value"])
-        # Only an eligible pick with confidence above 0 can count as overvalued and be
-        # trimmed; a pick due for a recheck (confidence 0) keeps at least its value.
-        trusted = p.get("eligible") and p.get("confidence", 0) > 0 and p.get("central_value") is not None
-        if trusted and p["price"] > p["central_value"] * (1 + TRIM_MIN_GAP):
-            fixed[s] = value * (1 - p["confidence"] * (1 - p["central_value"] / p["price"]))
-        elif s in a:
-            raw[s] = value * max(0.0, 1 + TILT_LAMBDA * a[s] / TILT_SCALE)
-        else:
-            raw[s] = value
-    values = {p["symbol"]: float(p["value"]) for p in picks}
-    cap = PICK_CAP * portfolio_total
-
-    budget = target_total - sum(fixed.values())
-    raw_sum = sum(raw.values())
-    t = {s: (r * budget / raw_sum if raw_sum > 0 else 0.0) for s, r in raw.items()}
-    # The cap limits new money only: a pick that is not overvalued never goes below its value.
-    lo = {s: values[s] for s in raw}
-    hi = {s: max(cap, lo[s]) for s in raw}
-    capped: set[str] = {s for s in raw if lo[s] >= cap}
-
-    for _ in range(100):
-        for s in t:
-            if t[s] < lo[s]:
-                t[s] = lo[s]
-            if t[s] > hi[s]:
-                t[s] = hi[s]
-                capped.add(s)
-        excess = budget - sum(t.values())
-        if abs(excess) < _EPS:
-            break
-        if excess > 0:
-            room = [s for s in t if t[s] < cap - _EPS]
-            pref = [s for s in room if a.get(s, 0) > 0]
-        else:
-            room = [s for s in t if t[s] > lo[s] + _EPS]
-            pref = []
-        recipients = pref or room
-        weight = sum(raw[s] for s in recipients)
-        if not recipients:
-            break
-        for s in recipients:
-            share = raw[s] / weight if weight > 0 else 1 / len(recipients)
-            t[s] += excess * share
-
-    targets = {p["symbol"]: _r2(fixed.get(p["symbol"], t.get(p["symbol"], 0.0))) for p in picks}
-    scores = {p["symbol"]: _r4(a.get(p["symbol"])) for p in picks}
-    return {
-        "targets": targets,
-        "scores": scores,
-        "capped": [p["symbol"] for p in picks if p["symbol"] in capped],
-        "fallback": False,
-    }
+    return {"targets": targets, "capped": [r["symbol"] for r in rows if r["symbol"] in capped]}
 
 
 if __name__ == "__main__":

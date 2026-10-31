@@ -100,8 +100,8 @@ def _parse_value(key: str, raw: str):
             raise InvalidInput(f"ceiling must be above 0 and at most 1, got {raw}")
         return x
     if key == "weighting":
-        if raw not in ("size", "valuation"):
-            raise InvalidInput(f"weighting must be size or valuation, got {raw!r}")
+        if raw not in ("equal", "market_cap", "valuation", "size"):
+            raise InvalidInput(f"weighting must be equal, market_cap, valuation or size, got {raw!r}")
         return raw
     if key == "include_light":
         if raw.lower() not in ("true", "false"):

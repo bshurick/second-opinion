@@ -1,6 +1,6 @@
 # Research behind the core/satellite numbers
 
-Where the default ceiling, the proposed size, the size-weighting default and the valuation tilt come from. Each item is graded: **strong** means peer-reviewed or mechanical (tax law, arithmetic); **practitioner rule of thumb** means common practice with no research-based optimum behind it. Verify current tax figures before quoting them.
+Where the default ceiling, the proposed size, the equal-weight default and the valuation tilt come from. Each item is graded: **strong** means peer-reviewed or mechanical (tax law, arithmetic); **practitioner rule of thumb** means common practice with no research-based optimum behind it. Verify current tax figures before quoting them.
 
 ## Contents
 - Satellite size and the default ceiling
@@ -42,11 +42,11 @@ Where the default ceiling, the proposed size, the size-weighting default and the
 - Kelly (1956) sizing shows the asymmetry: betting more than the true edge lowers long-run growth faster than betting less, so an estimated edge is shrunk before it is used.
 - The person's own testing found that much of an earlier evaluation model's apparent edge came from look-ahead in filing dates. That is a local finding, not a published one, and it points the same way.
 - What the skill does with this:
-  - Size weighting (pro rata to current value) is the default, and it never sells a pick.
-  - Valuation weighting is opt-in, uses deep valuations only, and tilts by a shrunk score on an absolute scale (see Formulas). Two picks with nearly equal expected returns get nearly their size split; a wide gap at full confidence tilts clearly.
+  - Four strategies: `equal`, `market_cap`, `valuation` and `size`. `equal` is the default, and adding money only buys. Market cap is a person's strategy choice, not a research finding.
+  - Valuation weighting is opt-in, uses deep valuations only, and tilts by a shrunk score on an absolute scale (see Formulas). Two picks with nearly equal expected returns get nearly equal shares; a wide gap at full confidence tilts clearly. New money follows the tilt, and only a rebalance on request trims.
   - Confidence halves every 182 days and is 0 when a recheck is due, so a stale or pre-filing valuation gets no tilt. A pick with no next earnings date is due after 120 days, and one with no known age is due at once.
-  - The 5% cap: a pick's target never goes above 5% of total value. A pick already above 5% that is not overvalued is never trimmed for being over the cap.
-  - A pick priced more than 5% above its central value is trimmed toward it, by its confidence: a fresh valuation trims the whole gap, a half-aged one half of it. A light valuation keeps its size share unless the person includes light valuations, and stays flagged.
+  - The 5% cap limits how high a pick's target can be.
+  - A pick priced more than 5% above its central value gets a smaller share, by its confidence, and is not sold when adding money. A light valuation takes a neutral share unless the person includes light valuations, and stays flagged.
 - The 182-day half-life, the shrink factor 0.5 and the tilt strength 0.5 are builder's choices inside the range the research describes (shrink factors of about 0.25–0.5); they are not fitted values.
 
 ## Retail trading costs
@@ -54,7 +54,7 @@ Where the default ceiling, the proposed size, the size-weighting default and the
 **Grade: strong.**
 
 - Barber and Odean (2000) studied 66,465 households at a discount broker from 1991 to 1996. The households that traded most earned 11.4% a year against 17.9% for the market; the gap came mostly from turnover.
-- This favours buy-only defaults: size weighting adds money without selling, and core sales fund picks only on request (`grow`, `new-pick`, a plan with `core` funding).
+- This favours buy-only defaults: adding money only buys, and core sales fund picks only on request (`grow`, `new-pick`, a plan with `core` funding).
 
 ## Employer stock
 
@@ -76,7 +76,7 @@ Where the default ceiling, the proposed size, the size-weighting default and the
 | `MIN_N_EFF` | 15 | N_eff below which `LOW_N_EFF` fires | rule of thumb on a strong result |
 | `SECTOR_HEAVY` | 0.25 | Share of the satellite in technology or the employer's sector that triggers `SECTOR_HEAVY` | practitioner rule of thumb |
 | `SECTOR_HAIRCUT` | 0.75 | Factor applied to the proposed size when `SECTOR_HEAVY` | builder's choice |
-| `PICK_CAP` | 0.05 | Highest target for one pick, fraction of total value; a pick already above it is not trimmed for the cap | practitioner rule of thumb |
+| `PICK_CAP` | 0.05 | Highest target for one pick, fraction of total value; the cap limits how high a target can be | practitioner rule of thumb |
 | `MARKET_RETURN` | 0.07 | Market return the expected return is measured against, per year | practitioner rule of thumb |
 | `SHRINK_K` | 0.5 | Shrink factor on the excess expected return | builder's choice in the researched range |
 | `TILT_LAMBDA` | 0.5 | Tilt strength per `TILT_SCALE` of score | builder's choice |
@@ -93,10 +93,10 @@ The employer line (10% of total value) lives in `sleeves.py`, not `weights.py`.
 - Proposed size = min(ceiling, `TE_BUDGET` × sqrt(N_eff) / `SIGMA_IDIO`), times `SECTOR_HAIRCUT` when `SECTOR_HEAVY`.
 - Confidence = 0.5 ^ (age_days / `HALF_LIFE_DAYS`), or 0 when a recheck is due.
 - Score a_i = `SHRINK_K` × confidence_i × (expected_return_i − `MARKET_RETURN`), on an absolute scale (not standardised across picks).
-- Tilted weight of an eligible pick ∝ value_i × max(0, 1 + `TILT_LAMBDA` × a_i / `TILT_SCALE`), scaled to the target total, with no target above `PICK_CAP` × total (a pick already above it keeps its value). Money a capped pick cannot take goes to uncapped picks with a_i above 0.
-- An eligible pick with confidence above 0 priced above central value × (1 + `TRIM_MIN_GAP`) gets target value_i × (1 − confidence_i × (1 − central_value / price)).
+- Tilted weight of an eligible pick ∝ value_i × max(0, 1 + `TILT_LAMBDA` × a_i / `TILT_SCALE`), scaled to the target total, with no target above `PICK_CAP` × total. Money a capped pick cannot take goes to the other picks by their shares.
+- An eligible pick with confidence above 0 priced above central value × (1 + `TRIM_MIN_GAP`) gets a share scaled by (1 − confidence_i × (1 − central_value / price)).
 - A light pick has no scenario returns, so its expected return is the annual return if the price converges to the light base fair value in 3 years: (base / price)^(1/3) − 1. The 3-year horizon is a builder's choice.
-- A new pick is sized at the median current pick value.
+- A new pick is sized at the median current pick value, capped at `PICK_CAP` × total.
 
 ## Sources
 

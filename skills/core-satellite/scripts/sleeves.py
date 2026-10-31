@@ -3,9 +3,9 @@
 
 Core/satellite sleeves: the mix of core funds, single-stock picks (satellite),
 employer stock and cash across all accounts, and per-account trade plans that
-move money into the picks (size or valuation weighting) without crossing the
-ceiling: a fixed amount, a deposit, a step up of the satellite, a new pick, or
-one step of a saved plan.
+move money into the picks (by the saved weighting strategy) without crossing
+the ceiling: a fixed amount, a deposit, a step up of the satellite, a new pick, or
+one step of a saved plan. ``rebalance`` moves money between the picks and adds none.
 
 Reads one JSON object from stdin and writes one JSON object to stdout. Exit
 code is 0 on success or 2 on invalid input (``{"error": "..."}``).
@@ -13,7 +13,7 @@ code is 0 on success or 2 on invalid input (``{"error": "..."}``).
 Input JSON contract (stdin)::
 
     {
-      "mode": "mix" | "add" | "deposit" | "grow" | "new-pick" | "plan-step",
+      "mode": "mix" | "add" | "deposit" | "grow" | "new-pick" | "plan-step" | "rebalance",
       "positions": [{"symbol", "units", "price", "account",
                      "bucket": "core" | "satellite" | "employer" | "cash"}],
       "accounts": {aid: {"role": "trading" | "retirement" | "savings"}},
@@ -31,10 +31,10 @@ Input JSON contract (stdin)::
       "core_rank": {SYM: int},               # core sale order: 0 US equity, 1 international,
                                              # 2 other or unknown (the default), 3 bonds
       "sell_first": [SYM],                   # optional: core funds sold first, in this order
-      "rebalance": true,                     # optional, default true: valuation weighting rebalances
-                                             # every pick (false: new money only, as before)
-      "same_size": false,                    # new-pick only: the sleeve total stays put
-      "weighting": "size" | "valuation",     # optional; wins over settings.weighting
+      "weighting": "equal" | "market_cap" | "valuation" | "size",   # optional; wins over settings.weighting
+      "market_caps": {SYM: float | null},    # market_cap: each pick's company market cap
+      "unreadable_picks": [SYM],             # picks whose saved data could not be read: they take no money
+      "pick_store_unreadable": bool,         # rebalance: bad input when true, the holds cannot be known
       "include_light": bool,                 # optional; wins over settings.include_light
       "over_ceiling": false, "whole_shares": false
     }
@@ -49,11 +49,13 @@ Output JSON contract (stdout)::
                       trading_value, retirement_value, n_eff, tracking_error, ceiling,
                       ceiling_source: "saved" | "default", proposed_size,
                       room_under_ceiling, single_stock_total},
-      "weighting_used": "size" | "valuation",   # valuation only when the tilt ran or sized the new pick
-      "splits": [{symbol, current, size_target, valuation_target, target, delta,
-                  account, flags}],   # split flags: PICK_CAP, TRIM_HELD_BACK,
+      "weighting_used": "equal" | "market_cap" | "valuation" | "size",
+                                      # the strategy applied; equal when valuation found no eligible pick
+      "splits": [{symbol, current, target, delta, account, flags}],
+                                      # split flags: PICK_CAP, NO_MARKET_CAP, PICK_BASELINE_MISSING,
                                       # LIGHT_VALUATION, NO_SAVED_VALUATION, RECHECK_DUE,
-                                      # HELD_FOR_RECHECK, DEEP_VALUATION_NEEDED, IN_BAND
+                                      # HELD_FOR_RECHECK, DEEP_VALUATION_NEEDED,
+                                      # IN_BAND, TRIM_HELD_BACK, TRIM_UNPLACEABLE (rebalance)
       "held_back": [{symbol, value, account, long_term_date}],
       "accounts": [{account, funding: {cash, core_sells}, rebalance}],
       "trades": [every account's rebalance trades, each with account],
@@ -61,29 +63,30 @@ Output JSON contract (stdout)::
       "readings": null | {"points": {amount, weight_after},
                           "relative": {amount, weight_after}},   # grow by_ambiguous
       "similar_to_last": null | {amount, dates},   # grow: median of the last 3 increases
-      "new_pick": null | {symbol, needed, size_needed, valuation_multiplier,
-                          allocated, account},
+      "new_pick": null | {symbol, needed, allocated, account},
       "step": null | {amount, target, steps_left},  # plan-step
       "over_ceiling_amount",
-      "unallocated_amount",           # money left as cash: pick-cap leftover plus
-                                      # buys scaled down by ACCOUNT_SHORT
+      "unallocated_amount",           # money left as cash: pick-cap leftover, buys scaled
+                                      # down by ACCOUNT_SHORT, whole-share rebalance remainder
       "satellite_net",                # satellite-pick BUY values less SELL values in trades
       "settings_used": {ceiling, weighting, include_light, short_term_gain_policy,
-                        employer_symbol, rebalance, same_size},
+                        employer_symbol},
       "flags": [{code, message}]   # DECISION_NEEDED, PICK_IN_RETIREMENT,
                                    # EMPLOYER_CONCENTRATION, LOW_N_EFF, SECTOR_HEAVY,
                                    # ABOVE_CEILING, NO_SATELLITE, ACCOUNT_SHORT,
                                    # UNALLOCATED, VALUATION_FALLBACK, LIGHT_VALUATION,
-                                   # NO_SAVED_VALUATION, RECHECK_DUE, TRIM_HELD_BACK,
-                                   # CORE_HELD_BACK, AMBIGUOUS_PERCENT, BOND_FUND_SOLD
+                                   # NO_SAVED_VALUATION, RECHECK_DUE, HELD_FOR_RECHECK,
+                                   # DEEP_VALUATION_NEEDED, NO_MARKET_CAP,
+                                   # CORE_HELD_BACK, TRIM_HELD_BACK, TRIM_UNPLACEABLE,
+                                   # AMBIGUOUS_PERCENT, BOND_FUND_SOLD
     }
 
 Method: total is every position in every account plus all cash. Satellite
 value counts satellite holdings in every account (retirement copies get
 PICK_IN_RETIREMENT and no trades); employer stock is its own bucket and is
 outside the ceiling, N_eff and tracking error. N_eff is over per-symbol
-satellite values. ``add`` spreads ``amount`` over the trading-account picks
-pro rata to their trading value, sends each pick's whole delta to the trading
+satellite values. ``add`` spreads ``amount`` over the trading-account picks by
+the strategy's shares, sends each pick's whole delta to the trading
 account holding more of it (tie: account id order), and limits buys to the
 room under the ceiling (saved, or the default when unset) unless
 ``over_ceiling``. An account short of cash moves the shortfall to another
@@ -95,48 +98,28 @@ use the smallest-gain order. ``deposit`` without ``satellite_amount`` returns
 a proposal only; with it, the satellite part is planned as ``add`` and the
 core part buys core funds pro rata in the same accounts from their own cash.
 
-Rebalance (valuation weighting with ``rebalance`` true, the default) replaces the new-money
-split in ``add``, ``deposit`` with ``satellite_amount``, ``grow``, ``plan-step`` and
-``new-pick``: the trading picks (and the new pick) go to weights.rebalance_targets for a
-sleeve total of their value plus the amount (``same_size``: plus nothing). A pick due for a
-recheck (or of unknown age) holds its value and is not traded (HELD_FOR_RECHECK, or
-DEEP_VALUATION_NEEDED when ``needs_valuation``); a pick without an eligible valuation keeps its
-size share (the new pick counted at its seed); a pick above the 5% cap that is not overvalued
-keeps its value. New money goes to the new pick, then to the picks furthest below target, with
-no band. A held pick at least weights.band(target) above its target is trimmed; with
-``same_size`` the new pick's need is trimmed first from the picks furthest above target,
-ignoring bands. Trim proceeds go to the new pick, then picks a band or more below target, then
-the rest below target. A pick with no trade inside its band is IN_BAND. ``new-pick`` grows the
-sleeve by the median seed (``amount`` when given); ``needed`` still reports median x
-``valuation_multiplier``. The employer symbol can be a new pick when ``picks`` has a deep entry
-for it, and EMPLOYER_CONCENTRATION counts it in every bucket.
+Adding money (``add``, ``deposit`` with ``satellite_amount``, ``grow``, ``plan-step``, and the rest of
+``new-pick`` with ``amount``) only buys: it never sells a pick. The strategy's raw weights
+(weights.strategy_weights) are ``equal`` 1, ``market_cap`` the company's market cap, ``valuation``
+weights.tilt_factor and ``size`` the current value, whatever else the picks hold; ``equal`` is used
+when nothing is saved. A pick takes no money when it is due for a recheck or of unknown age
+(HELD_FOR_RECHECK, or DEEP_VALUATION_NEEDED when ``needs_valuation``), is in ``unreadable_picks``
+(PICK_BASELINE_MISSING), or under ``market_cap`` has no finite market cap above 0 (NO_MARKET_CAP); no
+market cap for any other pick is bad input.
+The 5% pick cap limits buys under every strategy but ``size``: the overflow goes to the other picks by
+their shares, and what no pick can take stays as cash (UNALLOCATED). The employer symbol can be a new
+pick when ``picks`` has a deep entry for it, and EMPLOYER_CONCENTRATION counts it in every bucket.
 
 An unset (null) ``settings.employer_symbol`` raises DECISION_NEEDED ("employer_symbol is
 unset: ..."); a saved "none" means no employer stock.
 
-Valuation weighting (input ``weighting``, else ``settings.weighting``, else
-size) runs in ``add`` and in ``deposit`` with ``satellite_amount``: the
-trading-account picks go to ``weights.valuation_targets`` with a target total
-of their value plus the amount. A pick is eligible when its kind is deep (or
-light with ``include_light``) and it has central_value and expected_return;
-confidence is ``weights.confidence(age_days, recheck_due)``, and an age_days of
-null counts as recheck_due (RECHECK_DUE). The score is absolute (see weights.py),
-so near-equal returns give near-size splits. Ineligible picks
-keep their size share and are never trimmed. With no eligible pick of
-confidence above 0 the plan is size weighting (VALUATION_FALLBACK). The 5% pick
-cap limits new money only; value the cap leaves unplaced stays as cash
-(UNALLOCATED). An overvalued pick (price above central_value x 1.05,
-weights.TRIM_MIN_GAP) is trimmed to value x (1 - confidence x (1 - central_value /
-price)): the trim is split across the trading accounts holding it pro rata to value, and
-its proceeds fund buys in the same account only. Within an account the trim
-takes loss lots (cost at or above price), then long-term gain lots, then
-short-term or unknown-term gain lots (and units with no lot) only when
-short_term_gain_policy is allow. Under hold, or unset (DECISION_NEEDED), that
-part is a held_back row whose long_term_date is acquired + 1 year + 1 day
-(Feb 29 -> Mar 1; null without a date); the pick's target rises by that value
-and buys shrink so the freed money never appears in buys (TRIM_HELD_BACK).
-run_rebalance sells exactly the trim value, using only the lots the trim may
-take for its tax estimate. Size weighting never sells a pick.
+Valuation weighting: a pick is eligible when its kind is deep (or light with ``include_light``) and
+it has central_value and expected_return; confidence is ``weights.confidence(age_days, recheck_due)``,
+and an age_days of null counts as recheck_due (RECHECK_DUE). The score is absolute (see weights.py), so
+near-equal returns give near-equal splits. An ineligible pick gets the neutral weight (1). An overvalued
+pick (price above central_value x 1.05, weights.TRIM_MIN_GAP) gets a smaller share and, when adding
+money, is not sold. With no eligible pick of confidence above 0 an add's weights are all neutral, so the
+split comes out equal (VALUATION_FALLBACK) and ``weighting_used`` is equal.
 
 ``grow`` moves the satellite to a target value: ``to_weight`` x total,
 ``by_points`` (w + p) x total, ``by_relative`` w x (1 + r) x total, or
@@ -144,29 +127,29 @@ satellite + ``amount`` (w = satellite / total). Ranges (else bad input): 0 <
 to_weight <= 1, 0 < by_points < 1, by_relative, by_ambiguous and amount above 0. ``by_ambiguous`` returns both
 readings and no trades (AMBIGUOUS_PERCENT). With no field there are no trades.
 Every grow carries ``similar_to_last``. The gap is limited by the ceiling as in
-``add``, split by the active weighting and routed the same way. Each trading
+``add``, split by the strategy and routed the same way. Each trading
 account funds its buys from its own cash, then by selling its own core funds:
 the ``sell_first`` funds in their order, then the rest by ``core_rank`` (US
 equity, international, other, bonds last), then in the smallest-gain
 order run_rebalance uses (each fund limited to what the
-short-term-gain policy lets it sell, by the same lot rules as a trim); retirement
-core is never sold. Under hold, or unset (DECISION_NEEDED), the blocked part of an
-account's shortfall is a held_back row for the core fund (CORE_HELD_BACK), and
+short-term-gain policy lets it sell); retirement
+core is never sold. A core sale takes loss lots (cost at or above price), then long-term gain lots,
+then short-term or unknown-term gain lots (and units with no lot) only when short_term_gain_policy is
+allow, using only those lots for its tax estimate. Under hold, or unset (DECISION_NEEDED), the blocked part of an
+account's shortfall is a held_back row for the core fund (CORE_HELD_BACK) whose long_term_date
+is acquired + 1 year + 1 day (Feb 29 -> Mar 1; null without a date), and
 money no account can fund is unallocated_amount. A sale of a bond-ranked fund adds
 BOND_FUND_SOLD.
 
-``new-pick`` sizes a pick not yet held at ``needed``: ``size_needed``, the median
-trading value of the current picks (``amount`` when there are none), times
-``valuation_multiplier``. Under valuation weighting the multiplier is
-weights.new_pick_multiplier on the new pick's own ``picks`` entry (eligible as in
-the tilt), so a better buy opens larger and one near or above its central value
-smaller, and ``needed`` is then capped at the 5% pick cap; under size weighting,
-or without an eligible valuation, it is 1. It goes to the trading
+``new-pick`` sizes a pick not yet held at ``needed``: the median trading value of the current picks,
+capped at the 5% pick cap (``amount`` when there are none). The strategy does not change its size. A
+saved pick due for a recheck or of unknown age still opens at the median, flagged RECHECK_DUE, or
+DEEP_VALUATION_NEEDED when ``needs_valuation``. It goes to the trading
 account holding the most pick value, where the picks are kept; with no
 trading-account picks, to the one with the most cash plus core value (tie:
 account id order). Without
 ``amount`` the plan is ``needed``; with it the new pick gets min(amount, needed)
-and the rest goes to the current picks by the active weighting. Ceiling and
+and the rest goes to the current picks as an add. Ceiling and
 funding are as in ``grow``. Bad input: a symbol in ``positions`` (any bucket) or in
 ``excluded_symbols``, or equal to settings.employer_symbol (any case).
 
@@ -177,6 +160,23 @@ month counted as one, cadence monthly 1 or quarterly 3; amount = (target x total
 ``cash`` never sells core; ``core`` funds as ``grow``. A deposit proposal uses
 that step amount when a plan is active (else the proposed-size gap), within 0
 and the smaller of the deposit and the room under the ceiling.
+
+``rebalance`` runs only on request and moves the trading-account picks toward strategy share x the
+sleeve's current value. Sells fund buys in the same account: no cash is used, no core fund is sold, the
+ceiling is not consulted. A held pick (as in adding money) keeps its value and its share goes to the
+others. A target never passes the 5% pick cap (PICK_CAP), and overflow never goes to a pick overvalued
+under valuation. A pick is trimmed when at least weights.band above target, under the short-term-gain
+policy (TRIM_HELD_BACK), and each account trims no further than the picks routed to it can take. Any pick
+below target can receive the proceeds, furthest below target first; a sale's proceeds buy only picks
+routed to its own account, and proceeds no buy spends are not sold, whole-share buys rounding down; what
+whole shares leave as cash is unallocated_amount. IN_BAND marks a pick off target, inside its band, with
+no trade. A pick above its band that keeps part of its excess says why: TRIM_HELD_BACK for what the
+short-term-gain policy keeps from a buy that could take it, TRIM_UNPLACEABLE for what no pick below target
+in its account can take.
+Bad input: ``size``, ``sell_first``, ``over_ceiling``, ``pick_store_unreadable``, valuation with no
+eligible pick of confidence above 0, or negative cash in an account with trades. With fewer than two
+trading-account picks there are no trades.
+
 Money 2 dp, weights 4 dp. This produces a plan, not orders.
 """
 from __future__ import annotations
@@ -198,7 +198,7 @@ from rebalance import run_rebalance  # noqa: E402
 
 _BUCKETS = ("core", "satellite", "employer", "cash")
 _ROLES = ("trading", "retirement", "savings")
-_MODES = ("mix", "add", "deposit", "grow", "new-pick", "plan-step")
+_MODES = ("mix", "add", "deposit", "grow", "new-pick", "plan-step", "rebalance")
 _GROW_FIELDS = ("to_weight", "by_points", "by_relative", "by_ambiguous", "amount")
 _GROW_RANGES = {
     "to_weight": (lambda x: 0 < x <= 1, "above 0 and at most 1"),
@@ -281,9 +281,9 @@ def _settings_used(settings: dict, params: dict) -> tuple[dict, str]:
         ceiling, source = _num(ceiling, "settings.ceiling"), "saved"
         if not 0 < ceiling <= 1:
             raise ValueError("settings.ceiling must be above 0 and at most 1")
-    weighting = params.get("weighting") or settings.get("weighting") or "size"
-    if weighting not in ("size", "valuation"):
-        raise ValueError("weighting must be size or valuation")
+    weighting = params.get("weighting") or settings.get("weighting") or "equal"
+    if weighting not in ("equal", "market_cap", "valuation", "size"):
+        raise ValueError("weighting must be equal, market_cap, valuation or size")
     light = params.get("include_light")
     if light is None:
         light = settings.get("include_light")
@@ -383,11 +383,6 @@ def _holdings(positions: list[dict], bucket: str) -> dict[str, dict[str, float]]
 def _route(by_account: dict[str, float]) -> str:
     """The trading account holding the larger value; tie goes to the first account id."""
     return sorted(by_account.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
-
-
-def _size_split(sat: dict[str, dict[str, float]], amount: float) -> dict[str, float]:
-    current = {s: sum(a.values()) for s, a in sat.items()}
-    return weights.size_split(current, amount)
 
 
 def _fund(deltas: dict[str, float], sat: dict[str, dict[str, float]],
@@ -525,32 +520,30 @@ def _plan_accounts(positions, cash, alloc, core, params, lot_override=None,
 
 
 def _splits(sat: dict[str, dict[str, float]], alloc: dict[str, dict[str, float]],
-            val: dict | None = None, pick_flags: dict[str, list[str]] | None = None) -> list[dict]:
+            targets: dict[str, float] | None = None, pick_flags: dict[str, list[str]] | None = None) -> list[dict]:
     rows = []
     for sym in sorted(sat):
         current = sum(sat[sym].values())
         delta = sum(a.get(sym, 0.0) for a in alloc.values())
-        size_target = current + (val["size"].get(sym, 0.0) if val else delta)
         rows.append({
-            "symbol": sym, "current": _r2(current), "size_target": _r2(size_target),
-            "valuation_target": val["targets"].get(sym) if val else None,
-            "target": _r2(current + delta), "delta": _r2(delta),
+            "symbol": sym, "current": _r2(current),
+            "target": _r2(targets[sym] if targets else current + delta), "delta": _r2(delta),
             "account": _route(sat[sym]), "flags": sorted(set((pick_flags or {}).get(sym, []))),
         })
     return rows
 
 
-# --- valuation tilt and trims -------------------------------------------------------------------
+# --- strategy inputs, holds and trims -----------------------------------------------------------
 
 
 def _pick_inputs(sat: dict[str, dict[str, float]], positions: list[dict], picks: dict,
                  include_light: bool, flags: list[dict],
-                 pick_flags: dict[str, list[str]]) -> list[dict]:
-    """The weights.valuation_targets input for each trading-account pick, plus pick flags.
+                 pick_flags: dict[str, list[str]], unreadable: set[str] = frozenset()) -> list[dict]:
+    """The weights.strategy_weights input for each trading-account pick, plus pick flags.
 
     Eligible: kind deep (or light with include_light) with central_value and
     expected_return. Only eligible picks carry central_value, so an ineligible
-    pick keeps its size share and is never trimmed.
+    pick gets the neutral weight.
     """
     price = {p["symbol"]: p["price"] for p in positions if p["bucket"] == "satellite" and p["role"] == "trading"}
     out = []
@@ -562,7 +555,10 @@ def _pick_inputs(sat: dict[str, dict[str, float]], positions: list[dict], picks:
                "central_value": None, "expected_return": None, "eligible": False, "confidence": 0.0}
         out.append(row)
         if pick is None:
-            _flag(flags, "NO_SAVED_VALUATION", f"{sym} has no saved valuation and keeps its size share")
+            if sym in unreadable:
+                _flag(flags, "NO_SAVED_VALUATION", f"{sym} holds at its current value because its saved valuation could not be read")
+            else:
+                _flag(flags, "NO_SAVED_VALUATION", f"{sym} has no saved valuation and gets the neutral weight")
             pick_flags.setdefault(sym, []).append("NO_SAVED_VALUATION")
             continue
         central = _num(pick.get("central_value"), f"picks.{sym}.central_value")
@@ -572,7 +568,7 @@ def _pick_inputs(sat: dict[str, dict[str, float]], positions: list[dict], picks:
         if kind == "light":
             pick_flags.setdefault(sym, []).append("LIGHT_VALUATION")
             if not include_light:
-                _flag(flags, "LIGHT_VALUATION", f"{sym} has a light valuation only; not used for the tilt, it keeps its size share")
+                _flag(flags, "LIGHT_VALUATION", f"{sym} has a light valuation only; not used for the tilt, it gets the neutral weight")
             elif has_values:
                 _flag(flags, "LIGHT_VALUATION", f"{sym} has a light valuation only; it was included in the tilt (include_light), and its expected return is a 3-year convergence estimate from the light fair value")
             else:
@@ -666,24 +662,31 @@ def _hold(sym: str, value: float, pick: object, flags: list[dict], pick_flags: d
     return True
 
 
-def _trim_split(cuts: dict[str, float], sat: dict[str, dict[str, float]],
-                demand: dict[str, float]) -> dict[str, dict[str, float]]:
-    """Split each cut across the accounts holding the pick: first where ``demand`` (money the
-    account's buys still need) is largest, then pro rata to what is left in each account."""
+def _trim_split(over: dict[str, float], sat: dict[str, dict[str, float]], demand: dict[str, float],
+                free: dict[str, dict[str, float]], dust: float) -> dict[str, dict[str, float]]:
+    """How much of each pick in ``over`` ({symbol: value it may lose}) to trim in each account.
+
+    An account's trims stop at its ``demand`` (what the picks routed to it can take), shared among
+    the picks it holds pro rata to what each can give. ``free`` ({symbol: {account: value}}) is what
+    may sell; only demand it cannot meet then asks for the rest of the holding, which the
+    short-term-gain policy holds back. A holding or a part worth ``dust`` or less is not sold: it is
+    what rounding leaves, too small for an order. Returns {symbol: {account: value}}.
+    """
     demand = dict(demand)
-    out: dict[str, dict[str, float]] = {}
-    for sym in sorted(cuts):
-        left, parts = cuts[sym], {a: 0.0 for a in sat[sym]}
-        for aid in sorted(sat[sym], key=lambda a: (-demand.get(a, 0.0), a)):
-            take = max(0.0, min(left, sat[sym][aid], demand.get(aid, 0.0)))
-            parts[aid] += take
-            demand[aid] = demand.get(aid, 0.0) - take
-            left -= take
-        room = {a: sat[sym][a] - parts[a] for a in parts}
-        total = sum(room.values())
-        for aid in parts:
-            parts[aid] += left * room[aid] / total if total > 0 else 0.0
-        out[sym] = parts
+    left = dict(over)
+    out = {sym: {a: 0.0 for a in sat[sym]} for sym in over}
+    for limit in (free, sat):
+        for aid in sorted(demand):
+            room = {sym: min(left[sym], limit[sym][aid] - out[sym][aid]) for sym in sorted(over) if aid in sat[sym]}
+            room = {sym: v for sym, v in room.items() if v > dust}
+            total = sum(room.values())
+            take = min(demand[aid], total)
+            for sym, v in room.items():
+                part = v * take / total
+                if part > dust:
+                    out[sym][aid] += part
+                    left[sym] -= part
+                    demand[aid] -= part
     return out
 
 
@@ -718,128 +721,109 @@ def _apply_trims(cuts: dict[str, float], sat: dict[str, dict[str, float]], price
                 spare[aid] = spare.get(aid, 0.0) + sold
                 if policy != "allow":
                     lot_override.setdefault(aid, {})[sym] = sellable
-    if held_back:
-        syms = {r["symbol"] for r in held_back}
-        for sym in syms:
-            pick_flags.setdefault(sym, []).append("TRIM_HELD_BACK")
-        total = sum(r["value"] for r in held_back)
-        _flag(flags, "TRIM_HELD_BACK", f"{total:.2f} of trims in {', '.join(sorted(syms))} is held back: those units are short-term or unknown-term gains")
-        if policy is None:
-            _policy_needed(flags)
+    _trims_held_back(held_back, policy, flags, pick_flags)
     return trims, held_back, lot_override, kept
 
 
-def _valuation_add(amount: float, ctx: dict, positions: list[dict], spare: dict[str, float],
-                   params: dict, used: dict, flags: list[dict],
-                   pick_flags: dict[str, list[str]],
-                   shorts: dict[str, float] | None = None) -> dict | None:
-    """Tilt ``amount`` (plus trims of overvalued picks) by valuation and place it per account.
+def _trims_held_back(rows: list[dict], policy: str | None, flags: list[dict], pick_flags: dict[str, list[str]]) -> None:
+    """TRIM_HELD_BACK for ``rows``, plus DECISION_NEEDED under an unset policy."""
+    if not rows:
+        return
+    syms = {r["symbol"] for r in rows}
+    for sym in syms:
+        pick_flags.setdefault(sym, []).append("TRIM_HELD_BACK")
+    total = sum(r["value"] for r in rows)
+    _flag(flags, "TRIM_HELD_BACK", f"{total:.2f} of trims in {', '.join(sorted(syms))} is held back: those units are short-term or unknown-term gains")
+    if policy is None:
+        _policy_needed(flags)
 
-    Returns None when weights falls back to size; else {alloc, unplaced, held_back,
-    lot_override, val}. A trim is split across the accounts holding the pick pro
-    rata to value; its proceeds fund buys in the same account only.
+
+def _participants(sat: dict[str, dict[str, float]], positions: list[dict], params: dict, used: dict,
+                  flags: list[dict], pick_flags: dict[str, list[str]]) -> tuple[list[dict], dict[str, float], set[str]]:
+    """Each trading-account pick's row, the strategy's raw weights and the picks that hold.
+
+    Returns (rows, raw, held). A held pick takes no money and does not move: it is due for a
+    recheck (``_hold``), in ``unreadable_picks`` (PICK_BASELINE_MISSING), or under market_cap has
+    no finite cap above 0 (NO_MARKET_CAP). ``raw`` covers only the others. Under market_cap, no
+    cap at all among them is bad input.
     """
-    sat = _holdings(positions, "satellite")
-    if not sat:
-        return None
-    inputs = _pick_inputs(sat, positions, params.get("picks") or {}, used["include_light"], flags, pick_flags)
-    current = {s: sum(a.values()) for s, a in sat.items()}
-    target_total = sum(current.values()) + amount
-    vt = weights.valuation_targets(inputs, target_total, ctx["total"])
-    if vt["fallback"]:
-        return None
-    for sym in vt["capped"]:
-        pick_flags.setdefault(sym, []).append("PICK_CAP")
-    price = {r["symbol"]: r["price"] for r in inputs}
-    units = {}
-    for p in positions:
-        if p["bucket"] == "satellite" and p["role"] == "trading":
-            units[(p["symbol"], p["account"])] = units.get((p["symbol"], p["account"]), 0.0) + p["units"]
-    targets = {s: float(vt["targets"][s]) for s in current}
-    cuts = {sym: current[sym] - targets[sym] for sym in current if current[sym] - targets[sym] > _EPS}
-    trims, held_back, lot_override, kept = _apply_trims(cuts, sat, price, units, params, used, spare, flags, pick_flags)
-    for sym, v in kept.items():
-        targets[sym] += v
-    buys = {s: targets[s] - current[s] for s in current if targets[s] - current[s] > _EPS}
-    excess = sum(targets.values()) - target_total     # > 0 when held-back value exceeds the cap leftover
-    want = sum(buys.values())
-    if excess > _EPS and want > 0:
-        buys = {s: v * max(0.0, want - excess) / want for s, v in buys.items()}
-    alloc = _fund(buys, sat, spare, flags, shorts)
-    for aid, by_sym in trims.items():
-        for sym, v in by_sym.items():
-            alloc.setdefault(aid, {})[sym] = alloc.get(aid, {}).get(sym, 0.0) - v
-    sold_total = sum(v for a in trims.values() for v in a.values())
-    return {
-        "alloc": alloc,
-        "unplaced": max(0.0, amount + sold_total - _placed(alloc)),
-        "held_back": held_back,
-        "lot_override": lot_override,
-        "val": {"targets": vt["targets"], "size": _size_split(sat, amount)},
-    }
-
-
-def _valuation_rebalance(amount: float, ctx: dict, positions: list[dict], spare: dict[str, float],
-                         params: dict, used: dict, flags: list[dict],
-                         pick_flags: dict[str, list[str]], shorts: dict[str, float] | None = None,
-                         new: dict | None = None, same_size: bool = False) -> dict | None:
-    """Rebalance every trading-account pick (and ``new``) to equal-weight-times-tilt targets.
-
-    The sleeve total becomes the trading picks' value plus ``amount`` (``same_size``: plus 0).
-    Held picks (due for a recheck) keep their value; picks without an eligible valuation
-    keep their size share; a pick above the 5% cap that is not overvalued keeps its value.
-    New money goes to the new pick, then to the picks furthest below target. Picks at least
-    one band above target are trimmed (``same_size`` first trims, ignoring bands, what the
-    new pick needs), no further than the picks below target can take, and from the accounts
-    their buys route to; each account's proceeds go to its new pick, then its picks a band or
-    more below target, then the rest below target, and proceeds no buy spends are not sold.
-    Returns None when no pick is eligible with confidence above 0,
-    else the ``_valuation_add`` shape.
-    """
-    sat = _holdings(positions, "satellite")
-    rows = list(positions)
-    nsym = None
-    if new is not None:
-        nsym = new["symbol"]
-        sat = {**sat, nsym: {new["account"]: 0.0}}
-        rows.append({"symbol": nsym, "units": 0.0, "price": new["price"], "account": new["account"],
-                     "bucket": "satellite", "role": "trading"})
-    if not sat:
-        return None
+    strategy = used["weighting"]
     picks = params.get("picks") or {}
-    scratch: list[dict] = []
-    scratch_pf: dict[str, list[str]] = {}
-    inputs = _pick_inputs(sat, rows, picks, used["include_light"], scratch, scratch_pf)
-    # the new pick's own valuation flags were raised when it was sized
-    flags.extend(f for f in scratch if nsym is None or not f["message"].startswith(f"{nsym} "))
-    for sym, codes in scratch_pf.items():
-        if sym != nsym:
-            pick_flags.setdefault(sym, []).extend(codes)
-    if not any(r["eligible"] and r["confidence"] > 0 for r in inputs):
-        return None
+    given_unreadable = params.get("unreadable_picks") or []
+    if not isinstance(given_unreadable, list):
+        raise ValueError("unreadable_picks must be a list")
+    if not isinstance(params.get("market_caps") or {}, dict):
+        raise ValueError("market_caps must be an object")
+    unreadable = {str(s).upper() for s in given_unreadable}
+    if strategy == "valuation":
+        rows = _pick_inputs(sat, positions, picks, used["include_light"], flags, pick_flags, unreadable)
+    else:
+        price = {p["symbol"]: p["price"] for p in positions if p["bucket"] == "satellite" and p["role"] == "trading"}
+        rows = [{"symbol": sym, "value": sum(sat[sym].values()), "price": price[sym]} for sym in sorted(sat)]
+    held = {r["symbol"] for r in rows if _hold(r["symbol"], r["value"], picks.get(r["symbol"]), flags, pick_flags)} | (unreadable & set(sat))
+    for sym in unreadable & set(sat):
+        pick_flags.setdefault(sym, []).append("PICK_BASELINE_MISSING")
+    caps = None
+    if strategy == "market_cap":
+        given = params.get("market_caps") or {}
+        caps = {r["symbol"]: _num(given.get(r["symbol"]), f"market_caps.{r['symbol']}") for r in rows if r["symbol"] not in held}
+        missing = {sym for sym, v in caps.items() if v is None or not math.isfinite(v) or v <= 0}
+        if caps and missing == set(caps):
+            raise ValueError("market_cap weighting needs a market cap, and no pick that can take money has a market cap")
+        for sym in sorted(missing):
+            held.add(sym)
+            pick_flags.setdefault(sym, []).append("NO_MARKET_CAP")
+            _flag(flags, "NO_MARKET_CAP", f"{sym} has no market cap; it gets no new money and holds its value")
+    raw = weights.strategy_weights([r for r in rows if r["symbol"] not in held], strategy, caps)
+    return rows, raw, held
+
+
+def _strategy_add(amount: float, ctx: dict, positions: list[dict], spare: dict[str, float], params: dict,
+                  used: dict, flags: list[dict], pick_flags: dict[str, list[str]],
+                  shorts: dict[str, float] | None = None) -> dict:
+    """Split ``amount`` by the strategy's shares and place it per account. It never sells.
+
+    The 5% pick cap limits buys except under size; what no pick can take is ``unplaced``.
+    With no trusted pick under valuation the weights are all neutral (VALUATION_FALLBACK).
+    """
+    sat = _holdings(positions, "satellite")
+    if not sat:
+        return {"alloc": {}, "unplaced": amount}
+    rows, raw, held = _participants(sat, positions, params, used, flags, pick_flags)
+    if used["weighting"] == "valuation" and not any(r["eligible"] and r["confidence"] > 0 for r in rows if r["symbol"] not in held):
+        _flag(flags, "VALUATION_FALLBACK", "no trading-account pick has an eligible valuation with confidence above 0; the weights are neutral, so the split is equal")
+    room = None
+    if used["weighting"] != "size":
+        room = {sym: max(0.0, weights.PICK_CAP * ctx["total"] - sum(sat[sym].values())) for sym in raw}
+    deltas = weights.split_capped(raw, amount, room)
+    for sym, d in deltas.items():
+        if room is not None and d >= room[sym] - _EPS:
+            pick_flags.setdefault(sym, []).append("PICK_CAP")
+    alloc = _fund(deltas, sat, spare, flags, shorts)
+    return {"alloc": alloc, "unplaced": max(0.0, amount - _placed(alloc))}
+
+
+def _rebalance(ctx: dict, positions: list[dict], spare: dict[str, float], params: dict, used: dict,
+               flags: list[dict], pick_flags: dict[str, list[str]]) -> dict:
+    """Move the trading-account picks toward strategy share x the sleeve's value; sells fund buys.
+
+    Held picks keep their value. The 5% cap limits targets only: a pick above its target can be
+    trimmed however large. Picks at least one band above target are trimmed, in each account no
+    further than the picks routed to it can take; each account's proceeds go to its picks furthest
+    below target first, and proceeds no buy spends are not sold. Returns {alloc, held_back,
+    lot_override, targets, unplaced}, ``unplaced`` being what whole shares leave as cash.
+    """
+    sat = _holdings(positions, "satellite")
+    rows, raw, held = _participants(sat, positions, params, used, flags, pick_flags)
+    if used["weighting"] == "valuation" and not any(r["eligible"] and r["confidence"] > 0 for r in rows if r["symbol"] not in held):
+        raise ValueError("valuation rebalance needs a pick with an eligible valuation of confidence above 0; without one it would sell picks toward a strategy not chosen")
 
     current = {sym: sum(a.values()) for sym, a in sat.items()}
-    sleeve = sum(current.values())
-    total_t = sleeve + (0.0 if same_size else amount)
-    cap = weights.PICK_CAP * ctx["total"]
-    fixed: dict[str, float] = {}
-    held: set[str] = set()
-    for r in inputs:
-        sym = r["symbol"]
-        pick = picks.get(sym) if isinstance(picks.get(sym), dict) else None
-        trusted = r["eligible"] and r["confidence"] > 0
-        if sym == nsym:
-            if not trusted:
-                fixed[sym] = new["seed"]
-        elif _hold(sym, current[sym], pick, flags, pick_flags):
-            fixed[sym] = current[sym]
-            held.add(sym)
-        elif not trusted:     # its size share, the new pick counted at its seed
-            base = sleeve + (new["seed"] if nsym is not None else 0.0)
-            fixed[sym] = current[sym] * total_t / base if base > 0 else 0.0
-        elif current[sym] > cap and not r["price"] > r["central_value"] * (1 + weights.TRIM_MIN_GAP):
-            fixed[sym] = current[sym]
-    vt = weights.rebalance_targets(inputs, fixed, total_t, ctx["total"])
+    fixed = {sym: current[sym] for sym in held}
+    # an overvalued pick takes its own share only, never another pick's overflow
+    closed = {r["symbol"] for r in rows if r["symbol"] in raw and r.get("eligible") and r["confidence"] > 0
+              and r["price"] > r["central_value"] * (1 + weights.TRIM_MIN_GAP)}
+    vt = weights.rebalance_targets(rows, raw, fixed, sum(current.values()), ctx["total"], closed)
     for sym in vt["capped"]:
         pick_flags.setdefault(sym, []).append("PICK_CAP")
     targets = {sym: float(v) for sym, v in vt["targets"].items()}
@@ -859,65 +843,52 @@ def _valuation_rebalance(amount: float, ctx: dict, positions: list[dict], spare:
             money -= give
         return money
 
-    money = 0.0 if same_size else amount
-    if nsym is not None:
-        money = place(money, [nsym])
-    money = place(money, sorted(movable, key=lambda x: (-short(x), x)))
-
-    cuts: dict[str, float] = {}
-    olds = [sym for sym in movable if sym != nsym]
-    if same_size and nsym is not None:
-        need = short(nsym)
-        for sym in sorted(olds, key=lambda x: (targets[x] - current[x], x)):
-            over = current[sym] - targets[sym]
-            if need <= _EPS or over <= _EPS:
-                break
-            take = min(over, need)
-            cuts[sym] = take
-            need -= take
-    paid = sum(cuts.values())          # same-size trims: each pays for the new pick
-    band_cuts: dict[str, float] = {}
-    for sym in olds:
-        over = current[sym] - targets[sym] - cuts.get(sym, 0.0)
-        if current[sym] - targets[sym] >= weights.band(targets[sym]) and over > _EPS:
-            band_cuts[sym] = over
-    # trim no more than the picks below target can take, so no proceeds are left as cash
-    # (when capped picks leave part of the total unassigned, trimming more would repeat every run)
-    absorb = max(0.0, sum(max(0.0, short(sym)) for sym in movable) - paid)
-    want = sum(band_cuts.values())
-    scale = min(1.0, absorb / want) if want > _EPS else 0.0
-    for sym, v in band_cuts.items():
-        if v * scale > _EPS:
-            cuts[sym] = cuts.get(sym, 0.0) + v * scale
+    over = {sym: current[sym] - targets[sym] for sym in movable
+            if current[sym] - targets[sym] >= weights.band(targets[sym])}
+    price = {r["symbol"]: r["price"] for r in rows}
+    # a value this small is what the plan's own rounding (cents, 4 dp units) leaves behind
+    dust = 2 * _EPS + 1e-4 * max(price.values())
     demand: dict[str, float] = {}
     for sym in movable:
-        if short(sym) > _EPS:
+        if short(sym) > dust:
             aid = _route(sat[sym])
             demand[aid] = demand.get(aid, 0.0) + short(sym)
-    price = {r["symbol"]: r["price"] for r in inputs}
     units: dict[tuple[str, str], float] = {}
     for p in positions:
         if p["bucket"] == "satellite" and p["role"] == "trading":
             units[(p["symbol"], p["account"])] = units.get((p["symbol"], p["account"]), 0.0) + p["units"]
-    before = dict(spare)
-    trims, held_back, lot_override, _ = _apply_trims(cuts, sat, price, units, params, used, spare, flags, pick_flags,
-                                                     _trim_split(cuts, sat, demand))
-    sold_total = sum(v for a in trims.values() for v in a.values())
-    outside = [sym for sym in olds if short(sym) >= weights.band(targets[sym])]
-    rest = [sym for sym in olds if sym not in outside]
-    for aid in sorted(trims):        # a sale's proceeds buy only picks routed to its own account
-        here = {sym for sym in movable if _route(sat[sym]) == aid}
-        proceeds = sum(trims[aid].values())
-        if nsym in here:
-            proceeds = place(proceeds, [nsym])
-        proceeds = place(proceeds, sorted((x for x in outside if x in here), key=lambda x: (-short(x), x)))
-        place(proceeds, sorted((x for x in rest if x in here), key=lambda x: (-short(x), x)))
-
-    for sym in olds:
-        if buys[sym] <= _EPS and sym not in cuts and abs(current[sym] - targets[sym]) > _EPS:
-            pick_flags.setdefault(sym, []).append("IN_BAND")
-    alloc = _fund({sym: v for sym, v in buys.items() if v > _EPS}, sat, spare, flags, shorts)
     whole = bool(params.get("whole_shares"))
+    lots_in = params.get("lots") or {}
+    free = {sym: {aid: _trim_account(sym, aid, value, price[sym], units[(sym, aid)],
+                                     [lot for lot in lots_in.get(sym) or [] if lot.get("account") in (None, aid)],
+                                     used["short_term_gain_policy"] == "allow", whole)[0]
+                  for aid, value in sat[sym].items()} for sym in over}
+    # each account trims only what its own buys can take, so a second run on the result has
+    # nothing to do: an account still short has no pick left that can sell
+    split = _trim_split(over, sat, demand, free, dust)
+    cuts = {sym: sum(parts.values()) for sym, parts in split.items() if sum(parts.values()) > _EPS}
+    before = dict(spare)
+    trims, held_back, lot_override, _ = _apply_trims(cuts, sat, price, units, params, used, spare, flags, pick_flags, split)
+    for aid in sorted(trims):        # a whole-holding sale must not round to more units than are held
+        for sym, v in trims[aid].items():
+            if round(v / price[sym], 4) > units[(sym, aid)] + 1e-9:
+                trims[aid][sym] = math.floor(units[(sym, aid)] * 1e4 + 1e-9) / 1e4 * price[sym]
+                spare[aid] -= v - trims[aid][sym]
+    for aid in sorted(trims):        # a sale's proceeds buy only picks routed to its own account
+        here = [sym for sym in movable if _route(sat[sym]) == aid]
+        place(sum(trims[aid].values()), sorted(here, key=lambda x: (-short(x), x)))
+    buys = {sym: v if v > dust else 0.0 for sym, v in buys.items()}
+
+    for sym in movable:
+        if buys[sym] <= _EPS and sym not in cuts and _EPS < abs(current[sym] - targets[sym]) < weights.band(targets[sym]):
+            pick_flags.setdefault(sym, []).append("IN_BAND")
+    rounded = 0.0
+    if whole:                        # a buy rounds down, and what it leaves is returned below
+        wanted = sum(buys.values())
+        buys = {sym: math.floor(v / price[sym] + 1e-9) * price[sym] for sym, v in buys.items()}
+        rounded = wanted - sum(buys.values())
+    alloc = _fund({sym: v for sym, v in buys.items() if v > _EPS}, sat, spare, flags)
+    unplaced = 0.0
     for aid in sorted(trims):        # proceeds no buy in this account spends are not sold
         idle = min(sum(trims[aid].values()), spare.get(aid, 0.0) - before.get(aid, 0.0))
         for sym in sorted(trims[aid]):
@@ -928,19 +899,34 @@ def _valuation_rebalance(amount: float, ctx: dict, positions: list[dict], spare:
                 trims[aid][sym] -= back
                 spare[aid] -= back
                 idle -= back
+        unplaced += idle             # under one share of the seller: whole shares cannot return it
         trims[aid] = {sym: v for sym, v in trims[aid].items() if v > _EPS}
-    sold_total = sum(v for a in trims.values() for v in a.values())
     for aid, by_sym in trims.items():
         for sym, v in by_sym.items():
             alloc.setdefault(aid, {})[sym] = alloc.get(aid, {}).get(sym, 0.0) - v
-    base = {sym: a for sym, a in sat.items() if sym != nsym}
-    return {
-        "alloc": alloc,
-        "unplaced": max(0.0, (0.0 if same_size else amount) + sold_total - _placed(alloc)),
-        "held_back": held_back,
-        "lot_override": lot_override,
-        "val": {"targets": vt["targets"], "size": _size_split(base, amount) if base else {}},
-    }
+
+    # the policy's part of an unsold excess is what it would have sold under allow, in an account
+    # where free sellers met the demand alone: any other account's rows already report it
+    open_split = _trim_split(over, sat, demand, sat, dust)
+    reported = {r["account"] for r in held_back}
+    passed_over: list[dict] = []
+    for sym in sorted(over):
+        for aid in sorted(set(sat[sym]) - reported):
+            lots = [lot for lot in lots_in.get(sym) or [] if lot.get("account") in (None, aid)]
+            rows_ = _trim_account(sym, aid, open_split[sym][aid], price[sym], units[(sym, aid)], lots,
+                                  used["short_term_gain_policy"] == "allow")[1]
+            passed_over.extend(r for r in rows_ if r["value"] > _EPS)
+    _trims_held_back(passed_over, used["short_term_gain_policy"], flags, pick_flags)
+    held_back.extend(passed_over)
+    # the rest no pick can take; rounding leaves up to a share per holding and per buy, and is no reason
+    for sym in sorted(over):
+        sold = sum(by_sym.get(sym, 0.0) for by_sym in trims.values())
+        rest = over[sym] - sold - sum(r["value"] for r in held_back if r["symbol"] == sym)
+        slack = dust * len(movable)
+        if rest > slack and (sold <= _EPS or rest > slack + (rounded + price[sym] * len(sat[sym]) if whole else 0.0)):
+            pick_flags.setdefault(sym, []).append("TRIM_UNPLACEABLE")
+            _flag(flags, "TRIM_UNPLACEABLE", f"{rest:.2f} of {sym}'s {over[sym]:.2f} above its target is not sold: no pick below target in its account can take the proceeds{' in whole shares' if whole else ''}")
+    return {"alloc": alloc, "held_back": held_back, "lot_override": lot_override, "targets": vt["targets"], "unplaced": unplaced}
 
 
 # --- core funding (grow, new-pick, plan-step) ---------------------------------------------------
@@ -1198,22 +1184,13 @@ def _placed(alloc: dict[str, dict[str, float]]) -> float:
     return sum(v for a in alloc.values() for v in a.values() if v > 0)
 
 
-def _add(amount: float, positions, spare, flags, shorts=None, skip=frozenset()) -> tuple[dict, float]:
-    """Split ``amount`` by size over the picks not in ``skip`` and place it per account; returns (alloc, unplaced)."""
-    sat = {s: a for s, a in _holdings(positions, "satellite").items() if s not in skip}
-    if not sat:
-        return {}, amount
-    alloc = _fund(_size_split(sat, amount), sat, spare, flags, shorts)
-    return alloc, max(0.0, amount - _placed(alloc))
-
-
 def run_sleeves(params: dict) -> dict:
     """Build the sleeve mix and plan for ``params``; raises ValueError/TypeError on bad input."""
     if not isinstance(params, dict):
         raise ValueError("input must be a JSON object")
     mode = params.get("mode")
     if mode not in _MODES:
-        raise ValueError("mode must be mix, add, deposit, grow, new-pick or plan-step")
+        raise ValueError("mode must be mix, add, deposit, grow, new-pick, plan-step or rebalance")
     settings = params.get("settings") or {}
     if not isinstance(settings, dict):
         raise ValueError("settings must be an object")
@@ -1244,69 +1221,25 @@ def run_sleeves(params: dict) -> dict:
     core_sells: dict[str, dict[str, float]] = {}
     new_positions: list[dict] = []
     shorts: dict[str, float] = {}
-    val = None
     pick_flags: dict[str, list[str]] = {}
-    new_sized = False          # the new pick was sized by its own valuation
-    rebalance = params.get("rebalance", True)
-    same_size = params.get("same_size", False)
-    if not isinstance(rebalance, bool) or not isinstance(same_size, bool):
-        raise ValueError("rebalance and same_size must be true or false")
-    if same_size and mode != "new-pick":
-        raise ValueError("same_size applies to new-pick only")
-    rebalancing = rebalance and used["weighting"] == "valuation"
-    if same_size and not rebalancing:
-        raise ValueError("same_size needs the valuation rebalance: valuation weighting with rebalance on")
-    if same_size and (params.get("new_pick") or {}).get("amount") is not None:
-        raise ValueError("same_size keeps the sleeve total, so it takes no new_pick.amount")
-    rb_fell_back = False
-    fallback_why: str | None = f"mode {mode} plans no trades, so the valuation tilt did not run"
+    targets: dict[str, float] | None = None
 
-    def satellite(amount: float, left_out: float | None = None, new: dict | None = None) -> tuple[dict | None, float]:
-        """Plan ``amount`` into the picks; with ``new`` (rebalance only) None when it falls back."""
-        nonlocal unplaced, held_back, lot_override, val, fallback_why, rb_fell_back
+    def satellite(amount: float, left_out: float | None = None) -> tuple[dict, float]:
+        """Plan ``amount`` into the picks by the strategy; returns (alloc, the part left out)."""
+        nonlocal unplaced
         if left_out is None:
             amount, left_out = _limit(amount, ctx, params, flags)
-        res = None
-        if rebalancing and not rb_fell_back:
-            res = _valuation_rebalance(amount, ctx, positions, spare, params, used, flags, pick_flags, shorts,
-                                       new, same_size)
-            fallback_why = "no trading-account pick has an eligible valuation with confidence above 0"
-        elif used["weighting"] == "valuation" and not rebalancing:
-            res = _valuation_add(amount, ctx, positions, spare, params, used, flags, pick_flags, shorts)
-            fallback_why = "no trading-account pick has an eligible valuation with confidence above 0"
-        if res is None and new is not None:
-            rb_fell_back = True       # its flags are raised; the size path below does not repeat them
-            return None, left_out
-        if res is None:
-            skip = set()
-            if rebalancing:      # a pick waiting on its recheck is not bought on the size path either
-                picks = params.get("picks") or {}
-                for sym, by in sorted(_holdings(positions, "satellite").items()):
-                    if _hold(sym, sum(by.values()), picks.get(sym), flags, pick_flags):
-                        skip.add(sym)
-            plan, short = _add(amount, positions, spare, flags, shorts, skip)
-            unplaced += short
-            return plan, left_out
+        res = _strategy_add(amount, ctx, positions, spare, params, used, flags, pick_flags, shorts)
         unplaced += res["unplaced"]
-        held_back, lot_override, val = res["held_back"], res["lot_override"], res["val"]
         return res["alloc"], left_out
 
     def funded(amount: float, use_core: bool, new: dict | None = None) -> None:
         """grow / new-pick / plan-step: buys from each account's cash, then its own core."""
-        nonlocal alloc, over, unplaced, core_sells, fallback_why
+        nonlocal alloc, over, unplaced, core_sells
         capacity = _core_capacity(positions, params, policy == "allow", whole) if use_core else {}
         for aid, rows in capacity.items():
             spare[aid] = spare.get(aid, 0.0) + sum(r["cap"] for r in rows)
         amount, over = _limit(amount, ctx, params, flags)
-        if new is not None and rebalancing:
-            plan, _ = satellite(amount, 0.0, new)
-            if plan is not None:
-                alloc = plan
-                core_sells = _core_funding(alloc, cash, capacity, policy, shorts, held_back, lot_override, flags, whole)
-                return
-            if same_size:
-                raise ValueError("same_size needs at least one pick with an eligible valuation to rebalance against; "
-                                 "none has one, so the new pick could only be funded by growing the sleeve")
         got = 0.0
         if new is not None:
             want = min(amount, new["needed"])
@@ -1319,8 +1252,6 @@ def run_sleeves(params: dict) -> dict:
             amount -= want
         if amount > _EPS:
             alloc, _ = satellite(amount, 0.0)
-        elif new is not None:
-            fallback_why = None if new_sized else "the whole amount went to the new pick, so the valuation tilt did not run"
         if got > _EPS:
             alloc.setdefault(new["account"], {})[new["symbol"]] = got
         core_sells = _core_funding(alloc, cash, capacity, policy, shorts, held_back, lot_override, flags, whole)
@@ -1387,7 +1318,7 @@ def run_sleeves(params: dict) -> dict:
         if amount is not None and amount <= 0:
             raise ValueError("new_pick.amount must be a positive number")
         current = {s: sum(a.values()) for s, a in _holdings(positions, "satellite").items()}
-        needed = weights.median_pick_value(current)
+        needed = min(weights.median_pick_value(current), weights.PICK_CAP * ctx["total"])
         if not current:
             if amount is None:
                 raise ValueError("no trading-account picks to size the new pick by; pass new_pick.amount")
@@ -1400,25 +1331,33 @@ def run_sleeves(params: dict) -> dict:
         room = {a: cash.get(a, 0.0) + sum(p["value"] for p in positions
                                           if p["account"] == a and p["bucket"] == "core") for a in accts}
         account = sorted(accts, key=lambda a: (-held[a], -room[a], a))[0]
-        size_needed, mult = needed, 1.0
-        if current and used["weighting"] == "valuation":
-            row = _pick_inputs({sym: {account: 0.0}}, [{"symbol": sym, "price": price, "bucket": "satellite", "role": "trading"}],
-                               {sym: (params.get("picks") or {})[sym]} if sym in (params.get("picks") or {}) else {},
-                               used["include_light"], flags, pick_flags)[0]
-            mult = weights.new_pick_multiplier(row)
-            new_sized = row["eligible"] and row["confidence"] > 0
-            needed = min(size_needed * mult, weights.PICK_CAP * ctx["total"])
-        new_pick = {"symbol": sym, "needed": _r2(needed), "size_needed": _r2(size_needed),
-                    "valuation_multiplier": _r4(mult), "allocated": 0.0, "account": account}
+        saved = (params.get("picks") or {}).get(sym)
+        if isinstance(saved, dict) and (saved.get("recheck_due") or saved.get("age_days") is None):
+            code = "DEEP_VALUATION_NEEDED" if saved.get("needs_valuation") else "RECHECK_DUE"
+            why = "its deep valuation needs a rerun" if code == "DEEP_VALUATION_NEEDED" else "its valuation is due for a recheck"
+            _flag(flags, code, f"{sym} still opens at the median though {why}")
+        new_pick = {"symbol": sym, "needed": _r2(needed), "allocated": 0.0, "account": account}
         new_positions = [{"symbol": sym, "price": price, "account": account}]
-        seed = size_needed if amount is None else min(size_needed, amount)
-        grow_by = seed if rebalancing and amount is None else (needed if amount is None else amount)
-        funded(grow_by, True,
-               {"symbol": sym, "needed": needed, "account": account, "price": price, "seed": seed})
+        funded(needed if amount is None else amount, True,
+               {"symbol": sym, "needed": needed, "account": account})
         new_pick["allocated"] = _r2(sum(a.get(sym, 0.0) for a in alloc.values()))
+    elif mode == "rebalance":
+        if used["weighting"] == "size":
+            raise ValueError("rebalance needs equal, market_cap or valuation; size cannot rebalance, every pick already sits at its own size")
+        if params.get("sell_first"):
+            raise ValueError("rebalance does not take sell_first: it sells no core fund")
+        if params.get("over_ceiling"):
+            raise ValueError("rebalance does not take over_ceiling: it keeps the sleeve total and does not consult the ceiling")
+        if params.get("pick_store_unreadable"):
+            raise ValueError("the pick store could not be read, so the picks that must hold are unknown; rebalance stops")
+        if len(_holdings(positions, "satellite")) >= 2:
+            res = _rebalance(ctx, positions, {a: 0.0 for a in spare}, params, used, flags, pick_flags)
+            alloc, held_back, lot_override, targets = res["alloc"], res["held_back"], res["lot_override"], res["targets"]
+            unplaced += res["unplaced"]
+            for aid in sorted(alloc):
+                if cash.get(aid, 0.0) < -_EPS and any(abs(d) > _EPS for d in alloc[aid].values()):
+                    raise ValueError(f"account {aid} has negative cash ({cash[aid]:.2f}, a margin debit); rebalance cannot plan its trades until it is paid off")
 
-    if used["weighting"] == "valuation" and val is None and fallback_why:
-        _flag(flags, "VALUATION_FALLBACK", f"{fallback_why}; size weighting is used")
     if whole:
         unplaced += _cap_to_funds(alloc, cash, core_sells, core, flags)
     accounts = _plan_accounts(positions, cash, alloc, core, params, lot_override, core_sells, new_positions)
@@ -1430,8 +1369,8 @@ def run_sleeves(params: dict) -> dict:
     return {
         "mode": mode,
         "mix": ctx["mix"],
-        "weighting_used": "valuation" if val is not None or new_sized else "size",
-        "splits": _splits(_holdings(positions, "satellite"), alloc, val, pick_flags),
+        "weighting_used": "equal" if any(f["code"] == "VALUATION_FALLBACK" for f in flags) else used["weighting"],
+        "splits": _splits(_holdings(positions, "satellite"), alloc, targets, pick_flags),
         "held_back": held_back,
         "accounts": accounts,
         "trades": [t for a in accounts for t in a["rebalance"]["trades"]],
@@ -1443,7 +1382,7 @@ def run_sleeves(params: dict) -> dict:
         "over_ceiling_amount": _r2(over),
         "unallocated_amount": _r2(unplaced),
         "satellite_net": _r2(_satellite_net(positions, accounts, (new_pick or {}).get("symbol"))),
-        "settings_used": {**used, "ceiling": _r4(used["ceiling"]), "rebalance": rebalance, "same_size": same_size},
+        "settings_used": {**used, "ceiling": _r4(used["ceiling"])},
         "flags": flags,
     }
 

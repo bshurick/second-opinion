@@ -1,6 +1,6 @@
 # Core/satellite: rebalance the picks by valuation on every add, grow and new pick
 
-Date: 2026-10-29. Status: draft, pending the person's review. Amends
+Date: 2026-10-29. Status: replaced by `2026-10-30-core-satellite-strategies-design.md`. Amends
 `2026-10-29-core-satellite-design.md`; where the two disagree, this one wins.
 
 ## Intent
