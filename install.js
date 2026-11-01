@@ -38977,14 +38977,22 @@ var import_jsx_runtime10 = __toESM(require_jsx_runtime(), 1);
 function ExtrasScreen({ extras, initial, onDone, onCustomize, onCancel }) {
   const [state, setState] = (0, import_react32.useState)(() => Object.fromEntries(extras.map((e) => [e.key, Boolean(initial[e.key])])));
   const [cursor, setCursor] = (0, import_react32.useState)(0);
+  const latest = (0, import_react32.useRef)({ state, cursor });
+  const moveTo = (next) => {
+    latest.current.cursor = next;
+    setCursor(next);
+  };
   use_input_default((input, key) => {
-    if (key.upArrow || input === "k") setCursor((c) => (c - 1 + extras.length) % extras.length);
-    else if (key.downArrow || input === "j") setCursor((c) => (c + 1) % extras.length);
-    else if (input === " " && extras[cursor]) {
-      const k = extras[cursor].key;
-      setState((s) => ({ ...s, [k]: !s[k] }));
-    } else if (key.return) onDone(state);
-    else if (input === "c" && onCustomize) onCustomize(state);
+    const { state: state2, cursor: cursor2 } = latest.current;
+    if (key.upArrow || input === "k") moveTo((cursor2 - 1 + extras.length) % extras.length);
+    else if (key.downArrow || input === "j") moveTo((cursor2 + 1) % extras.length);
+    else if (input === " " && extras[cursor2]) {
+      const k = extras[cursor2].key;
+      const next = { ...state2, [k]: !state2[k] };
+      latest.current.state = next;
+      setState(next);
+    } else if (key.return) onDone(state2);
+    else if (input === "c" && onCustomize) onCustomize(state2);
     else if (key.escape && onCancel) onCancel();
   });
   const on = extras.filter((e) => state[e.key]).length;
@@ -39328,37 +39336,42 @@ function SkillPickerScreen({ catalog, initial, onDone, onCancel, title = "Choose
   const [selected, setSelected] = (0, import_react36.useState)(() => new Set(resolveSelection(catalog, initial).names));
   const [cursor, setCursor] = (0, import_react36.useState)(skillIndexes[0] ?? 0);
   const [note, setNote] = (0, import_react36.useState)(null);
+  const latest = (0, import_react36.useRef)({ selected, cursor });
   const { stdout } = use_stdout_default();
   const familyCount = families(catalog).length;
   const rowsAvailable = Math.max(6, (stdout?.rows ?? 40) - 14 - Math.max(0, familyCount - 1));
   const viewportStart = Math.min(Math.max(0, cursor - Math.floor(rowsAvailable / 2)), Math.max(0, rows.length - rowsAvailable));
   const visible = rows.slice(viewportStart, viewportStart + rowsAvailable);
   const move = (delta) => {
-    const pos = skillIndexes.indexOf(cursor);
-    const next = (pos + delta + skillIndexes.length) % skillIndexes.length;
-    setCursor(skillIndexes[next]);
+    const pos = skillIndexes.indexOf(latest.current.cursor);
+    const next = skillIndexes[(pos + delta + skillIndexes.length) % skillIndexes.length];
+    latest.current.cursor = next;
+    setCursor(next);
   };
   const apply = (names, notes) => {
-    setSelected(new Set(names));
+    const next = new Set(names);
+    latest.current.selected = next;
+    setSelected(next);
     setNote(notes.length ? notes.join("; ") : null);
   };
   use_input_default((input, key) => {
+    const { selected: selected2, cursor: cursor2 } = latest.current;
     if (key.upArrow || input === "k") move(-1);
     else if (key.downArrow || input === "j") move(1);
     else if (input === " ") {
-      const row = rows[cursor];
+      const row = rows[cursor2];
       if (row?.kind === "skill") {
-        const r = toggleSkill(catalog, selected, row.skill.name);
+        const r = toggleSkill(catalog, selected2, row.skill.name);
         apply(r.names, r.notes);
       }
     } else if (input === "a") apply(catalog.map((s) => s.name), []);
     else if (input === "n") apply([], []);
     else if (input === "f") {
-      const row = rows[cursor];
+      const row = rows[cursor2];
       if (row?.kind === "skill") {
         const members = catalog.filter((s) => s.family === row.skill.family).map((s) => s.name);
-        const allOn = members.every((m) => selected.has(m));
-        let names = [...selected];
+        const allOn = members.every((m) => selected2.has(m));
+        let names = [...selected2];
         let notes = [];
         if (allOn) {
           const r = resolveSelection(catalog, names.filter((n) => !members.includes(n)), { dropDependents: true });
@@ -39372,8 +39385,8 @@ function SkillPickerScreen({ catalog, initial, onDone, onCancel, title = "Choose
         apply(names, notes);
       }
     } else if (key.return) {
-      if (selected.size === 0) setNote("select at least one skill (press a for all)");
-      else onDone(catalog.filter((s) => selected.has(s.name)).map((s) => s.name));
+      if (selected2.size === 0) setNote("select at least one skill (press a for all)");
+      else onDone(catalog.filter((s) => selected2.has(s.name)).map((s) => s.name));
     } else if (key.escape && onCancel) onCancel();
   });
   const current = rows[cursor];

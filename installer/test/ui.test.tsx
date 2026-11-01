@@ -115,6 +115,25 @@ describe("SkillPickerScreen", () => {
     expect(result, `screen at failure:\n${lastFrame()}`).toEqual(["a", "b", "c"]);
   });
 
+  it("acts on keys that arrive before the screen has redrawn", async () => {
+    let result: string[] | null = null;
+    const { stdin } = render(<SkillPickerScreen catalog={catalog} initial={[]} onDone={(s) => (result = s)} />);
+    stdin.write("a");
+    stdin.write(ENTER);
+    await until(() => result !== null);
+    expect(result).toEqual(["a", "b", "c"]);
+  });
+
+  it("moves and toggles in order when the keys arrive together", async () => {
+    let result: string[] | null = null;
+    const { stdin } = render(<SkillPickerScreen catalog={catalog} initial={["a", "b", "c"]} onDone={(s) => (result = s)} />);
+    stdin.write(DOWN);
+    stdin.write(" "); // on b, not a: a stays selected
+    stdin.write(ENTER);
+    await until(() => result !== null);
+    expect(result).toEqual(["a", "c"]);
+  });
+
   it("shows the highlighted skill's description and badges", () => {
     const { lastFrame } = render(<SkillPickerScreen catalog={catalog} initial={[]} onDone={() => {}} />);
     expect(lastFrame()).toContain("Skill A does things.");
@@ -329,6 +348,16 @@ describe("DoneScreen", () => {
 
 describe("ExtrasScreen", () => {
   const extras = loadExtras(extrasRoot());
+
+  it("acts on keys that arrive before the screen has redrawn", async () => {
+    let got: ExtrasState | null = null;
+    const { stdin } = render(<ExtrasScreen extras={extras} initial={{ c: false, tips: false }} onDone={(s) => (got = s)} />);
+    stdin.write(DOWN);
+    stdin.write(" ");
+    stdin.write(ENTER);
+    await until(() => got !== null);
+    expect(got).toEqual({ c: false, tips: true });
+  });
 
   it("lists every extra with its blurb and cost, toggles with space, and returns the state on enter", async () => {
     let got: ExtrasState | null = null;

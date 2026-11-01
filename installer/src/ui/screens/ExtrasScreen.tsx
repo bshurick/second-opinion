@@ -1,5 +1,5 @@
 import { Box, Text, useInput } from "ink";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Extra } from "../../engine/catalog.js";
 import type { ExtrasState } from "../../engine/extras.js";
 import { KeyHints } from "../components/KeyHints.js";
@@ -21,13 +21,22 @@ interface Props {
 export function ExtrasScreen({ extras, initial, onDone, onCustomize, onCancel }: Props) {
   const [state, setState] = useState<ExtrasState>(() => Object.fromEntries(extras.map((e) => [e.key, Boolean(initial[e.key])])));
   const [cursor, setCursor] = useState(0);
+  // Ink swaps the input handler after each render, so a key can arrive at the previous one. It reads these, not the state.
+  const latest = useRef({ state, cursor });
+  const moveTo = (next: number) => {
+    latest.current.cursor = next;
+    setCursor(next);
+  };
 
   useInput((input, key) => {
-    if (key.upArrow || input === "k") setCursor((c) => (c - 1 + extras.length) % extras.length);
-    else if (key.downArrow || input === "j") setCursor((c) => (c + 1) % extras.length);
+    const { state, cursor } = latest.current;
+    if (key.upArrow || input === "k") moveTo((cursor - 1 + extras.length) % extras.length);
+    else if (key.downArrow || input === "j") moveTo((cursor + 1) % extras.length);
     else if (input === " " && extras[cursor]) {
       const k = extras[cursor]!.key;
-      setState((s) => ({ ...s, [k]: !s[k] }));
+      const next = { ...state, [k]: !state[k] };
+      latest.current.state = next;
+      setState(next);
     } else if (key.return) onDone(state);
     else if (input === "c" && onCustomize) onCustomize(state);
     else if (key.escape && onCancel) onCancel();

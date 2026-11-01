@@ -1,5 +1,5 @@
 import { Box, Text, useInput, useStdout } from "ink";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { families, requirementsFor, type Skill } from "../../engine/catalog.js";
 import { resolveSelection, toggleSkill } from "../../engine/selection.js";
 import { KeyHints } from "../components/KeyHints.js";
@@ -40,6 +40,8 @@ export function SkillPickerScreen({ catalog, initial, onDone, onCancel, title = 
   const [selected, setSelected] = useState<Set<string>>(() => new Set(resolveSelection(catalog, initial).names));
   const [cursor, setCursor] = useState(skillIndexes[0] ?? 0);
   const [note, setNote] = useState<string | null>(null);
+  // Ink swaps the input handler after each render, so a key can arrive at the previous one. It reads these, not the state.
+  const latest = useRef({ selected, cursor });
   const { stdout } = useStdout();
 
   // Each family after the first adds a blank spacer line; reserve for header, description, and footer too.
@@ -49,17 +51,21 @@ export function SkillPickerScreen({ catalog, initial, onDone, onCancel, title = 
   const visible = rows.slice(viewportStart, viewportStart + rowsAvailable);
 
   const move = (delta: number) => {
-    const pos = skillIndexes.indexOf(cursor);
-    const next = (pos + delta + skillIndexes.length) % skillIndexes.length;
-    setCursor(skillIndexes[next]!);
+    const pos = skillIndexes.indexOf(latest.current.cursor);
+    const next = skillIndexes[(pos + delta + skillIndexes.length) % skillIndexes.length]!;
+    latest.current.cursor = next;
+    setCursor(next);
   };
 
   const apply = (names: string[], notes: string[]) => {
-    setSelected(new Set(names));
+    const next = new Set(names);
+    latest.current.selected = next;
+    setSelected(next);
     setNote(notes.length ? notes.join("; ") : null);
   };
 
   useInput((input, key) => {
+    const { selected, cursor } = latest.current;
     if (key.upArrow || input === "k") move(-1);
     else if (key.downArrow || input === "j") move(1);
     else if (input === " ") {
