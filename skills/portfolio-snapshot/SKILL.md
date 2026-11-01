@@ -110,9 +110,22 @@ A small card at the top of the page: a headline, "What stands out", "What to loo
 - `for_you` takes portfolio numbers only from a read taken on this run or today, never from memory. Non-numeric context from memory or the profile is allowed, such as a paycheck and RSUs being Amazon exposure.
 - A file that breaks a rule exits 2 with `error` naming the rule and writes no page. Rewrite the file and render again.
 
+Write each field so a reader follows it on the first read:
+
+- Each sentence makes one point, and the sentence after it starts a new one.
+- A comparison and its likely cause share a sentence: what happened, then "likely because" and the reason.
+- A caveat about a figure comes after the point it qualifies, in its own sentence: which figure, what is wrong with it, and why.
+- Name a group by what it is to the reader: "your 401(k) funds", "cash and bonds".
+- Write an estimated day change as "The 0.3% is partly an estimate, because your 401(k) funds have no public quote." The Flags section carries the share estimated.
+- Write a flag as the plain fact: "Cash and money-market funds are 48.8%, above the 20% line the page flags."
+
+Before: "The day's move was -$1,808.75 (-0.3%), against S&P 500 -1.8%; 25.55% of market value uses an estimated day change. Cash and money-market funds at 48.8% and bonds at 25.4% may explain the gap."
+
+After: "You fell 0.3% while the S&P 500 fell 1.8%, likely because about 74% of the portfolio is in cash and bonds. The 0.3% is partly an estimate, because your 401(k) funds have no public quote."
+
 What to look for on this page:
 
-- The day's move against the S&P 500, and how much of it is estimated (`DAY_CHANGE_ESTIMATED`).
+- The day's move against the S&P 500, and whether it is partly estimated (`DAY_CHANGE_ESTIMATED`).
 - Concentration and flags that changed, cash share, and new alerts in `headlines`.
 - Events in the next few days.
 
