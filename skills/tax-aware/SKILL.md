@@ -1,8 +1,8 @@
 ---
 name: tax-aware
-description: Gives a US-federal tax view of the imported ledger with realized gains, wash sales, open lots and long-term dates, estimated tax, carryforward and harvesting. Use when the user asks "what tax do I owe", "wash sale", "harvest losses" or "which lots to sell".
+description: Gives a US-federal tax view of the imported ledger with realized gains, wash sales, open lots, estimated tax, harvesting and a deep multi-year plan comparison. Use when the user asks "what tax do I owe", "wash sale", "harvest losses" or to compare plans.
 ---
-Gives a mechanical, US-federal tax view of the user's ledger at rates they state, so they can plan with their tax professional. The numbers come from the script; the reply describes them, their assumptions, and what is not modelled. It stops before any decision to sell, harvest or wait.
+Gives a mechanical, US-federal tax view of the user's ledger at rates they state, so they can plan with their tax professional. The numbers come from the script; the reply describes them, their assumptions, and what is not modelled. It stops before any decision to sell, harvest or wait. A deep review compares multi-year plans on after-tax wealth, with every rule checked against a primary source.
 
 ## Background
 
@@ -28,6 +28,12 @@ Gives a mechanical, US-federal tax view of the user's ledger at rates they state
   - harvesting candidates, and a FIFO vs highest-cost vs tax-minimal block per planned sale;
   - flags, and the "Not modelled" list.
 - **Other skills.** The ledger belongs to statement-import. Orders belong to portfolio-analysis.
+- **Deep review.** It asks what ends up in the person's pocket across several plans, and which assumption decides the comparison. `references/deep-roles.md` holds the brief for each research subagent.
+  - `tax_plans.py` runs each plan year by year: brackets, stacking, Schedule D netting, carry with character, NIIT, the pro-rata conversion rule, and lots sold at their grown price. Sales already made this year count in every plan.
+  - Plans compare on `after_tax_wealth` at one end date, not on tax paid, since a conversion pays more now on purpose. Its wealth figure depends on stated growth and exit rates.
+  - `tests` rerun every plan with other assumptions. A flip means the assumption decides the comparison more than the math does.
+  - It rejects a rule table with no source or date and a plan whose action has no rule cited. Secondary sources and projected tables are flagged.
+  - It compares plans and names no plan to follow. It is not a return or tax advice.
 
 ## Scripts
 
@@ -37,6 +43,11 @@ Run with the Bash tool.
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/tax-aware/scripts/tax-report.py" [--account ID ...] [--as-of YYYY-MM-DD] [--short-term R] [--long-term R] [--state R] [--niit R] [--price SYMBOL=PRICE ...] [--sell SYMBOL UNITS] ... [--sell-after YYYY-MM-DD] [--min-loss N] [--min-loss-pct R]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/tax-aware/scripts/tax.py" < input.json
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/tax-aware/scripts/render.py" --in tax-aware.json --out page.html
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/tax-aware/scripts/tax_plans.py" < DIR/deep-tax/plans.json
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/tax-aware/scripts/render_plans.py" --in DIR/deep-tax/page.json --out DIR/deep-tax/page.html
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/tax-aware/scripts/plan_store.py" save --in DIR/deep-tax/page.json [--source URL]
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/tax-aware/scripts/plan_store.py" check --report DIR/tax-aware.json [--as-of YYYY-MM-DD]
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/tax-aware/scripts/plan_store.py" list
 ```
 
 | Script | What it does |
@@ -44,6 +55,9 @@ Run with the Bash tool.
 | `tax-report.py` | The tax view of the ledger. Prints JSON: `tax.py`'s output plus `sources`, `ledger` and `missing_prices`. |
 | `tax.py` | Pure math on a ledger you already have. Its docstring is the method and the output contract. |
 | `render.py` | Builds the interactive page from a saved `tax-report.py` result. Prints `{"out", "title", "realized", "open_lots", "flags"}`. |
+| `tax_plans.py` | Deep review math: multi-year plans, compared on after-tax wealth, with assumption tests and flags. Its contract is in its docstring. |
+| `render_plans.py` | Deep review page from `tax_plans.py` output, a headline of 25 words at most and a summary. |
+| `plan_store.py` | Keeps deep reviews between sessions. `check` reruns the saved plans on a newer `tax-report.py` result, with no new research. |
 
 | `tax-report.py` flag | Use |
 |---|---|
@@ -62,6 +76,10 @@ Run with the Bash tool.
 | 6 | Python dependencies missing | the error, and say the setup skill repairs it |
 
 ## Steps
+
+**The user asks about their tax position, a sale, or harvesting**
+
+When the question spans several years or plans, end the reply with one line: a deep review is available and sends about five research subagents.
 
 1. Settle the rates.
    - If the user has stated their marginal rates, pass them with the rate flags.
@@ -84,7 +102,48 @@ Run with the Bash tool.
 8. If the user is married filing separately, say the script applied 3,000 and that the deduction and carryforward figures would differ under the 1,500 cap.
 9. Present the numbers for each path (sell, harvest, wait) and stop. If the user wants to place an order, hand off to portfolio-analysis.
 
+**The user asks for a deep review, or to compare multi-year plans**
+
+Run this only when the person asks for a deep review or for depth.
+
+1. Make `DIR/deep-tax/` and its `baseline/` and `research/` folders, where DIR is the session scratchpad. Write `tax-report.py` to `baseline/tax-report.json`. If the ledger is empty, hand off to statement-import, as above.
+2. Ask once for what only the person knows, and write it to `income.json`: filing status, expected ordinary income and withholding for each year, Traditional and Roth balances with any after-tax basis, the years to cover, and their exit-rate and growth assumptions. Never look up or guess a bracket or income. Without income for a year, stop and say the comparison needs it.
+3. Tell the person it has started: about 5 subagents and 20 web searches. Write `budget.json`: the searches this run may spend, each role's cap and the searches used so far. The session has one shared pool of about 200.
+4. Dispatch a Rule checker for each of the three areas in `references/deep-roles.md`, in parallel. Use the Agent tool, general-purpose type.
+   - Each prompt names the Shared rules section and the role's section by absolute path, plus the case folder, today's date, the filing status, the tax years, the area and the search cap. No figure about the person goes in the prompt.
+   - If a role fails or returns nothing, retry it once, then add it to `missing_roles` and go on. A plan whose rule is missing cannot run, so say which plans fell out.
+5. Dispatch the Plan designer with the file paths. It has no web access and the only role that reads the income file.
+6. Write `plans.json`, the `tax_plans.py` input, with `Do nothing` first. Run `tax_plans.py`. Fix what it rejects by going back to the source, not by inventing a citation.
+7. Dispatch the Red team with the output. Apply its changes where its sources hold up, and keep each rejected change in `notes` with the reason.
+8. Run `tax_plans.py` again. Write `page.json`: `as_of`, `headline`, `summary`, `plans`, `missing_roles`, `notes`.
+   - The headline names what decides the comparison, in 25 words or fewer. It names no plan as the one to take. The summary says what each plan trades off and what could change the order.
+9. Run `render_plans.py`. Publish the page with the Artifact tool: icon `tax`, description "Tax plan comparison as of DATE". If the Artifact tool is unavailable, use the markdown fallback.
+10. Run `plan_store.py save --in DIR/deep-tax/page.json --source <page link>`.
+
+**The user asks to re-check a tax plan comparison**
+
+1. Run `tax-report.py` once, writing to `DIR/tax-aware.json`, then `plan_store.py check --report DIR/tax-aware.json`. Exit 2 with "no saved" means none has been run: offer one.
+2. Present each plan's then and now figures, `leading_then` and `leading_now`, `short` and `actions_due` with `days_left`.
+3. Say that this reruns the arithmetic only. The rules stay as checked at the review and no new research ran, so a change in law would not show.
+4. If `rerun_due` is true, give `rerun_reasons` and say a new deep review would check the rules again.
+
 ## Reply format
+
+**Deep review, page published.** In this order, then stop.
+
+1. The artifact link on its own line.
+2. The disclaimer line, with the growth and exit rates.
+3. The headline.
+4. One line per plan: `name` · `wealth_vs_baseline` · `tax_vs_baseline`, highest first, described as highest on these assumptions only.
+5. `deciding_assumptions`: which assumptions change the order. If none do, say the order held in every test.
+6. **Flags**: one bullet per `plans.flags[].message` and per missing role, or "None".
+7. One line: subagents dispatched and searches used.
+8. One line: which plan to follow, if any, is for the person and their tax professional.
+
+**Deep review, markdown fallback.** The same parts without the link, plus each plan's actions and years, the rules with their sources, and the "Not modelled" list.
+
+**The ordinary view.** The formats below.
+
 
 Every number comes from the script. The disclaimer line is: "Estimate for planning at the stated rates; not tax advice or a return."
 
@@ -130,6 +189,9 @@ Money to 2 decimal places with thousands separators. Rates and percentages to 1 
 - Every number comes from the script. Describe what the numbers show.
 - Run `tax-report.py` once per answer.
 - Never look up or guess the user's tax bracket.
+- In a deep review, every rule comes from a dated source, primary wherever one exists. A rule from memory stays out.
+- In a deep review, income, holdings, an employer or a person's identifier never goes in a search, URL or fetch.
+- A deep review never names a plan to take. "Highest" holds on the stated assumptions only.
 - The "Not modelled" section is mandatory: the page carries it, and the markdown fallback renders it.
 - Whether to sell, harvest, or wait is the user's decision with their tax professional.
 - Never provide buy, sell, or hold recommendations. If a user asks whether they should buy, sell, or hold a security, state clearly that you cannot make investment recommendations, then present relevant analysis they can use to make their own decision.

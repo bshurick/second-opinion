@@ -149,7 +149,7 @@ Skills that produce a report publish an interactive page, hosted as a private Ar
 
 ## Deep research
 
-Four modes go beyond the scripted answers. Each sends research subagents through primary sources and the news, so they take longer and use much more of your Claude usage than an ordinary question. Deep valuation, the deep picker and the portfolio review need SEC EDGAR.
+Six modes go beyond the scripted answers. Each sends research subagents through primary sources and the news, so they take longer and use much more of your Claude usage than an ordinary question. Deep valuation, the deep picker and the portfolio review need SEC EDGAR.
 
 **Deep valuation** looks at one company. Ask: *"Do a deep dive on PHM: what has to go right, and what would I earn at today's price?"*
 
@@ -177,6 +177,20 @@ Four modes go beyond the scripted answers. Each sends research subagents through
 - Named scenarios run through the same calculators as an ordinary question, with one-time costs from the documents added in. The page shows which input moves the result most while resting on the weakest evidence, what is still unknown and who can answer it, and the price where the central case comes out even.
 - It makes no call on buying and names no price to offer. It is not an appraisal or an inspection. Your name, income and savings stay out of every search, and local data can be thin or out of date, so old or scarce evidence is flagged.
 - A typical run sends about 6 subagents and 35 web searches. Ask *"Re-check my review of 12 Main Street: rates are now 6%"* later: it reruns the numbers with what changed, with no new research, and says when a new review is due.
+
+**The decision review** looks at your past trades. Ask: *"Run a deep review of my trades: which were skill and which were luck?"*
+
+- It takes your largest decisions by money moved, never by how they turned out. Researchers rebuild what was public before each one, and a grader who sees neither the result nor the size grades it. A claim dated after the decision cannot count, because the script rejects it.
+- Each grade is then set against the result: skill, luck, bad luck or mistake. Patterns by grade and by what was happening come with a plain warning when there are too few trades to read anything into.
+- Grades rest on public evidence, not on what you knew at the time. A later check keeps every grade frozen and re-measures the results.
+- A typical run sends about 10 subagents and 30 web searches. It needs an imported ledger.
+
+**The tax plan comparison** looks several years ahead. Ask: *"Run a deep tax review: compare selling my stock awards over three years against converting to a Roth."*
+
+- Rule checkers confirm each rule against the tax code and IRS publications, and the script rejects a rule table with no source and date. A plan cannot run until its rules are cited.
+- The script runs each plan year by year and compares them on after-tax wealth at one end date, not on tax paid. Reruns with other growth and tax rates show which assumption decides the comparison.
+- It names no plan to take and is not a return or tax advice. Income comes only from what you say in the session, and rule searches carry none of your figures.
+- A typical run sends about 5 subagents and 20 web searches. It needs an imported ledger.
 
 **Re-checks** keep a saved pick honest after the research is done. Ask: *"How are my picks doing?"*
 
@@ -215,9 +229,9 @@ The scripts do the math here, but the scenarios and their assumptions are the mo
 | | watchlist | Alert rules checked when you ask or by a cron job, not pushed | |
 | | risk-analysis | Volatility, beta, correlation, drawdown, VaR, crash replays, what-if shocks | key |
 | History and decisions | statement-import | Local ledger from CSV exports or two years of SnapTrade activity | key |
-| | trade-review | Round trips, win rate, disposition effect, buy-and-hold counterfactuals | |
+| | trade-review | Round trips, win rate, disposition effect, buy-and-hold counterfactuals, a deep review of skill against luck | |
 | | trade-journal (extra) | Thesis, target, and exit written down; checked before each buy | trade-review |
-| | tax-aware | Realized gains with wash sales, open lots, estimated tax, harvesting, lot choice | |
+| | tax-aware | Realized gains with wash sales, open lots, estimated tax, harvesting, lot choice, a deep comparison of multi-year plans | |
 | | spending | Card and bank exports or transcribed receipts; categories, recurring charges, cash flow | |
 | Planning | rebalancing | Drift, 5/25 bands, trade list, contribution and tax-aware sell routing | key |
 | | core-satellite | ETF vs individual-stock mix, a satellite ceiling, picks split equally, by market cap, by deep valuation or by size, new-pick sizing, step-up plans, rebalancing on request | key |

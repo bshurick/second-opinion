@@ -19,9 +19,9 @@ Say these in plain language; Claude picks the skill. Grouped as in the README's 
 ## History and decisions
 
 - **statement-import:** "Import this Fidelity CSV export into my ledger." · "Pull two years of activity from my connected accounts."
-- **trade-review:** "Review my trades from the last two years." · "Was selling NVDA in March a good call?"
+- **trade-review:** "Review my trades from the last two years." · "Was selling NVDA in March a good call?" · "Run a deep review of my trades: which were skill and which were luck?"
 - **trade-journal** (extra): "Journal this trade: buying 100 MSFT at 410, target 460, stop 385, six-month horizon." · "Am I following my plan?"
-- **tax-aware:** "What do I owe in capital gains so far this year? Any wash sales?" · "Which lots of AAPL are cheapest to sell, tax-wise?" · "Any losses I could harvest?"
+- **tax-aware:** "What do I owe in capital gains so far this year? Any wash sales?" · "Which lots of AAPL are cheapest to sell, tax-wise?" · "Any losses I could harvest?" · "Run a deep tax review: compare selling my stock awards over three years against converting to a Roth."
 - **spending:** "Import this Amex export." · "Here is my Amazon order list for the month, break the Amazon charges down." · "Where can I cut? Drill into Groceries." · "What subscriptions am I paying for, and which went up?"
 
 ## Planning
