@@ -149,56 +149,31 @@ Skills that produce a report publish an interactive page, hosted as a private Ar
 
 ## Deep research
 
-Six modes go beyond the scripted answers. Each sends research subagents through primary sources and the news, so they take longer and use much more of your Claude usage than an ordinary question. Deep valuation, the deep picker and the portfolio review need SEC EDGAR.
+Six modes go beyond the scripted answers. Research subagents work through primary sources and the news, so a run takes longer and uses much more of your Claude usage than an ordinary question.
 
-**Deep valuation** looks at one company. Ask: *"Do a deep dive on PHM: what has to go right, and what would I earn at today's price?"*
+| Mode | Ask | What you get | Typical run | Needs |
+|---|---|---|---|---|
+| Deep valuation | *"Do a deep dive on PHM: what has to go right, and what would I earn at today's price?"* | Three to five scenarios valued by segment, each with its return at today's price and what has to be true | 10 to 15 subagents, 30 searches | SEC EDGAR |
+| Deep picker | *"Find me the best opportunities right now: run the deep picker."* | A market scan and screens narrowed to three to five finalists, each with a deep valuation | 30 to 40 subagents, 160 searches | SEC EDGAR |
+| Portfolio review | *"Run a deep review of my portfolio: what single belief do I depend on most?"* | The beliefs your holdings and income share, with how much rests on each and what you would lose if it were wrong | 8 subagents, 40 searches | SEC EDGAR |
+| Property review | *"Run a deep review of 12 Main Street as a rental. The HOA papers and inspection report are in ~/Documents/condo."* | Named scenarios from your documents and local data, the weakest input that matters most, and the break-even price | 6 subagents, 35 searches | |
+| Decision review | *"Run a deep review of my trades: which were skill and which were luck?"* | Your largest trades graded without seeing the result, then sorted into skill, luck, bad luck or mistake | 10 subagents, 30 searches | Imported ledger |
+| Tax plan comparison | *"Run a deep tax review: compare selling my stock awards over three years against converting to a Roth."* | Multi-year plans compared on after-tax wealth, and which assumption decides the comparison | 5 subagents, 20 searches | Imported ledger |
 
-- Research subagents read the filings and news, and keep a sourced, dated ledger of the beliefs the value rests on. The most contested beliefs get their own follow-up research.
-- It values three to five named scenarios segment by segment, each with the annualized return at today's price and what has to be true for it to happen.
-- A typical run sends 10 to 15 subagents and about 30 web searches. Its page opens with the scenario table and the price against the scenarios.
+- **The numbers.** Scripts do the math, and each claim or rule carries a source and date. Scenarios and assumptions are the model's judgment, so read the sources behind them.
+- **The deep picker's test.** A finalist becomes a pick only if no scenario loses money over five years, dividends included, and the central scenario earns at least 10% a year at today's price. Passing means it clears the test on those scenarios, not that the return will happen.
+- **No calls.** The portfolio, property and tax modes make no buy, sell or plan calls. The property review is not an appraisal or inspection, and the tax comparison is not a return or tax advice.
+- **Your details.** Holding values, income, account names and your name stay out of every search.
 
-**The deep picker** looks across the market. Ask: *"Find me the best opportunities right now: run the deep picker."*
+Saved results can be checked later without rerunning the research. Each check says when a new run is due.
 
-- An industry scan and the financial screens run side by side, including a small-cap pass. Candidates are chosen on trajectory, free cash flow, price and how overlooked they are, not on size.
-- A health check drops weak businesses, quick reads score the rest on quality, direction, tailwind and value, and three to five finalists get a deep valuation.
-- A finalist becomes a pick only if no scenario loses money over five years, dividends included, and the central scenario earns at least 10% a year at today's price. Near misses are shown with the picks.
-- A run with three finalists sends roughly 30 to 40 subagents and about 160 web searches.
-
-**The portfolio deep review** looks at everything you hold. Ask: *"Run a deep review of my portfolio: what single belief do I depend on most?"*
-
-- Research subagents map your companies, what sits inside your funds and, if you mention it, your income to the beliefs they share: a rate path, a customer, a policy, an employer. A Red team then looks for what was missed.
-- Every link needs a source and a date, or the script rejects it. The script does the dollar math: how much rests on each belief and what you would lose if it were wrong, on stated assumptions. It also shows the evidence on both sides, where bets overlap, which holdings no bet covers, and which bets correlations would not show.
-- It describes what you depend on. It makes no buy or sell calls and sets no target weights. Your holding values, income and account names stay out of every search.
-- A typical run sends about 8 subagents and 40 web searches. Ask *"Re-check my deep review"* later: it re-measures each bet against what you hold then, lists the checks that have come due and says when a new review is due, with no new research.
-
-**The property deep review** looks at one property or market. Ask: *"Run a deep review of 12 Main Street as a rental. The HOA papers and inspection report are in ~/Documents/condo."*
-
-- Research subagents read the documents you give them and look up comparable sales, rents, taxes, insurance, hazards, permits and local supply. Every number the calculators use carries its source, its date and what it rests on, so an assumption looks like an assumption.
-- Named scenarios run through the same calculators as an ordinary question, with one-time costs from the documents added in. The page shows which input moves the result most while resting on the weakest evidence, what is still unknown and who can answer it, and the price where the central case comes out even.
-- It makes no call on buying and names no price to offer. It is not an appraisal or an inspection. Your name, income and savings stay out of every search, and local data can be thin or out of date, so old or scarce evidence is flagged.
-- A typical run sends about 6 subagents and 35 web searches. Ask *"Re-check my review of 12 Main Street: rates are now 6%"* later: it reruns the numbers with what changed, with no new research, and says when a new review is due.
-
-**The decision review** looks at your past trades. Ask: *"Run a deep review of my trades: which were skill and which were luck?"*
-
-- It takes your largest decisions by money moved, never by how they turned out. Researchers rebuild what was public before each one, and a grader who sees neither the result nor the size grades it. A claim dated after the decision cannot count, because the script rejects it.
-- Each grade is then set against the result: skill, luck, bad luck or mistake. Patterns by grade and by what was happening come with a plain warning when there are too few trades to read anything into.
-- Grades rest on public evidence, not on what you knew at the time. A later check keeps every grade frozen and re-measures the results.
-- A typical run sends about 10 subagents and 30 web searches. It needs an imported ledger.
-
-**The tax plan comparison** looks several years ahead. Ask: *"Run a deep tax review: compare selling my stock awards over three years against converting to a Roth."*
-
-- Rule checkers confirm each rule against the tax code and IRS publications, and the script rejects a rule table with no source and date. A plan cannot run until its rules are cited.
-- The script runs each plan year by year and compares them on after-tax wealth at one end date, not on tax paid. Reruns with other growth and tax rates show which assumption decides the comparison.
-- It names no plan to take and is not a return or tax advice. Income comes only from what you say in the session, and rule searches carry none of your figures.
-- A typical run sends about 5 subagents and 20 web searches. It needs an imported ledger.
-
-**Re-checks** keep a saved pick honest after the research is done. Ask: *"How are my picks doing?"*
-
-- Each check compares the latest reported quarters from EDGAR with each scenario's path, and says which scenario the company is tracking or whether it has left them all.
-- It also places today's price against the valuation, without rerunning it, and says when a new deep valuation is due. An earnings release can stand in until the 10-Q is filed.
-- A notice at session start names the picks due for a check after earnings, a 15% price move or a crossing into a new price level.
-
-The scripts do the math here, but the scenarios and their assumptions are the model's judgment, so read the ledger and the sources behind them. Passing the test means a company clears it on those scenarios, not that the return will happen.
+| Check | Ask | What it does |
+|---|---|---|
+| Picks | *"How are my picks doing?"* | Compares the latest quarters with each scenario and places today's price against the valuation. A notice at session start names picks due after earnings, a 15% price move or a new price level. |
+| Portfolio | *"Re-check my deep review"* | Re-measures each bet against what you hold then |
+| Property | *"Re-check my review of 12 Main Street: rates are now 6%"* | Reruns the numbers with what changed |
+| Trades | *"Re-check my decision review"* | Keeps every grade frozen and re-measures the results |
+| Tax plans | *"Re-check my tax plans"* | Reruns the saved plans on your current lots and lists this year's actions |
 
 ## Why use it
 
