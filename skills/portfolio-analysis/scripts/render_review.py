@@ -40,7 +40,7 @@ BODY = """
 .vd{font-size:11px;padding:1px 6px;border:1px solid var(--grid);border-radius:10px;color:var(--ink2)}.vd.weakening{color:var(--warn)}
 .src{color:var(--muted);font-size:12px}.scroll{overflow-x:auto}
 table.links{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px}table.links th{text-align:left;font-weight:500;color:var(--muted);font-size:12px}
-table.links td,table.links th{padding:3px 8px 3px 0;border-bottom:1px solid var(--grid);vertical-align:top;text-align:left}table.links .r{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+table.links td,table.links th{padding:3px 8px 3px 0;border-bottom:1px solid var(--grid);vertical-align:top;text-align:left;white-space:normal}table.links .r{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 </style>
 <h1 id="h1">Portfolio deep review</h1>
 <p class="sub" id="sub"></p>

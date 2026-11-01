@@ -149,7 +149,7 @@ Skills that produce a report publish an interactive page, hosted as a private Ar
 
 ## Deep research
 
-Three modes go beyond the scripted answers. Each sends research subagents through filings and the news, so they take longer and use much more of your Claude usage than an ordinary question. All three need SEC EDGAR.
+Four modes go beyond the scripted answers. Each sends research subagents through primary sources and the news, so they take longer and use much more of your Claude usage than an ordinary question. Deep valuation, the deep picker and the portfolio review need SEC EDGAR.
 
 **Deep valuation** looks at one company. Ask: *"Do a deep dive on PHM: what has to go right, and what would I earn at today's price?"*
 
@@ -170,6 +170,13 @@ Three modes go beyond the scripted answers. Each sends research subagents throug
 - Every link needs a source and a date, or the script rejects it. The script does the dollar math: how much rests on each belief and what you would lose if it were wrong, on stated assumptions. It also shows the evidence on both sides, where bets overlap, which holdings no bet covers, and which bets correlations would not show.
 - It describes what you depend on. It makes no buy or sell calls and sets no target weights. Your holding values, income and account names stay out of every search.
 - A typical run sends about 8 subagents and 40 web searches. Ask *"Re-check my deep review"* later: it re-measures each bet against what you hold then, lists the checks that have come due and says when a new review is due, with no new research.
+
+**The property deep review** looks at one property or market. Ask: *"Run a deep review of 12 Main Street as a rental. The HOA papers and inspection report are in ~/Documents/condo."*
+
+- Research subagents read the documents you give them and look up comparable sales, rents, taxes, insurance, hazards, permits and local supply. Every number the calculators use carries its source, its date and what it rests on, so an assumption looks like an assumption.
+- Named scenarios run through the same calculators as an ordinary question, with one-time costs from the documents added in. The page shows which input moves the result most while resting on the weakest evidence, what is still unknown and who can answer it, and the price where the central case comes out even.
+- It makes no call on buying and names no price to offer. It is not an appraisal or an inspection. Your name, income and savings stay out of every search, and local data can be thin or out of date, so old or scarce evidence is flagged.
+- A typical run sends about 6 subagents and 35 web searches. Ask *"Re-check my review of 12 Main Street: rates are now 6%"* later: it reruns the numbers with what changed, with no new research, and says when a new review is due.
 
 **Re-checks** keep a saved pick honest after the research is done. Ask: *"How are my picks doing?"*
 
@@ -215,7 +222,7 @@ The scripts do the math here, but the scenarios and their assumptions are the mo
 | Planning | rebalancing | Drift, 5/25 bands, trade list, contribution and tax-aware sell routing | key |
 | | core-satellite | ETF vs individual-stock mix, a satellite ceiling, picks split equally, by market cap, by deep valuation or by size, new-pick sizing, step-up plans, rebalancing on request | key |
 | | retirement | Monte Carlo projection, nest egg required, withdrawal rates | key |
-| | real-estate | Mortgage, refinance, rent vs buy, rental underwriting, affordability, REIT metrics | |
+| | real-estate | Mortgage, refinance, rent vs buy, rental underwriting, affordability, REIT metrics, a deep review of one property or market | |
 | | personal-finance | Budgeting, debt payoff, cash-flow planning, reminders | |
 | | debt-tracker | Card and loan statements recorded from PDFs; balances, APRs, interest paid | |
 | Research and markets | valuation | DCF, dividend discount, multiples, Graham and Buffett intrinsic value, and a [deep mode](#deep-research) that researches filings and values named scenarios | deep mode: EDGAR |

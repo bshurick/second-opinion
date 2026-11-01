@@ -5,6 +5,7 @@ import copy
 import json
 
 import pytest
+from page_dom import assert_page_help, render_and_audit, requires_chrome
 from scripts_util import load_script, run_json
 
 EXPOSURE = "portfolio-analysis/scripts/exposure.py"
@@ -177,6 +178,13 @@ def test_render_builds_the_page(tmp_path, capsys) -> None:
     assert "window.DATA = " in html and "Rates stay low" in html
     for section in ("Shared bets", "Overlaps", "Not yet mapped", "What to watch", "Flags"):
         assert section in html
+
+
+@requires_chrome
+def test_every_card_on_the_page_has_help(tmp_path, capsys) -> None:
+    src = tmp_path / "page.json"
+    src.write_text(json.dumps(_page()))
+    assert_page_help(render_and_audit(RENDER, ["--in", str(src)], tmp_path, capsys))
 
 
 @pytest.mark.parametrize("over, needle", [

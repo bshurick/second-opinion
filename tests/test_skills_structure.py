@@ -63,6 +63,7 @@ REFERENCE_FILES = [
     "stock-screener/references/primary-sources.md",
     "portfolio-analysis/references/portfolio-research.md",
     "portfolio-analysis/references/deep-review-roles.md",
+    "real-estate/references/deep-roles.md",
     "portfolio-snapshot/references/how-figures-are-built.md",
     "trading/references/momentum-research.md",
     "financial-education/references/curriculum.md",
