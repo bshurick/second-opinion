@@ -34,7 +34,7 @@ PAGE_BG = (0xF7, 0xF7, 0xF5)  # --page in the light theme (lib/second_opinion/pa
 
 # name -> (skill, render.py arguments relative to this directory, crop height in CSS px or None)
 PAGES: dict[str, tuple[str, list[str], int | None]] = {
-    "portfolio-brief": ("portfolio-snapshot", ["--in", "portfolio-brief.json"], 2290),
+    "portfolio-brief": ("portfolio-snapshot", ["--in", "portfolio-brief.json", "--summary", "portfolio-brief-summary.json"], 2290),
     "risk-analysis": ("risk-analysis", ["--in", "risk-analysis.json"], 2260),
     "valuation": ("valuation", ["--in", "valuation.json"], 1380),
     "retirement": ("retirement", ["--in", "retirement.json"], 1780),

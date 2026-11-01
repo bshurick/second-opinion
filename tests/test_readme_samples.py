@@ -13,7 +13,7 @@ README = PLUGIN_ROOT / "README.md"
 
 # image name -> (renderer, render.py arguments naming fixtures in docs/samples)
 PAGES = {
-    "portfolio-brief": ("portfolio-snapshot/scripts/render.py", ["--in", "portfolio-brief.json"]),
+    "portfolio-brief": ("portfolio-snapshot/scripts/render.py", ["--in", "portfolio-brief.json", "--summary", "portfolio-brief-summary.json"]),
     "risk-analysis": ("risk-analysis/scripts/render.py", ["--in", "risk-analysis.json"]),
     "valuation": ("valuation/scripts/render.py", ["--in", "valuation.json"]),
     "retirement": ("retirement/scripts/render.py", ["--in", "retirement.json"]),
