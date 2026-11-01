@@ -147,14 +147,40 @@ Skills that produce a report publish an interactive page, hosted as a private Ar
 
 </details>
 
+## Deep research
+
+Two modes go beyond the scripted answers. Both send research subagents through filings and the news, so they take longer and use much more of your Claude usage than an ordinary question. Both need SEC EDGAR.
+
+**Deep valuation** looks at one company. Ask: *"Do a deep dive on PHM: what has to go right, and what would I earn at today's price?"*
+
+- Research subagents read the filings and news, and keep a sourced, dated ledger of the beliefs the value rests on. The most contested beliefs get their own follow-up research.
+- It values three to five named scenarios segment by segment, each with the annualized return at today's price and what has to be true for it to happen.
+- A typical run sends 10 to 15 subagents and about 30 web searches. Its page opens with the scenario table and the price against the scenarios.
+
+**The deep picker** looks across the market. Ask: *"Find me the best opportunities right now: run the deep picker."*
+
+- An industry scan and the financial screens run side by side, including a small-cap pass. Candidates are chosen on trajectory, free cash flow, price and how overlooked they are, not on size.
+- A health check drops weak businesses, quick reads score the rest on quality, direction, tailwind and value, and three to five finalists get a deep valuation.
+- A finalist becomes a pick only if no scenario loses money over five years, dividends included, and the central scenario earns at least 10% a year at today's price. Near misses are shown with the picks.
+- A run with three finalists sends roughly 30 to 40 subagents and about 160 web searches.
+
+**Re-checks** keep a saved pick honest after the research is done. Ask: *"How are my picks doing?"*
+
+- Each check compares the latest reported quarters from EDGAR with each scenario's path, and says which scenario the company is tracking or whether it has left them all.
+- It also places today's price against the valuation, without rerunning it, and says when a new deep valuation is due. An earnings release can stand in until the 10-Q is filed.
+- A notice at session start names the picks due for a check after earnings, a 15% price move or a crossing into a new price level.
+
+The scripts do the math here, but the scenarios and their assumptions are the model's judgment, so read the ledger and the sources behind them. Passing the test means a company clears it on those scenarios, not that the return will happen.
+
 ## Why use it
 
 - **Your whole picture, not one account.** Retirement, real estate, taxes, debt, and the portfolio are one problem. The same session can price a rental, size the tax cost of funding it from taxable lots, and rerun the retirement projection.
 - **Your actual holdings.** Account answers start from live positions, balances, and history across every brokerage you connect, aggregated by symbol.
-- **Numbers from code.** Scripts fetch the data and do the math (IRR, VaR, DCF, wash-sale matching, Monte Carlo); Claude runs them and explains the result. The same question on two days gives the same layout with fresh figures. Two things are still the model's work: reading the figures off a statement PDF or a receipt you hand it (a recorded statement must balance to the cent before it is stored), and anything you ask outside what the scripts cover.
+- **Numbers from code.** Scripts fetch the data and do the math (IRR, VaR, DCF, wash-sale matching, Monte Carlo); Claude runs them and explains the result. The same question on two days gives the same layout with fresh figures. Three things are still the model's work: reading the figures off a statement PDF or a receipt you hand it (a recorded statement must balance to the cent before it is stored), the research and scenarios behind a [deep valuation](#deep-research), and anything you ask outside what the scripts cover.
 - **Analysis, not advice.** The skills are written to give the data, the cases for and against, and the risks, and to leave out buy, sell, or hold calls. The decision is yours. It is not a signal generator or a trading bot; even the stock screener ranks companies by what the price implies and hands them to research, not to an order. A model can still stray from its instructions, so treat what it says as analysis to check.
 - **Local files, and a clear list of what is not local.** Keys sit in a `.env` you own and records are JSON files on your disk. What leaves your machine:
   - requests to the data providers: SnapTrade or E*Trade for your accounts, Yahoo Finance, SEC EDGAR, and FRED for market data;
+  - web searches and page fetches during deep research, run through Claude Code's own tools;
   - the conversation with the model, which includes the script results Claude reads: Anthropic's by default, or an [open model through Ollama](docs/ollama.md), which can keep it local;
   - report pages, which Claude Code publishes as private Artifacts on your claude.ai account. Ask for the answer in chat if you do not want a page published.
 
@@ -185,9 +211,9 @@ Skills that produce a report publish an interactive page, hosted as a private Ar
 | | real-estate | Mortgage, refinance, rent vs buy, rental underwriting, affordability, REIT metrics | |
 | | personal-finance | Budgeting, debt payoff, cash-flow planning, reminders | |
 | | debt-tracker | Card and loan statements recorded from PDFs; balances, APRs, interest paid | |
-| Research and markets | valuation | DCF, dividend discount, multiples, Graham and Buffett intrinsic value | |
+| Research and markets | valuation | DCF, dividend discount, multiples, Graham and Buffett intrinsic value, and a [deep mode](#deep-research) that researches filings and values named scenarios | deep mode: EDGAR |
 | | fundamental-research | SEC EDGAR financials, quality checklist, 10-K/10-Q reader, 13F diffs | EDGAR |
-| | stock-screener | Every US-listed company's filings screened seven ways (growth, value, quality, GARP, magic formula, Graham, payout), with a look-back check on past picks | EDGAR |
+| | stock-screener | Every US-listed company's filings screened seven ways (growth, value, quality, GARP, magic formula, Graham, payout), a look-back check on past picks, a [deep picker](#deep-research), and re-checks of saved picks against their valuation | EDGAR |
 | | options | Chains, implied volatility, expected move, greeks, payoffs | |
 | | trading | Price action and technicals for one security, plus the order scripts | key |
 | | market-analysis | Indices, sectors, yields, earnings calendar, market flows | |
