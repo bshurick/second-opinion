@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Usage: render.py [--in snapshot.json] --out page.html
+"""Usage: render.py [--in snapshot.json] --out page.html [--summary summary.json]
 
 Turns one ``snapshot.py`` result (a file, or stdin when ``--in`` is omitted) into a self-contained
 interactive HTML page for the Artifact tool: a Headlines card with a collapsed Coverage table when the
@@ -14,7 +14,9 @@ upcoming events and the change since the last saved snapshot when present, dated
 ``{"out": path, "title": ..., "positions": n, "flags": n, "headlines": n}``. Exit 2 on a missing or malformed input.
 
 The page is a fragment (no html/head/body tags): the Artifact host wraps it. Every number shown comes
-from the snapshot JSON; the page formats, sorts and filters, it never recomputes totals.
+from the snapshot JSON; the page formats, sorts and filters, it never recomputes totals. The one exception
+is ``--summary``: the headline analysis card at the top is text the model wrote, which ``summary_card``
+holds to its rules. A summary that breaks one is exit 2 and no page is written. Without the flag there is no card.
 """
 
 from __future__ import annotations
@@ -26,16 +28,23 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
 
-from second_opinion import output, page  # noqa: E402
+from second_opinion import output, page, summary_card  # noqa: E402
 from second_opinion.errors import InvalidInput  # noqa: E402
 
 TITLE = "Portfolio Snapshot"
+
+# The sections a headline analysis link may point to.
+TARGETS = (
+    "headlines-card", "accounts-card", "alloc-card", "sector-card", "movers-card",
+    "holdings-card", "events-card", "compare-card", "flags-section",
+)
 
 BODY = """
 <style>#holdings td.l{white-space:normal;min-width:120px}</style>
 <h1>Portfolio Snapshot</h1>
 <p class="sub" id="asof"></p>
 <div id="explain"></div>
+{{SUMMARY}}
 <section class="card" id="headlines-card" hidden><h2>Headlines</h2>
   <p class="sub hl-totals" id="hl-totals"></p>
   <ul class="hl" id="headlines"></ul>
@@ -63,7 +72,7 @@ BODY = """
 </section>
 <section class="card" id="events-card" hidden><h2>Upcoming events</h2><p class="sub">Earnings and dividend dates coming up for what you hold.</p><div class="twrap" id="events"></div></section>
 <section class="card" id="compare-card" hidden><h2>Change since last snapshot</h2><p class="sub" id="compare-line"></p><div class="twrap" id="compare"></div></section>
-<section data-help="none"><h2>Flags</h2>""" + page.FLAGS_INTRO + """<ul class="flags" id="flags"></ul></section>
+<section data-help="none" id="flags-section"><h2>Flags</h2>""" + page.FLAGS_INTRO + """<ul class="flags" id="flags"></ul></section>
 <p class="note">Headlines are the newest dated stories Yahoo lists for each mover in the last 7 days; the dateline is the publication date, and a story is context, not the cause of the move. Quotes are delayed. Weights are of total value across every connected account. Unrealized P&amp;L excludes positions with no cost basis. General information, not financial advice.</p>
 """
 
@@ -311,10 +320,10 @@ class _Parser(argparse.ArgumentParser):
         raise InvalidInput(f"render.py: {message}")
 
 
-def build(snapshot: dict) -> str:
+def build(snapshot: dict, summary: dict | None = None) -> str:
     if not isinstance(snapshot, dict) or "totals" not in snapshot:
         raise InvalidInput("input must be a snapshot.py result (a JSON object with totals)")
-    return page.render(TITLE, snapshot, BODY, SCRIPT)
+    return page.render(TITLE, snapshot, BODY.replace("{{SUMMARY}}", summary_card.card_html(summary)), SCRIPT)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -322,13 +331,15 @@ def main(argv: list[str] | None = None) -> int:
         p = _Parser(prog="render.py", add_help=False)
         p.add_argument("--in", dest="inp", default=None)
         p.add_argument("--out", required=True)
+        p.add_argument("--summary", default=None)
         ns = p.parse_args(args)
         try:
             raw = Path(ns.inp).read_text(encoding="utf-8") if ns.inp else sys.stdin.read()
             snapshot = json.loads(raw)
         except (OSError, json.JSONDecodeError) as exc:
             raise InvalidInput(f"could not read snapshot JSON: {exc}") from exc
-        out = page.write(ns.out, build(snapshot))
+        summary = summary_card.load(ns.summary, TARGETS) if ns.summary else None
+        out = page.write(ns.out, build(snapshot, summary))
         return {"out": str(out), "title": TITLE, "positions": len(snapshot.get("positions") or []), "flags": len(snapshot.get("flags") or []),
                 "headlines": len(snapshot.get("headlines") or [])}
 

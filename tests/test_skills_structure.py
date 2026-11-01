@@ -17,6 +17,8 @@ from pathlib import Path
 
 import pytest
 
+from second_opinion.summary_card import FORBIDDEN_VERB_RE
+
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 SKILLS_ROOT = PLUGIN_ROOT / "skills"
 PLUGIN_JSON = PLUGIN_ROOT / ".claude-plugin" / "plugin.json"
@@ -70,10 +72,9 @@ REFERENCE_FILES = [
     "core-satellite/references/research.md",
 ]
 
-# The verbs the compliance block bans for financial actions. A reference file is prose the model
-# reads and paraphrases back to the user, so it is the same surface as script output and gets the
-# same net. Stems, so "recommends"/"recommendation"/"adviser"/"suggesting" are caught too.
-FORBIDDEN_VERB_RE = re.compile(r"\b(recommend\w*|advis\w*|should|suggest\w*)\b", re.IGNORECASE)
+# FORBIDDEN_VERB_RE: the verbs the compliance block bans for financial actions. A reference file is
+# prose the model reads and paraphrases back to the user, so it is the same surface as script output
+# and gets the same net.
 
 # Which registered references the net is enforced over, by skill.
 #
@@ -542,3 +543,14 @@ def test_description_says_what_and_when_in_the_third_person(skill_name: str) -> 
     assert ": " not in description, f"{skill_name}: a colon followed by a space breaks strict YAML"
     assert len(description) <= MAX_DESCRIPTION_CHARS, f"{skill_name}: description is {len(description)} characters"
     assert not re.match(r"(I|You|We)\b", description), f"{skill_name}: write the description in the third person"
+
+
+@pytest.mark.parametrize("skill", ["market-analysis", "portfolio-snapshot"])
+def test_summary_skills_require_the_card(skill: str) -> None:
+    body = _skill_md_path(skill).read_text()
+    assert "--summary" in body and "What to look into" in body and "this run's script output" in body
+
+
+def test_market_skill_guards_holdings_on_the_page() -> None:
+    body = _skill_md_path("market-analysis").read_text()
+    assert "brief.py --no-headlines" in body and "get_artifact" in body and "for_you_dropped" in body

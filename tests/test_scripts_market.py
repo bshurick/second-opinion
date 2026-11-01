@@ -245,3 +245,88 @@ def test_every_card_explains_itself(tmp_path, capsys) -> None:
     (tmp_path / "flows.json").write_text(json.dumps(FLOWS))
     a = render_and_audit("market-analysis/scripts/render.py", ["--indices", str(tmp_path / "indices.json"), "--in", str(tmp_path / "flows.json")], tmp_path, capsys)
     assert_page_help(a)
+
+
+MARKET_SUMMARY = {
+    "headline": "Big investors lean toward industrials",
+    "stands_out": "Asset managers hold their largest net long of the past year in industrials.",
+    "look_into": "[Sectors](sec-card): where futures and flows disagree. [Flags](flags-section): stale contracts.",
+}
+FOR_YOU = "Stocks are 26% of the accounts."
+
+
+def _render_market_card(tmp_path, capsys, summary):
+    (tmp_path / "indices.json").write_text(json.dumps({"as_of": "2026-10-31", "indices": []}))
+    out = tmp_path / "market.html"
+    args = ["--indices", str(tmp_path / "indices.json"), "--out", str(out)]
+    if summary is not None:
+        (tmp_path / "summary.json").write_text(json.dumps(summary))
+        args += ["--summary", str(tmp_path / "summary.json")]
+    rc, res = run_json(load_script("market-analysis/scripts/render.py"), args, capsys)
+    return rc, res, out
+
+
+def _read_today(monkeypatch, tmp_path, **record):
+    from datetime import datetime
+
+    monkeypatch.setenv("SECOND_OPINION_DATA", str(tmp_path))
+    full = {"as_of": datetime.now().astimezone().isoformat(), "partial": False, **record}
+    (tmp_path / "portfolio-last-check.json").write_text(json.dumps(full))
+
+
+def test_market_page_shows_the_card_above_the_tiles(tmp_path, capsys) -> None:
+    rc, _, out = _render_market_card(tmp_path, capsys, MARKET_SUMMARY)
+    assert rc == 0
+    html = out.read_text()
+    assert html.index('id="summary-card"') < html.index('id="tiles"')
+    assert 'data-summary-target="sec-card"' in html
+    assert 'id="flags-section"' in html
+
+
+def test_market_page_without_summary_has_no_card(tmp_path, capsys) -> None:
+    rc, _, out = _render_market_card(tmp_path, capsys, None)
+    assert rc == 0
+    html = out.read_text()
+    assert 'id="summary-card"' not in html
+    assert "{{SUMMARY}}" not in html
+
+
+def test_market_page_keeps_for_you_after_a_full_read_today(tmp_path, capsys, monkeypatch) -> None:
+    _read_today(monkeypatch, tmp_path)
+    rc, res, out = _render_market_card(tmp_path, capsys, {**MARKET_SUMMARY, "for_you": FOR_YOU})
+    assert rc == 0
+    assert FOR_YOU in out.read_text()
+    assert "for_you_dropped" not in res
+
+
+def test_market_page_drops_for_you_without_a_full_read_today(tmp_path, capsys, monkeypatch) -> None:
+    monkeypatch.setenv("SECOND_OPINION_DATA", str(tmp_path))
+    rc, res, out = _render_market_card(tmp_path, capsys, {**MARKET_SUMMARY, "for_you": FOR_YOU})
+    assert rc == 0
+    html = out.read_text()
+    assert FOR_YOU not in html
+    assert "What this means for you" not in html
+    assert "Big investors lean toward industrials" in html
+    assert res["for_you_dropped"] == "no full portfolio read today"
+
+
+def test_market_page_drops_for_you_after_a_partial_read(tmp_path, capsys, monkeypatch) -> None:
+    _read_today(monkeypatch, tmp_path, partial=True)
+    rc, res, out = _render_market_card(tmp_path, capsys, {**MARKET_SUMMARY, "for_you": FOR_YOU})
+    assert rc == 0
+    assert FOR_YOU not in out.read_text()
+    assert res["for_you_dropped"] == "no full portfolio read today"
+
+
+def test_market_page_does_not_report_a_drop_when_no_for_you_was_given(tmp_path, capsys, monkeypatch) -> None:
+    monkeypatch.setenv("SECOND_OPINION_DATA", str(tmp_path))
+    rc, res, _ = _render_market_card(tmp_path, capsys, MARKET_SUMMARY)
+    assert rc == 0
+    assert "for_you_dropped" not in res
+
+
+def test_market_page_rejects_a_link_to_a_snapshot_only_section(tmp_path, capsys) -> None:
+    rc, res, out = _render_market_card(tmp_path, capsys, {**MARKET_SUMMARY, "look_into": "[Holdings](holdings-card)"})
+    assert rc == 2
+    assert "holdings-card" in res["error"]
+    assert not out.exists()

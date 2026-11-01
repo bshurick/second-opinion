@@ -88,6 +88,7 @@ After the sources run, an enrichment phase fills in `answer`:
 
 `render.py` turns a saved `snapshot.py` or `brief.py` result into one self-contained HTML page for the Artifact tool:
 
+- a headline analysis card at the top when `--summary` is given: text the model wrote, limited to 20 words for the headline, 90 for each of the two paragraphs and 70 for the fold (`second_opinion/summary_card.py`). It is the one part of the page whose numbers are not rendered from the JSON
 - a one-line intro with a "How to read this page" walkthrough
 - hover explanations for every financial term, with links to more
 - stat tiles

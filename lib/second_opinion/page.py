@@ -23,7 +23,8 @@ e.g. ``FA.flow`` / ``FA.readGrid``) and the card's glossary terms with links; a 
 but with terms gets a terms-only button (``FA.armHelp``), and ``data-help="none"`` exempts one.
 Teaching text belongs in a walkthrough rather than on the page: ``FA.intro(el, {lead, steps})``
 puts one plain sentence and a "How to read this page" button at the top, and the button runs
-``FA.tour(steps)`` -- one card per step, each outlining the section it explains.
+``FA.tour(steps)`` -- one card per step, each outlining the section it explains. The headline analysis
+card comes from ``summary_card``; its styles and its scroll-link handler live here.
 """
 
 from __future__ import annotations
@@ -262,6 +263,13 @@ details summary{cursor:pointer;color:var(--ink2);font-size:13px}
 .tour-card .x{position:absolute;top:6px;right:8px;font:inherit;background:none;border:0;color:var(--muted);font-size:20px;cursor:pointer;line-height:1}
 .tour-card .nav{display:flex;justify-content:space-between;align-items:center;margin-top:14px;gap:8px}
 .tour-on{outline:3px solid var(--s1);outline-offset:4px;border-radius:6px}
+.summary-card{border-left:3px solid var(--s1);margin-bottom:16px}
+.summary-card p{margin:0 0 8px;max-width:80ch;color:var(--ink2)}
+.summary-card .summary-head{font-size:16px;font-weight:600;line-height:1.3;color:var(--ink)}
+.summary-label{display:block;margin-bottom:2px;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.summary-link{color:var(--s1);text-decoration:underline;cursor:pointer}
+.summary-fold summary{cursor:pointer;color:var(--s1);font-size:13px;font-weight:600}
+.summary-fold p{margin:6px 0 0}
 @media (prefers-reduced-motion:no-preference){.bar .fill{transition:width .25s}}
 """
 
@@ -503,6 +511,11 @@ const FA = (() => {
     s.textContent = JSON.stringify({help_links: document.querySelectorAll('a.help').length, cards}).replace(/</g, '\\u003c');
     document.body.appendChild(s); };
   if (location.hash === '#fa-audit') setTimeout(audit, 60);
+  // Headline analysis links scroll within the page. The artifact viewer restricts hash use, so they never touch location.
+  const summaryJump = e => { const a = e.target.closest && e.target.closest('[data-summary-target]'); if (!a) return;
+    if (e.type === 'keydown') { if (e.key !== 'Enter' && e.key !== ' ') return; e.preventDefault(); }
+    const el = document.getElementById(a.dataset.summaryTarget); if (el && !el.hidden) el.scrollIntoView({behavior: 'smooth'}); };
+  document.addEventListener('click', summaryJump); document.addEventListener('keydown', summaryJump);
   return { S, money, moneyS, moneyC, niceTicks, tour, intro, pct, num, cls, esc, el, bars, donut, table, lines, heatmap, bindTip, tip, isNum, term, armTerms, explain, modal, help, armHelp, flow, readGrid, glossary: G };
 })();
 """

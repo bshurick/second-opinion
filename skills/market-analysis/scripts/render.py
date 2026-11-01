@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Usage: render.py [--in flows.json] [--indices indices.json] --out page.html
+"""Usage: render.py [--in flows.json] [--indices indices.json] --out page.html [--summary summary.json]
 
 Turns a ``flows.py`` result and/or an ``indices.py`` result (at least one) into one self-contained
 interactive HTML page for the Artifact tool: stat tiles (S&P 500, VIX and its one-year percentile,
@@ -16,7 +16,12 @@ missing from the report, funds missing from the finder) and the script's notes. 
 input.
 
 The page is a fragment (no html/head/body tags): the Artifact host wraps it. Every number shown comes
-from the two JSON files; the page formats and draws, it never recomputes a statistic.
+from the two JSON files; the page formats and draws, it never recomputes a statistic. The one exception
+is ``--summary``: the headline analysis card at the top is text the model wrote, which ``summary_card``
+holds to its rules. A summary that breaks one is exit 2 and no page is written. Without the flag there is
+no card. This page may be shared, so ``for_you`` (the person's holdings) is dropped unless
+``portfolio-last-check.json`` shows a full read today; the render still succeeds and the printed JSON
+gains ``for_you_dropped``.
 """
 
 from __future__ import annotations
@@ -29,15 +34,19 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
 
-from second_opinion import output, page  # noqa: E402
+from second_opinion import output, page, summary_card  # noqa: E402
 from second_opinion.errors import InvalidInput  # noqa: E402
 
 TITLE = "Market Flows"
+
+# The sections a headline analysis link may point to.
+TARGETS = ("idx-card", "pos-card", "sec-card", "etf-card", "cash-card", "short-card", "flags-section")
 
 BODY = """
 <h1>Market Flows</h1>
 <p class="sub" id="asof">{{HEADLINE}}</p>
 <div id="explain"></div>
+{{SUMMARY}}
 <div class="tiles" id="tiles"></div>
 <section class="card" id="idx-card"><h2>Indices, rates and macro</h2><p class="sub">Where the market closed and how far it moved over the day and the week. Yields are in percentage points.</p><div class="twrap" id="indices"></div><p class="note" id="idx-note"></p></section>
 <section class="card" id="pos-card"><h2 id="pos-h">Positioning</h2><p class="sub" id="pos-sub">Who holds the futures: the net position of each trader class per contract, its change over the week, and where the latest reading sits within the window (0 = most net-short of the window, 100 = most net-long). Click a contract for its history.</p>
@@ -47,7 +56,7 @@ BODY = """
 <section class="card" id="etf-card"><h2>ETF flows</h2><p class="sub" id="etf-sub">Net creations (money in) or redemptions (money out) over the last five observations, as a share of each fund's assets.</p><div id="etf-bars"></div><p class="note" id="etf-note"></p></section>
 <section class="card" id="cash-card"><h2>Cash on the sidelines</h2><p class="sub" id="cash-sub">Retail money market fund assets, weekly, over the past year. Rising means cash is leaving risk or being saved; falling means it is being deployed or spent.</p><div id="cash"></div><p class="note" id="cash-note"></p></section>
 <section class="card" id="short-card" hidden><h2>Short volume</h2><p class="sub">The share of each day's volume that was sold short, against the symbol's own average over the window. Compare a symbol with itself, not with others.</p><div class="twrap" id="short"></div></section>
-<section data-help="none"><h2>Flags</h2>""" + page.FLAGS_INTRO + """<ul class="flags" id="flags"></ul><ul class="news" id="notes"></ul></section>
+<section data-help="none" id="flags-section"><h2>Flags</h2>""" + page.FLAGS_INTRO + """<ul class="flags" id="flags"></ul><ul class="news" id="notes"></ul></section>
 <p class="note">Positioning is futures only and shows how each trader class is positioned, not who owns the cash equities. Asset managers are structurally net long index futures and leveraged funds structurally net short, so each class is read against its own history, not against zero; a crowded reading has historically been prone to reversal but is not a direction. ETF creations mix investor demand with authorized-participant arbitrage. Nothing here is a forecast or a recommendation. General information at the stated sources and dates, not financial advice.</p>
 <noscript><p class="note">JavaScript is off: the charts and tables are not drawn. The headline figures are in the line under the title; the full result is embedded in the page as JSON.</p></noscript>
 """
@@ -271,7 +280,7 @@ def _load(path: str | None, what: str) -> dict | None:
     return data
 
 
-def build(flows: dict | None, indices: dict | None) -> str:
+def build(flows: dict | None, indices: dict | None, summary: dict | None = None) -> str:
     if flows is not None and not (isinstance(flows, dict) and "sources" in flows and any(k in flows for k in ("positioning", "etf_flows", "cash", "short_volume"))):
         raise InvalidInput("--in must be a flows.py result (a JSON object with sources and at least one of positioning, etf_flows, cash, short_volume)")
     if indices is not None and not (isinstance(indices, dict) and isinstance(indices.get("indices"), list)):
@@ -279,6 +288,7 @@ def build(flows: dict | None, indices: dict | None) -> str:
     if flows is None and indices is None:
         raise InvalidInput("at least one of --in (a flows.py result) or --indices (an indices.py result) is required")
     body = BODY.replace("{{HEADLINE}}", html.escape(_headline(indices, flows)))
+    body = body.replace("{{SUMMARY}}", summary_card.card_html(summary))
     return page.render(TITLE, {"flows": flows, "indices": indices}, body, SCRIPT)
 
 
@@ -296,12 +306,20 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--in", dest="inp", default=None)
         p.add_argument("--indices", default=None)
         p.add_argument("--out", required=True)
+        p.add_argument("--summary", default=None)
         ns = p.parse_args(args)
         flows, indices = _load(ns.inp, "flows"), _load(ns.indices, "indices")
-        out = page.write(ns.out, build(flows, indices))
+        summary = summary_card.load(ns.summary, TARGETS) if ns.summary else None
+        dropped = bool(summary and "for_you" in summary and not summary_card.full_read_today())
+        if dropped:
+            del summary["for_you"]
+        out = page.write(ns.out, build(flows, indices, summary))
         pos = (flows or {}).get("positioning") or {}
         etf = (flows or {}).get("etf_flows") or {}
-        return {"out": str(out), "title": TITLE, "indices": len((indices or {}).get("indices") or []), "contracts": len(pos.get("contracts") or []), "funds": len(etf.get("funds") or []), "flags": _count_flags(flows)}
+        result = {"out": str(out), "title": TITLE, "indices": len((indices or {}).get("indices") or []), "contracts": len(pos.get("contracts") or []), "funds": len(etf.get("funds") or []), "flags": _count_flags(flows)}
+        if dropped:
+            result["for_you_dropped"] = "no full portfolio read today"
+        return result
 
     return output.run(go, argv)
 

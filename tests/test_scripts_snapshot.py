@@ -1842,3 +1842,73 @@ def test_snapshot_page_marks_an_estimated_day_change(monkeypatch, capsys, tmp_pa
     html = page.read_text()
     assert '"day_change_proxy": "VOO"' in html or '"day_change_proxy":"VOO"' in html
     assert "est. via ${F.esc(r.day_change_proxy)}" in html
+
+
+SUMMARY = {
+    "headline": "Bonds cushion a down day",
+    "stands_out": "Cash is 48.7% of the accounts.",
+    "look_into": "[Holdings](holdings-card): the day's movers. [Flags](flags-section): two estimates.",
+}
+
+
+def _render_with_summary(tmp_path, capsys, summary):
+    src = tmp_path / "snap.json"
+    src.write_text(json.dumps({"as_of": "2026-10-31T20:00:00+00:00", "totals": {"total_value": 100.0}, "positions": [], "flags": []}))
+    out = tmp_path / "page.html"
+    args = ["--in", str(src), "--out", str(out)]
+    if summary is not None:
+        card = tmp_path / "summary.json"
+        card.write_text(json.dumps(summary))
+        args += ["--summary", str(card)]
+    rc, res = run_json(load_script("portfolio-snapshot/scripts/render.py"), args, capsys)
+    return rc, res, out
+
+
+def test_snapshot_page_shows_the_card_above_the_tiles(capsys, tmp_path) -> None:
+    rc, _, out = _render_with_summary(tmp_path, capsys, SUMMARY)
+    assert rc == 0
+    html = out.read_text()
+    assert html.index('id="summary-card"') < html.index('id="headlines-card"') < html.index('id="tiles"')
+    assert "Bonds cushion a down day" in html
+    assert 'data-summary-target="flags-section"' in html
+    assert 'id="flags-section"' in html
+
+
+def test_snapshot_page_without_summary_has_no_card(capsys, tmp_path) -> None:
+    rc, _, out = _render_with_summary(tmp_path, capsys, None)
+    assert rc == 0
+    html = out.read_text()
+    assert 'id="summary-card"' not in html
+    assert "{{SUMMARY}}" not in html
+
+
+def test_snapshot_page_keeps_for_you_with_no_read_check(capsys, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("SECOND_OPINION_DATA", str(tmp_path))
+    rc, res, out = _render_with_summary(tmp_path, capsys, {**SUMMARY, "for_you": "Stocks are 26% of the accounts."})
+    assert rc == 0
+    assert "Stocks are 26% of the accounts." in out.read_text()
+    assert "for_you_dropped" not in res
+
+
+@pytest.mark.parametrize("bad", [{**SUMMARY, "headline": "You should sell"}, {**SUMMARY, "look_into": "[No](nope-card)"}, "not json"])
+def test_snapshot_page_rejects_a_bad_summary_without_writing(capsys, tmp_path, bad) -> None:
+    src = tmp_path / "snap.json"
+    src.write_text(json.dumps({"totals": {}, "positions": [], "flags": []}))
+    card = tmp_path / "summary.json"
+    card.write_text(bad if isinstance(bad, str) else json.dumps(bad))
+    out = tmp_path / "page.html"
+    rc, res = run_json(load_script("portfolio-snapshot/scripts/render.py"), ["--in", str(src), "--out", str(out), "--summary", str(card)], capsys)
+    assert rc == 2
+    assert res["error"]
+    assert not out.exists()
+
+
+def test_page_js_scroll_handler_ignores_a_missing_target() -> None:
+    import re
+
+    from second_opinion import page
+
+    assert "data-summary-target" in page.JS
+    assert "scrollIntoView" in page.JS
+    assert "el && !el.hidden" in page.JS
+    assert not re.search(r"location\.hash\s*=[^=]", page.JS)

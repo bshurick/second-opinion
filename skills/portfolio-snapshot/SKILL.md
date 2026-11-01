@@ -38,7 +38,7 @@ Run with the Bash tool. All four scripts print JSON.
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-snapshot/scripts/brief.py" [snapshot.py flags...] [--no-headlines] [--timeout SECONDS] [--workers N]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-snapshot/scripts/snapshot.py" [--account ID ...] [--events] [--no-quotes] [--no-news] [--save] [--compare] [--partial]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-snapshot/scripts/summary.py" < input.json
-"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-snapshot/scripts/render.py" --in snapshot.json --out page.html
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-snapshot/scripts/render.py" --in snapshot.json --out page.html [--summary summary.json]
 ```
 
 | Script | What it does |
@@ -46,7 +46,7 @@ Run with the Bash tool. All four scripts print JSON.
 | `brief.py` | The default run. The snapshot plus `headlines`, `coverage`, `brief_as_of` and `brief_seconds`. Every `snapshot.py` flag passes through. |
 | `snapshot.py` | The whole fetch in one go: accounts, positions, balances, prices, sectors, movers' news. |
 | `summary.py` | Pure math on data you already have. |
-| `render.py` | Interactive page from a `snapshot.py` or `brief.py` result. Prints `{"out", "title", "positions", "flags", "headlines"}`. |
+| `render.py` | Interactive page from a `snapshot.py` or `brief.py` result, with the headline analysis card when `--summary` is given. Prints `{"out", "title", "positions", "flags", "headlines"}`. |
 
 | Flag | Effect |
 |---|---|
@@ -63,7 +63,7 @@ Run with the Bash tool. All four scripts print JSON.
 
 | Exit code | Meaning | What to do |
 |---|---|---|
-| 2 | Unknown account id, or (`render.py`) the input is not a snapshot result | Show `error`. |
+| 2 | Unknown account id, or (`render.py`) the input is not a snapshot result, or the summary file breaks a rule | Show `error`. |
 | 4 | Credentials missing | Show the `hint`. |
 | 4, code `ETRADE_REAUTH` | An E*Trade login is needed | Follow the session's broker-login rule: show the `url`, get the verifier code, run the connect skill's `etrade-login.py --verifier CODE`, rerun once. `--partial` runs without E*Trade. |
 | 5 | SnapTrade or Yahoo error | Show the error. |
@@ -86,13 +86,35 @@ Run with the Bash tool. All four scripts print JSON.
 2. Run `brief.py` once, with a Bash timeout of at least 300 seconds, writing the output to a file: `> DIR/snapshot.json`. DIR is the session scratchpad.
 3. If the run exits non-zero, follow the exit code table and stop. A `coverage` row with status `failed` or `skipped` is not an error: it is information for the page and the reply's sources line, never a chat error and never a reason to rerun.
 4. If the Artifact tool is available in the session, deliver the page:
-   1. Run `render.py --in DIR/snapshot.json --out DIR/portfolio-snapshot.html`.
-   2. Publish the HTML with the Artifact tool: icon dashboard, description "Portfolio brief as of DATE".
-   3. On later runs republish the same file path, so the link stays stable.
-   4. Reply with the page reply format below.
+   1. Write the headline analysis to `DIR/summary.json`, following the section below.
+   2. Run `render.py --in DIR/snapshot.json --out DIR/portfolio-snapshot.html --summary DIR/summary.json`.
+   3. Publish the HTML with the Artifact tool: icon dashboard, description "Portfolio brief as of DATE".
+   4. On later runs republish the same file path, so the link stays stable.
+   5. Reply with the page reply format below.
 5. If the Artifact tool is not available (a headless or non-interactive host), reply with the markdown fallback format below instead.
 6. For a `--compare` run, present the delta against the saved snapshot instead of re-rendering every section.
 7. Offer the handoff. For each shown headline whose `ask` is non-empty, offer the `ask` verbatim. For anything else beyond the fixed layout, finish the snapshot first, then hand off to the skill named in Background.
+
+### The headline analysis
+
+A small card at the top of the page: a headline, "What stands out", "What to look into", and a folded "What this means for you". The file is `{"headline", "stands_out", "look_into", "for_you"}`.
+
+- Limits, which `render.py` enforces: `headline` 20 words, `stands_out` 90, `look_into` 90, `for_you` 70. `for_you` is optional and the rest are required.
+- Links take the form `[Sectors](sec-card)`, in `look_into` only, to these ids: `headlines-card`, `accounts-card`, `alloc-card`, `sector-card`, `movers-card`, `holdings-card`, `events-card`, `compare-card`, `flags-section`.
+- Every number comes from this run's script output, quoted as the script gives it.
+- Lead with what is unusual today, not a tour of the page. Say plainly when nothing stands out.
+- Separate data from inference, using words like "may" for inference.
+- Carry dates when a reading is older than the page's prices.
+- Name the bull and the bear side when reading a market condition or a security.
+- No buy, sell or hold call, and no forecast. `for_you` says how a reading touches the person's holdings, not what to do. The forbidden verbs are rejected in every field.
+- `for_you` takes portfolio numbers only from a read taken on this run or today, never from memory. Non-numeric context from memory or the profile is allowed, such as a paycheck and RSUs being Amazon exposure.
+- A file that breaks a rule exits 2 with `error` naming the rule and writes no page. Rewrite the file and render again.
+
+What to look for on this page:
+
+- The day's move against the S&P 500, and how much of it is estimated (`DAY_CHANGE_ESTIMATED`).
+- Concentration and flags that changed, cash share, and new alerts in `headlines`.
+- Events in the next few days.
 
 ## Reply format
 
@@ -101,13 +123,14 @@ Run with the Bash tool. All four scripts print JSON.
 In this order, then stop:
 
 1. The artifact link on its own line.
-2. One line: Total `totals.total_value` · Cash and money-market funds `totals.cash_like` (`totals.cash_like_pct`) · Day `totals.day_change` (`totals.day_change_pct`, covers `totals.day_change_coverage` of holdings) · Unrealized `totals.unrealized_pnl`
-3. Headlines, only when `headlines` is present:
+2. The summary's `headline`, on one line.
+3. One line: Total `totals.total_value` · Cash and money-market funds `totals.cash_like` (`totals.cash_like_pct`) · Day `totals.day_change` (`totals.day_change_pct`, covers `totals.day_change_coverage` of holdings) · Unrealized `totals.unrealized_pnl`
+4. Headlines, only when `headlines` is present:
    - The line "Headlines (N new):", where N is the count of `status == "new"`. Write "Headlines: none today" when the list is empty.
    - At most five bullets, in the script's order.
    - Each bullet reads "SEVERITY title — answer". The prefix is the severity in caps for alerts, `NEW` for new notices, and nothing for the rest. Then the `title`. Then " — " and the `answer`, when it is non-empty.
-4. One line "Sources: X of Y checked, Z skipped" from `coverage`, only when any source was skipped or failed. Do not list skipped or failed sources by name in chat; the page's coverage table has them.
-5. **Flags** — one bullet per `flags[].message`, or "None".
+5. One line "Sources: X of Y checked, Z skipped" from `coverage`, only when any source was skipped or failed. Do not list skipped or failed sources by name in chat; the page's coverage table has them.
+6. **Flags** — one bullet per `flags[].message`, or "None".
 
 The session's standing "Next you could ask:" block draws its questions first from the shown headlines whose `ask` is non-empty.
 
@@ -115,7 +138,9 @@ Do not repeat the sections the page carries. If the user asks for a number the p
 
 ### Markdown fallback (only when the Artifact tool is unavailable)
 
-Render the script's JSON in exactly this order, then stop.
+Open with the whole headline analysis as text: the headline, "What stands out", "What to look into" without its links, and "What this means for you" when written. `render.py` does not run here, so nothing enforces the limits and rules in the headline analysis section. Keep to them.
+
+Then render the script's JSON in exactly this order, then stop.
 
 **Portfolio snapshot** — as of `as_of` (or the current time when `as_of` is missing)
 
@@ -170,7 +195,7 @@ The only text after the Flags section is the session's standing "Next you could 
 - Never run `brief.py` or `snapshot.py` twice in one answer. The one rerun after an E*Trade login is the only exception.
 - Do not run accounts.py, portfolio.py, or quote.py as well. The snapshot already contains that data.
 - Publish the page or write the markdown fallback, never both.
-- No commentary, bull/bear framing, or opinions outside the Flags section.
+- No commentary, bull/bear framing, or opinions outside the Flags section and the headline analysis card.
 - Quotes are delayed, not live. Say so plainly if the user asks for "live" prices.
 - A news story under a mover is dated context for the move, never stated as its cause.
 - If the user asks a follow-up question about the numbers, switch to the portfolio-analysis skill.

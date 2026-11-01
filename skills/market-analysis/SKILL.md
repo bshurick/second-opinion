@@ -62,6 +62,7 @@ One self-contained HTML page for the Artifact tool, light and dark themes, no ex
 - A sectors table joining sector ETF moves, sector futures positioning and sector ETF flows.
 - The ETF flow bars with a short-history note, the money-fund line, and the short-volume table when present.
 - Flags and the notes.
+- With `--summary`, a headline analysis card at the top. The model writes its text and the script holds it to the limits.
 
 **How to read the numbers.** These are context, not timing advice.
 
@@ -93,7 +94,7 @@ Run with the Bash tool. Every script prints JSON.
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/market-analysis/scripts/indicators.py"
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/market-analysis/scripts/earnings.py" SYMBOL [SYMBOL ...]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/market-analysis/scripts/flows.py" [--cot] [--etf] [--cash] [--short SYM ...] [--weeks N] [--days N] [--history]
-"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/market-analysis/scripts/render.py" --in flows.json --indices indices.json --out page.html
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/market-analysis/scripts/render.py" --in flows.json --indices indices.json --out page.html [--summary summary.json]
 ```
 
 | Script | What it does |
@@ -102,7 +103,7 @@ Run with the Bash tool. Every script prints JSON.
 | `indicators.py` | The yield curve, financial conditions and the VIX, each ranked against its whole history. Takes no arguments. |
 | `earnings.py` | Next earnings date and next ex-dividend date per symbol. Takes 1-20 symbols. |
 | `flows.py` | CFTC positioning by trader class, sector ETF flows, retail money-fund cash, and FINRA short volume. |
-| `render.py` | Turns a saved `flows.py` result (`--in`) and/or a saved `indices.py` result (`--indices`) into the page. At least one is required. Prints `{"out", "title", "indices", "contracts", "funds", "flags"}`. |
+| `render.py` | Turns a saved `flows.py` result (`--in`) and/or a saved `indices.py` result (`--indices`) into the page. At least one is required. `--summary` adds the headline analysis card. Prints `{"out", "title", "indices", "contracts", "funds", "flags"}`, plus `for_you_dropped` when `for_you` was dropped because `portfolio-last-check.json` shows no full read today. |
 
 | `flows.py` flag | Effect |
 |---|---|
@@ -114,7 +115,7 @@ Run with the Bash tool. Every script prints JSON.
 
 | Exit code | Meaning | What to show |
 |---|---|---|
-| 2 | Bad arguments. For `earnings.py`: no symbols, an invalid symbol, or more than 20. For `render.py`: an input is missing, malformed, or not the matching script's result. | `error` |
+| 2 | Bad arguments. For `earnings.py`: no symbols, an invalid symbol, or more than 20. For `render.py`: an input is missing, malformed, or not the matching script's result, or the summary file breaks a rule. | `error` |
 | 5 | Upstream data source error | `error`, and answer what the other sources allow |
 | 6 | Python dependencies missing | `error`, and say the setup skill repairs it |
 
@@ -155,11 +156,36 @@ Use this case for "who is buying", "is money leaving equities", "are institution
 
 1. Run `indices.py` and write its output to `DIR/indices.json`. DIR is the session scratchpad.
 2. Run `flows.py --history` once and write its output to `DIR/flows.json`. Add `--short SYM` when the question names a stock.
-3. Run `render.py --in DIR/flows.json --indices DIR/indices.json --out DIR/market.html`.
-4. Publish the HTML with the Artifact tool: icon chart, description "Market flows and positioning as of DATE". On later runs republish the same file path so the link stays stable.
-5. Reply with the flows page format below.
-6. If the Artifact tool is not available in the session, skip steps 3–4 and reply with the markdown fallback. Never both.
-7. If the user asks about a named institution's quarter-over-quarter holdings, hand off to the fundamental-research 13F holdings script.
+3. Read the accounts: run the portfolio-snapshot skill's `brief.py --no-headlines` (`"${CLAUDE_PLUGIN_ROOT}/skills/portfolio-snapshot/scripts/brief.py" --no-headlines > DIR/portfolio.json`, about 10 seconds). If it fails for any reason, including an expired E*Trade login or that skill not being installed, go on without `for_you`, and do not raise the login prompt for this section alone.
+4. If an earlier Market Flows page exists, check it with `get_artifact`. Leave `for_you` out unless its read mode is `owner` or the page is new. An artifact keeps its link across republishes, and the fold only hides text that is still in the HTML. If the check fails, leave `for_you` out.
+5. Write the headline analysis to `DIR/summary.json`, following the section below. Include `for_you` only when steps 3 and 4 both allow it.
+6. Run `render.py --in DIR/flows.json --indices DIR/indices.json --out DIR/market.html --summary DIR/summary.json`. If the output holds `for_you_dropped`, the accounts read did not count as a full read today and the card went out without that section.
+7. Publish the HTML with the Artifact tool: icon chart, description "Market flows and positioning as of DATE". On later runs republish the same file path so the link stays stable.
+8. Reply with the flows page format below.
+9. If the Artifact tool is not available in the session, skip steps 4, 6 and 7 and reply with the markdown fallback. Never both.
+10. If the user asks about a named institution's quarter-over-quarter holdings, hand off to the fundamental-research 13F holdings script.
+
+**The headline analysis**
+
+A small card at the top of the page: a headline, "What stands out", "What to look into", and a folded "What this means for you". The file is `{"headline", "stands_out", "look_into", "for_you"}`.
+
+- Limits, which `render.py` enforces: `headline` 20 words, `stands_out` 90, `look_into` 90, `for_you` 70. `for_you` is optional and the rest are required.
+- Links take the form `[Sectors](sec-card)`, in `look_into` only, to these ids: `idx-card`, `pos-card`, `sec-card`, `etf-card`, `cash-card`, `short-card`, `flags-section`.
+- Every number comes from this run's script output, quoted as the script gives it.
+- Lead with what is unusual today, not a tour of the page. Say plainly when nothing stands out.
+- Separate data from inference, using words like "may" for inference.
+- Carry dates when a reading is older than the page's prices.
+- Name the bull and the bear side when reading a market condition or a security.
+- No buy, sell or hold call, and no forecast. `for_you` says how a reading touches the person's holdings, not what to do. The forbidden verbs are rejected in every field.
+- `for_you` takes portfolio numbers only from a read taken on this run or today, never from memory. Non-numeric context from memory or the profile is allowed, such as a paycheck and RSUs being Amazon exposure.
+- A file that breaks a rule exits 2 with `error` naming the rule and writes no page. Rewrite the file and render again.
+
+What to look for on this page:
+
+- Crowded readings (percentile at or below 10, or at or above 90), read only for contracts with `weeks_behind` of 0. Name stale ones as stale.
+- Sectors where futures positioning and ETF flows agree or disagree, and how few ETF observations exist.
+- A long in one trader class mirrored by a short in another.
+- Whether positioning (Tuesday) predates a large price move.
 
 ## Reply format
 
@@ -174,15 +200,18 @@ Use this case for "who is buying", "is money leaving equities", "are institution
 **Flows page reply:** these, in this order.
 
 1. The artifact link on its own line.
-2. One line: S&P 500 `last` (`day_change_pct`) · VIX `last` (1y percentile) · 10y `last` · positioning as of `positioning.report_date` · ETF flows as of `etf_flows.as_of` · retail money funds `cash.latest`B.
-3. The reading the compliance rules require, in two to four sentences. Name the crowded readings (percentile ≤ 10 or ≥ 90) and the sectors where futures positioning and ETF flows agree or disagree. Give each with what it has historically meant and its date, without forecasting.
+2. The summary's `headline`, on one line. "What stands out" on the page carries the reading the compliance rules require.
+3. One line: S&P 500 `last` (`day_change_pct`) · VIX `last` (1y percentile) · 10y `last` · positioning as of `positioning.report_date` · ETF flows as of `etf_flows.as_of` · retail money funds `cash.latest`B.
 4. One sentence on what the picture cannot show.
+5. One line when `for_you` was left out, saying why: the accounts could not be read today, or the page is shared. Old holdings are never presented as current.
 
 The page carries the tables and charts. Do not repeat them in the reply.
 
 **Markdown fallback (only when the Artifact tool is not available):** prose and tables, in this order.
 
-1. Lead with the newest report dates. CFTC data is Tuesday's positions released Friday. SPDR and FINRA are the prior close. FRED money funds are weekly data published monthly and up to six weeks behind.
+Open with the whole headline analysis as text: the headline, "What stands out", "What to look into" without its links, and "What this means for you" when written. `render.py` does not run here, so nothing enforces the limits and rules in the headline analysis section. Keep to them.
+
+1. Then the newest report dates. CFTC data is Tuesday's positions released Friday. SPDR and FINRA are the prior close. FRED money funds are weekly data published monthly and up to six weeks behind.
 2. Per contract, the net position and week-over-week change for asset managers, leveraged funds and small traders, with the percentile. Name crowded readings (percentile ≤ 10 or ≥ 90) and say what a crowded position has historically meant, without forecasting.
 3. For sectors, pair the sector futures positioning with the sector ETF 5- and 20-observation flows. When the local ETF series is shorter than the window, say how many observations exist instead of quoting a flow.
 4. What the picture cannot show: cash-equity ownership, who is on the other side of a trade, and retail flow at the stock level. Small-trader futures positioning and short-volume ratios are proxies.
