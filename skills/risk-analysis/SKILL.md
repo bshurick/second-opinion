@@ -79,7 +79,7 @@ Changing the portfolio in response belongs to the rebalancing or portfolio-analy
 Run with the Bash tool. All three scripts print JSON.
 
 ```bash
-"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/risk-analysis/scripts/stress.py" [--account ID ...] [--years N] [--benchmark SPY] [--shock SYMBOL=RETURN ...] [--scenario NAME=BENCHMARK_RETURN ...] [--no-builtin] [--risk-free R] [--as-of YYYY-MM-DD] [--partial]
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/risk-analysis/scripts/stress.py" [--account ID ...] [--years N] [--benchmark SPY] [--shock SYMBOL=RETURN ...] [--scenario NAME=BENCHMARK_RETURN ...] [--no-builtin] [--risk-free R] [--as-of YYYY-MM-DD] [--full-correlation] [--partial]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/risk-analysis/scripts/risk.py" < input.json
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/risk-analysis/scripts/render.py" --in risk.json --out page.html
 ```
@@ -100,6 +100,7 @@ Run with the Bash tool. All three scripts print JSON.
 | `--no-builtin` | Leave out the four built-in scenarios. |
 | `--risk-free R` | Risk-free rate for Sharpe. Default 0. |
 | `--as-of YYYY-MM-DD` | Pins the as-of date. Default today. |
+| `--full-correlation` | The whole correlation matrix, however many holdings. Without it, more than 15 holdings report only the 20 strongest pairs. |
 | `--partial` | Run without E*Trade when its login is pending. |
 
 | Exit code | Meaning | What to do |

@@ -11,7 +11,7 @@ Say these in plain language; Claude picks the skill. Grouped as in the README's 
 
 - **connect:** "Connect my Fidelity account." · "Which accounts are connected?" · "Reconnect E*Trade."
 - **portfolio-snapshot:** "How is my portfolio doing today?" · "Give me the daily brief." · "What changed since last week's snapshot?"
-- **portfolio-analysis:** "What's my allocation across all my accounts? How concentrated am I?" · "How did my portfolio do against SPY this year?" · "Buy 10 shares of VTI in my E*Trade account."
+- **portfolio-analysis:** "What's my allocation across all my accounts? How concentrated am I?" · "How did my portfolio do against SPY this year?" · "Run a deep review of my portfolio: what single belief do I depend on most?" · "Re-check my deep review." · "Buy 10 shares of VTI in my E*Trade account."
 - **dividend-income:** "How much dividend income will I earn this year, and in which months?" · "Which of my holdings go ex-dividend soon?" · "Have any of my payers cut their dividend?"
 - **watchlist:** "Watch PLTR and alert me if it drops below 20 or moves 5% in a day." · "What on my watchlist moved?"
 - **risk-analysis:** "How risky is my portfolio?" · "What happens to my portfolio if 2008 repeats? What if NVDA drops 30%?"

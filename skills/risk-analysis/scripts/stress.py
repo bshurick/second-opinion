@@ -95,6 +95,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--no-builtin", action="store_true")
         p.add_argument("--risk-free", type=float, default=0.0)
         p.add_argument("--as-of", dest="as_of", default=None)
+        p.add_argument("--full-correlation", action="store_true")
         ns = p.parse_args(args)
         shocks = _pairs(ns.shock, "--shock")
         custom = _pairs(ns.scenario, "--scenario")
@@ -199,6 +200,8 @@ def main(argv: list[str] | None = None) -> int:
             "benchmark": {"symbol": benchmark, "prices": histories.get(benchmark, [])},
             "scenarios": scenarios, "shocks": shocks, "risk_free": ns.risk_free,
         }
+        if ns.full_correlation:
+            params["full_correlation"] = True
         if references:
             params["tracking_references"] = references
             params["reference_prices"] = reference_prices

@@ -149,7 +149,7 @@ Skills that produce a report publish an interactive page, hosted as a private Ar
 
 ## Deep research
 
-Two modes go beyond the scripted answers. Both send research subagents through filings and the news, so they take longer and use much more of your Claude usage than an ordinary question. Both need SEC EDGAR.
+Three modes go beyond the scripted answers. Each sends research subagents through filings and the news, so they take longer and use much more of your Claude usage than an ordinary question. All three need SEC EDGAR.
 
 **Deep valuation** looks at one company. Ask: *"Do a deep dive on PHM: what has to go right, and what would I earn at today's price?"*
 
@@ -163,6 +163,13 @@ Two modes go beyond the scripted answers. Both send research subagents through f
 - A health check drops weak businesses, quick reads score the rest on quality, direction, tailwind and value, and three to five finalists get a deep valuation.
 - A finalist becomes a pick only if no scenario loses money over five years, dividends included, and the central scenario earns at least 10% a year at today's price. Near misses are shown with the picks.
 - A run with three finalists sends roughly 30 to 40 subagents and about 160 web searches.
+
+**The portfolio deep review** looks at everything you hold. Ask: *"Run a deep review of my portfolio: what single belief do I depend on most?"*
+
+- Research subagents map your companies, what sits inside your funds and, if you mention it, your income to the beliefs they share: a rate path, a customer, a policy, an employer. A Red team then looks for what was missed.
+- Every link needs a source and a date, or the script rejects it. The script does the dollar math: how much rests on each belief and what you would lose if it were wrong, on stated assumptions. It also shows the evidence on both sides, where bets overlap, which holdings no bet covers, and which bets correlations would not show.
+- It describes what you depend on. It makes no buy or sell calls and sets no target weights. Your holding values, income and account names stay out of every search.
+- A typical run sends about 8 subagents and 40 web searches. Ask *"Re-check my deep review"* later: it re-measures each bet against what you hold then, lists the checks that have come due and says when a new review is due, with no new research.
 
 **Re-checks** keep a saved pick honest after the research is done. Ask: *"How are my picks doing?"*
 
@@ -196,7 +203,7 @@ The scripts do the math here, but the scenarios and their assumptions are the mo
 | | setup | Install, reconfigure, or repair the plugin; extras on or off | |
 | Accounts and holdings | connect | Link, relink, or inspect brokerage connections | key |
 | | portfolio-snapshot | Daily brief of every account, with headlines from the other skills | key |
-| | portfolio-analysis | Allocation, concentration, performance against a benchmark, order preview and placement | key |
+| | portfolio-analysis | Allocation, concentration, performance against a benchmark, a deep review of the beliefs your holdings share, order preview and placement | key |
 | | dividend-income | Projected income, yields, trailing 12 months, ex-dates, payer safety | key |
 | | watchlist | Alert rules checked when you ask or by a cron job, not pushed | |
 | | risk-analysis | Volatility, beta, correlation, drawdown, VaR, crash replays, what-if shocks | key |

@@ -34,6 +34,8 @@ Input JSON contract (stdin)::
       "reference_prices": {"BND": [...]}    # optional, same shape as prices; a
                                             # reference may also be a held symbol
                                             # or the benchmark
+      "full_correlation": true              # optional: the whole matrix, however
+                                            # many symbols
     }
 
 Output JSON contract (stdout)::
@@ -52,7 +54,7 @@ Output JSON contract (stdout)::
                                             # tracking_benchmark (the position's
                                             # reference, else the benchmark)
       "risk_contributions": [{symbol, weight, contribution, share}],
-      "correlation": {symbols, matrix} | {pairs: [...]}   # matrix up to 15 symbols
+      "correlation": {symbols, matrix} | {pairs: [...]}   # matrix up to 15 symbols, or always with "full_correlation": true
       "concentration": {hhi, hhi_interpretation, top_5_concentration, largest_position,
                         position_count},
       "scenarios": [{name, mode: "replay"|"mixed"|"beta_scaled"|"skipped", start, end,
@@ -445,7 +447,7 @@ def run_risk(params: dict) -> dict:
                     corrs.append(c)
             matrix.append(row)
         avg_corr = mean(corrs) if corrs else None
-        if len(syms) <= 15:
+        if len(syms) <= 15 or params.get("full_correlation"):
             corr_out = {"symbols": syms, "matrix": matrix}
         else:
             pairs = sorted(

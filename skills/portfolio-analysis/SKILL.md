@@ -1,8 +1,8 @@
 ---
 name: portfolio-analysis
-description: Examines the user's own holdings, allocation, concentration, cash and returns on connected accounts, and places orders. Use when the user asks "how diversified am I", "what's my allocation" or wants to buy or sell. Plain holdings list is portfolio-snapshot.
+description: Examines the user's own holdings, allocation, concentration, cash and returns, runs a deep review of shared bets, and places orders. Use when the user asks "how diversified am I", for a deep review or to buy or sell. Holdings list is portfolio-snapshot.
 ---
-Examines the user's brokerage holdings for diversification, concentration, cash and return, and places or cancels orders through the trading skill's order scripts. It does not cover general market conditions, fair value, or a plain summary of everything held.
+Examines the user's brokerage holdings for diversification, concentration, cash and return, and places or cancels orders through the trading skill's order scripts. A deep review sends research subagents to find the beliefs the holdings share. It does not cover general market conditions, fair value, or a plain summary of everything held.
 
 ## Background
 
@@ -13,6 +13,12 @@ Examines the user's brokerage holdings for diversification, concentration, cash 
 - **Quotes.** `quote.py` rows carry `source` and `realtime`: real-time from E*Trade when a direct session is live, otherwise delayed Yahoo. Say "real-time" only when `realtime` is true.
 - **Stored targets.** The rebalancing skill's `plan.py --target KEY=WEIGHT ... --save` writes `targets.json` in the plugin data directory. When that file exists, drift versus the saved targets is the default allocation view. `plan.py` picks up `targets.json` automatically.
 - **Research corpus.** `references/portfolio-research.md` holds the evidence behind portfolio-construction answers: quick-reference decision rules, key numbers, weighting schemes, covariance estimators, rebalancing, momentum versus contrarian, benchmarking, performance pitfalls, factor exposure, drawdown control, a glossary, and the fallback formulas for `allocation.py`.
+- **Deep review.** It asks what single belief the person's financial life depends on most. `references/deep-review-roles.md` holds the brief for each research subagent.
+  - For each link, `exposure.py` works out `exposed_value` (market value × `share`) and `loss_if_wrong` (`exposed_value` × `shock`). Each bet's `at_stake` adds one year of income at risk, and a net gain counts as nothing at stake.
+  - Bets overlap, so their losses are never added together.
+  - `history` shows whether a bet's holdings have moved together more than the portfolio has. `NOT_IN_PRICES` marks a bet that correlations would miss.
+  - A share and a shock are stated assumptions with a source behind them, not forecasts.
+  - It gives no buy, sell or hold call, no target weights and no fair value. Rebalancing, core-satellite and valuation own those.
 - **Other skills.** General market conditions belong to market-analysis. Fair value belongs to valuation. A plain summary of everything held belongs to portfolio-snapshot. Linking a brokerage belongs to connect. Chart and timing questions belong to trading.
 
 ### Account fields to trust
@@ -82,6 +88,11 @@ Run with the Bash tool.
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-analysis/scripts/performance_report.py" <account_id> [--benchmark SPY] [--since YYYY-MM-DD] [--as-of YYYY-MM-DD] [--partial]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-analysis/scripts/aggregate_report.py" <account_id>... [--partial]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-analysis/scripts/allocation.py" <<< '<input json>'
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-analysis/scripts/exposure.py" < DIR/deep-review/bets.json
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-analysis/scripts/render_review.py" --in DIR/deep-review/page.json --out DIR/deep-review/page.html
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-analysis/scripts/review_store.py" save --in DIR/deep-review/page.json [--source URL]
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-analysis/scripts/review_store.py" check --book DIR/snapshot.json [--as-of YYYY-MM-DD]
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-analysis/scripts/review_store.py" list
 ```
 
 | Script | What it does |
@@ -93,6 +104,9 @@ Run with the Bash tool.
 | `performance_report.py` | Money-weighted return (`mwrr`) with `window` and `net_flows`, and the benchmark over the same window. |
 | `aggregate_report.py` | Positions aggregated by symbol across the given accounts, ready for `allocation.py`. |
 | `allocation.py` | Allocation, concentration and drift from a JSON object on stdin (`positions`, optional `cash`, optional `targets`). |
+| `exposure.py` | Deep review math: dollars per bet, ranking, overlaps, uncovered holdings and flags. Its input and output contract is in its docstring. It rejects a link with no source or date. |
+| `render_review.py` | Deep review page from `exposure.py` output, a headline of 25 words at most and a summary. |
+| `review_store.py` | Keeps deep reviews between sessions. `check` re-measures the latest one against a later snapshot, with no new research. |
 
 Orders and history use the trading skill's scripts: `gate.py`, `preview-order.py`, `place-order.py`, `cancel-order.py`, `orders.py`, `transactions.py`. Their commands are in the trading skill.
 
@@ -153,6 +167,37 @@ Topics: the evidence behind a rule, weighting schemes, covariance or shrinkage c
 3. Ground the answer in what the file says. Do not answer these from memory.
 4. Present it in plain language ("research shows…"). Never cite internal reference codes, tags or source identifiers to the user.
 
+**The user asks for a deep review, or what they really depend on**
+
+Run this only when the person asks for a deep review or for depth. Otherwise answer from the holdings case, ending with one line: a deep review is available and sends about eight research subagents.
+
+1. If the portfolio-snapshot or risk-analysis skill is not installed, say the deep review needs both, and stop.
+2. Tell the person it has started: about 8 subagents and 40 web searches. If they have not mentioned income, ask once whether to include a paycheck or other income. Without an answer, cover holdings alone and say so. Income comes only from what they say in this session.
+3. Make `DIR/deep-review/` and its `baseline/`, `research/` and `threads/` folders, where DIR is the session scratchpad.
+   - Write `snapshot.py --no-news` to `baseline/snapshot.json` and `stress.py --full-correlation` to `baseline/stress.json`. If either exits non-zero, follow its skill's exit codes and stop.
+   - Write `income.json` when income was given: `[{"id", "name", "annual"}]`.
+   - Write `budget.json`: the searches this run may spend, each role's cap and the searches used so far. The session has one shared pool of about 200.
+   - Run the stock-screener skill's `picks.py list` when it is installed. Note any held symbol with a saved deep valuation for Company links.
+4. Dispatch Company links, Fund look-through and Macro sensitivity in parallel, with Income and employer when income was given. Use the Agent tool, general-purpose type.
+   - Each prompt names the Shared rules section and the role's section of `references/deep-review-roles.md` by absolute path, plus the case folder, today's date and the role's search cap.
+   - Subagents do not inherit `SNAPTRADE_PY` or `CLAUDE_PLUGIN_ROOT`. Resolve both to absolute paths in the prompt.
+   - No figure about the person goes in a prompt beyond the file paths. They read the baseline themselves.
+   - If a role fails or returns nothing, retry it once, then add it to `missing_roles` and go on.
+5. Merge the candidate bets into `bets.json`, the `exposure.py` input. Combine bets that are one belief, keep at most eight, and leave out any claim with no source and date. Add `as_of`, `book`, `risk` and `income` from the baseline. Run `exposure.py`, and fix what it rejects by going back to the source, not by inventing a date.
+6. Pick up to three bets, the largest `at_stake` and the most contested. Dispatch one Thread deep-dive per bet, in parallel, then apply each verdict and correction to `bets.json`.
+7. Dispatch the Red team with `bets.json`. Apply its changes where its sources hold up, and keep each rejected change in `notes` with the reason.
+8. Run `exposure.py` again and write its output to `exposure.json`. Write `page.json`: `as_of`, `headline`, `summary`, `exposure`, `missing_roles`, `notes`.
+   - The headline names the largest belief and the share of the portfolio resting on it, in 25 words or fewer. The summary says in two or three sentences what would make it wrong and what the holdings have in common.
+9. Run `render_review.py`. Publish the page with the Artifact tool: icon chart, description "Portfolio deep review as of DATE". If the Artifact tool is unavailable, use the markdown fallback.
+10. Run `review_store.py save --in DIR/deep-review/page.json --source <page link>`.
+
+**The user asks to re-check a deep review**
+
+1. Write `snapshot.py --no-news` to `DIR/snapshot.json`, then run `review_store.py check --book DIR/snapshot.json`. Exit 2 with "no saved review" means none has been run: offer one.
+2. Present each bet's then and now figures, `gone`, `watch_due` and `new_uncovered`.
+3. Say that this re-measures dollars only. The shares, shocks and verdicts are the review's own, and no new research ran.
+4. If `rerun_due` is true, give `rerun_reasons` and say a new deep review would refresh the evidence.
+
 **The user wants to place an order**
 
 Before the protocol:
@@ -212,6 +257,17 @@ No fixed template. For every analysis reply:
 - Keep it concise.
 - Answer the question fully yourself.
 
+**Deep review, page published:** these parts, then stop.
+
+1. The artifact link on its own line.
+2. The headline.
+3. The largest bet: its belief, `exposed_value`, `loss_if_wrong`, any `income_at_risk`, its verdict, and the strongest evidence on each side with source and date.
+4. **Flags**: one bullet per `exposure.flags[].message` and per missing role, or "None".
+5. One line: subagents dispatched and searches used.
+6. One line: shares and shocks are stated assumptions, general information, not financial, tax, or legal advice.
+
+**Deep review, markdown fallback:** the same parts without the link, plus each bet with its holdings and evidence on both sides, the overlaps and the unmapped holdings.
+
 For an order preview, show: trade id, price, units, estimated cost, estimated commission, remaining cash, and any warnings. Then the confirmation block.
 
 **Confirmation block.** A reply that waits on the user's yes ends with this block. It is the last thing in the reply: no follow-up questions, notes or disclaimers after it, so the question is never buried.
@@ -234,6 +290,8 @@ Reply `no` to place nothing.
 - Present the scripts' numbers. Do not recompute by hand what a script already computed.
 - Do not ask the user for their account id. Look it up with `accounts.py`.
 - Never re-poll an account's holdings or balances inside one answer.
+- In a deep review, every dollar figure comes from `exposure.py`. A holding's value, income, an account name or a person's identifier never goes in a search, URL or fetch.
+- A deep review describes what the holdings depend on. It never says what to do about it.
 - Reconcile cash against `balance_total` before reporting it, and never add a core fund to itself.
 
 Safety rules:
