@@ -82,7 +82,7 @@ Each page passes the shared helper the list of ids a link may point to.
 ### "What this means for you"
 
 - Folded by default with `<details>`, so it stays one click away.
-- **Portfolio numbers come only from a read taken on this run or today**, never from memory. Non-numeric context from memory or the profile is allowed, such as a paycheck and RSUs being Amazon exposure.
+- **Portfolio numbers come only from a read taken on this run or today**, never from memory. Non-numeric context from memory or the profile is allowed, such as a paycheck and stock awards both depending on one employer.
 - **Market Flows reads the accounts first.** Its steps add `brief.py --no-headlines` (about 10 seconds), which also satisfies the session's portfolio-check rule. If that read fails, for example an expired E*Trade login, the page still publishes without `for_you`, and the login prompt is not raised for this section alone.
 - **Market Flows never adds holdings to a page others can see.** An artifact keeps its link across republishes, and `<details>` only folds text that is still in the HTML. Before rendering, the skill checks the artifact's read mode with `get_artifact`. Unless it is `owner`, or the artifact is new, the skill renders without `for_you`.
 - `render.py` cannot see either condition, so the skill decides and simply omits `for_you`. As a backstop, Market Flows' `render.py` also drops `for_you` when `portfolio-last-check.json` in the plugin data directory does not show a full read (`partial` false) on today's local date, still succeeds, and reports `"for_you_dropped": "no full portfolio read today"` in its printed JSON.

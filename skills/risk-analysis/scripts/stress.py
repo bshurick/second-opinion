@@ -164,7 +164,7 @@ def main(argv: list[str] | None = None) -> int:
             references = {}
             proxy_flags.append({"code": "TRACKING_REFERENCES_UNAVAILABLE", "message": f"asset buckets unavailable ({e}); tracking error is against {benchmark} for every position"})
         # An institutional share class Yahoo has no history for borrows its public twin's
-        # (VANG INST 500 IDX TR -> VOO). One extra batched call fetches the proxies and the
+        # (ACME INST 500 IDX TR -> VOO). One extra batched call fetches the proxies and the
         # tracking references not already downloaded.
         proxied: dict[str, str] = {}
         wanted = {

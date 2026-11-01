@@ -147,6 +147,15 @@ def _replay_lots(transactions: list, today: date) -> dict[str, list[dict]]:
     return out
 
 
+def _description(pos: dict) -> str | None:
+    """The broker's description of a position; SnapTrade nests it under the symbol."""
+    node, found = pos.get("symbol"), pos.get("description")
+    while isinstance(node, dict):
+        found = node.get("description") or found
+        node = node.get("symbol")
+    return str(found) if found else None
+
+
 def read_book(hub, accounts: list[dict], today: date) -> dict:
     """Read positions, per-account cash, quotes and tax lots for the given accounts.
     Lots come from the FIFO ledger replay when its open units match the broker,
@@ -169,7 +178,7 @@ def read_book(hub, accounts: list[dict], today: date) -> dict:
             units = float(pos.get("units") or 0)
             if units <= 0:
                 continue
-            row = book.setdefault(sym, {"units": 0.0, "price": None, "by_account": {}})
+            row = book.setdefault(sym, {"units": 0.0, "price": None, "by_account": {}, "name": _description(pos)})
             row["units"] += units
             row["price"] = row["price"] if row["price"] is not None else pos.get("price")
             seg = row["by_account"].setdefault(aid, {"units": 0.0, "avg": None})
@@ -226,7 +235,7 @@ def read_book(hub, accounts: list[dict], today: date) -> dict:
         for aid in sorted(row["by_account"]):
             seg = row["by_account"][aid]
             if seg["units"] > 0:
-                positions.append({"symbol": sym, "units": seg["units"], "price": float(row["price"]), "account": aid})
+                positions.append({"symbol": sym, "units": seg["units"], "price": float(row["price"]), "account": aid, "name": row["name"]})
     return {
         "positions": positions, "cash_by_account": cash_by_account, "lots": lots, "lot_sources": lot_sources,
         "sources": sources, "holdings_by_account": {k: sorted(set(v)) for k, v in sorted(held.items())},

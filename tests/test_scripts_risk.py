@@ -273,8 +273,8 @@ def _sdk_with(monkeypatch, positions: dict[str, list[dict]]) -> FakeSdk:
 def test_stress_script_borrows_proxy_history_for_institutional_classes_and_treats_money_market_as_cash(monkeypatch, capsys) -> None:
     positions = {
         "acc-1": [
-            {"symbol": {"symbol": {"symbol": "QBN5"}, "description": "VANG INST 500 IDX TR"}, "units": 10, "price": 300.0},
-            {"symbol": {"symbol": {"symbol": "QBMZ"}, "description": "VG IS TOT BD MKT IDX"}, "units": 10, "price": 100.0},
+            {"symbol": {"symbol": {"symbol": "QBN5"}, "description": "ACME INST 500 IDX TR"}, "units": 10, "price": 300.0},
+            {"symbol": {"symbol": {"symbol": "QBMZ"}, "description": "ACME TOT BD MKT IDX"}, "units": 10, "price": 100.0},
             {"symbol": {"symbol": {"symbol": "BND"}, "description": "Vanguard Total Bond Market ETF"}, "units": 10, "price": 70.0},
             {"symbol": {"symbol": {"symbol": "MVRXX"}, "description": "Morgan Stanley Government Portfolio"}, "units": 500, "price": 1.0},
         ],
@@ -311,7 +311,7 @@ def test_stress_script_borrows_proxy_history_for_institutional_classes_and_treat
 
 
 def test_stress_script_proxy_fetch_failure_degrades_not_fails(monkeypatch, capsys) -> None:
-    positions = {"acc-1": [{"symbol": {"symbol": {"symbol": "QBN5"}, "description": "VANG INST 500 IDX TR"}, "units": 10, "price": 300.0},
+    positions = {"acc-1": [{"symbol": {"symbol": {"symbol": "QBN5"}, "description": "ACME INST 500 IDX TR"}, "units": 10, "price": 300.0},
                            {"symbol": {"symbol": {"symbol": "AAPL"}}, "units": 10, "price": 100.0}], "acc-2": []}
     _sdk_with(monkeypatch, positions)
     n = {"calls": 0}

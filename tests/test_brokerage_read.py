@@ -104,7 +104,7 @@ V13_CASH = {
     "units": "0.10", "price": "1", "cost_basis": "1", "currency": "USD", "cash_equivalent": True,
 }
 V13_NO_COST = {  # 401(k) plan funds come back without cost_basis
-    "instrument": {"kind": "other", "id": "inst-qbmz", "symbol": "QBMZ", "raw_symbol": "QBMZ", "description": "VG IS TOT BD MKT IDX", "currency": "USD"},
+    "instrument": {"kind": "other", "id": "inst-qbmz", "symbol": "QBMZ", "raw_symbol": "QBMZ", "description": "ACME TOT BD MKT IDX", "currency": "USD"},
     "units": "250.0", "price": "100.25", "currency": "USD",
 }
 V13_BODY = {"results": [V13_ETF, V13_CASH, V13_NO_COST], "data_freshness": {"as_of": "2026-09-05T17:15:40Z"}}

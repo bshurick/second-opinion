@@ -71,15 +71,17 @@ SCRIPT = r"""
   const src = D.sources;
   g('asof').textContent = `As of ${D.as_of || '—'}` + (src ? ` · holdings ${src.holdings || '—'} · dividends ${src.dividends || '—'} · fundamentals ${src.fundamentals || 'not fetched'}` : '');
   FA.explain(g('explain'), `<p>This page adds up the ${FA.term('dividend', 'dividends')} your holdings pay. <b>Projected annual income</b> is each holding's ${FA.term('forward dividend rate')} times the units you own, so it assumes every payer keeps paying; <b>${FA.term('trailing 12 months')}</b> is what was actually declared over the past year.</p>` +
-    `<p>The bars show the months the money is expected to arrive; the table lists each holding's ${FA.term('dividend yield', 'yield')}, ${FA.term('yield on cost')}, ${FA.term('dividend growth', 'growth')} and ${FA.term('payout ratio')}. The figures come from your connected holdings and each payer's dividend history, not from forecasts.</p>` +
+    `<p>The bars show the months the money is expected to arrive; the table lists each holding's ${FA.term('dividend yield', 'yield')}, ${FA.term('yield on cost')}, ${FA.term('dividend growth', 'growth')} and ${FA.term('payout ratio')}. The figures come from your connected holdings and each payer's dividend history, not from forecasts. A money market fund has no such history, so its income is its balance times its seven-day yield, which changes often.</p>` +
+    (T.lookthrough_income > 0 ? `<p>${F.money(T.lookthrough_income)} of the projected income is an estimate for funds with no public quote, such as 401(k) trusts, taken from the ETF tracking the same index. Those funds usually keep this income inside their price, so it is usually not paid out as cash.</p>` : '') +
+    (T.unknown_income_value > 0 ? `<p>${F.money(T.unknown_income_value)} of your holdings have unknown income, so they are in none of these figures.</p>` : '') +
     `<p>The caveat that matters most: dividends are never guaranteed. A <span class="neg">cut</span> mark or a high payout ratio means that income is less secure than the headline suggests.</p>`);
   const monthName = m => { const [y, mo] = String(m).split('-'); return new Date(+y, +mo - 1, 1).toLocaleDateString('en-US', {month: 'short', year: 'numeric'}); };
   // tiles
   const tiles = [
-    [FA.term('forward dividend rate', 'Projected annual income'), F.money(T.annual_income), `${T.payer_count ?? '—'} of ${T.position_count ?? '—'} positions pay`],
-    [FA.term('dividend yield', 'Portfolio yield'), F.pct(T.portfolio_yield, 2), F.isNum(T.market_value) ? `on ${F.money(T.market_value, 0)} market value` : ''],
+    [FA.term('forward dividend rate', 'Projected annual income'), F.money(T.annual_income), `${T.payer_count ?? '—'} of ${T.position_count ?? '—'} positions pay` + (T.unknown_income_value > 0 ? ` · leaves out ${F.money(T.unknown_income_value, 0)} with unknown income` : '') + (T.lookthrough_income > 0 ? ` · ${F.money(T.lookthrough_income)} usually not paid as cash` : '')],
+    [FA.term('dividend yield', 'Portfolio yield'), F.pct(T.portfolio_yield, 2), F.isNum(T.market_value) ? `on ${F.money(T.market_value - (T.unknown_income_value || 0), 0)} market value with known income` : ''],
     [FA.term('yield on cost', 'Yield on cost'), F.pct(T.yield_on_cost, 2), F.isNum(T.cost_basis) ? `on ${F.money(T.cost_basis, 0)} ${FA.term('cost basis')}` : 'cost basis unknown for a payer'],
-    [FA.term('trailing 12 months', 'Trailing 12 months'), F.money(T.ttm_income), T.top_payer ? `top payer ${F.esc(T.top_payer)} · ${F.pct(T.top_payer_share)} of income` : ''],
+    [FA.term('trailing 12 months', 'Trailing 12 months'), F.money(T.ttm_income), (T.top_payer ? `top payer ${F.esc(T.top_payer)} · ${F.pct(T.top_payer_share)} of income` : '') + (T.money_market_income > 0 || T.lookthrough_income > 0 ? ' · leaves out estimated income' : '')],
   ];
   g('tiles').innerHTML = tiles.map(([k, v, d]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d}</div></div>`).join('');
   FA.armTerms(g('tiles'));
@@ -93,7 +95,7 @@ SCRIPT = r"""
   const total12 = months.reduce((a, m) => a + (m.income || 0), 0);
   g('monthly-sub').textContent = months.length ? `Next ${months.length} months · ${F.money(total12)} scheduled` : 'No schedule.';
   if (months.some(m => (m.income || 0) > 0)) F.bars(g('monthly'), months.map(m => ({label: monthName(m.month), share: m.income, color: 'var(--s1)', text: F.money(m.income),
-    tip: `<b>${F.esc(monthName(m.month))}</b> ${F.money(m.income)}<br>${(m.payers || []).length ? F.esc(m.payers.join(', ')) : 'no payers'}`})));
+    tip: `<b>${F.esc(monthName(m.month))}</b> ${F.money(m.income)}${m.lookthrough_income > 0 ? ` (${F.money(m.lookthrough_income)} usually not paid as cash)` : ''}<br>${(m.payers || []).length ? F.esc(m.payers.join(', ')) : 'no payers'}`})));
   else g('monthly').innerHTML = '<span class="muted">no scheduled income</span>';
   // upcoming ex-dates
   const P = D.positions || [];
@@ -115,7 +117,7 @@ SCRIPT = r"""
     {key: 'forward_rate', label: 'Forward rate', term: 'forward dividend rate', fmt: v => F.isNum(v) ? '$' + F.num(v, 4) : '—'},
     {key: 'forward_yield', label: 'Yield', term: 'dividend yield', fmt: v => F.pct(v, 2)},
     {key: 'yield_on_cost', label: 'Yield on cost', term: 'yield on cost', fmt: v => F.pct(v, 2)},
-    {key: 'annual_income', label: 'Annual income', term: 'forward dividend rate', fmt: v => F.money(v)},
+    {key: 'annual_income', label: 'Annual income', term: 'forward dividend rate', fmt: (v, r) => r.income_status === 'unknown' ? '<span class="muted">unknown</span>' : F.money(v) + (r.income_status === 'money_market' ? '<span class="muted"> seven-day yield</span>' : r.income_status === 'lookthrough' ? `<span class="muted"> est. via ${F.esc(r.lookthrough_proxy)}</span>` : '')},
     {key: 'income_share', label: 'Share of income', fmt: v => F.pct(v, 2)},
     {key: 'ttm_income', label: 'TTM income', term: 'trailing 12 months', fmt: v => F.money(v)},
     {key: 'ttm_change', label: 'TTM change', term: 'trailing 12 months', fmt: v => F.pct(v, 2, true), cls: F.cls},
@@ -132,8 +134,12 @@ SCRIPT = r"""
   const chip = g('payers-only');
   chip.addEventListener('click', () => { const on = chip.getAttribute('aria-pressed') !== 'true'; chip.setAttribute('aria-pressed', String(on)); tbl.setFilter(r => !on || r.payer); });
   g('q').addEventListener('input', e => tbl.setQuery(e.target.value));
-  const non = P.filter(p => !((p.annual_income || 0) > 0)).map(p => p.symbol);
-  g('nonpayers').textContent = non.length ? `Non-payers: ${non.join(', ')}` : 'Every position pays a dividend.';
+  const unknownIncome = P.filter(p => p.income_status === 'unknown').map(p => p.symbol);
+  const non = P.filter(p => !((p.annual_income || 0) > 0) && p.income_status !== 'unknown').map(p => p.symbol);
+  const lines = [];
+  if (non.length) lines.push(`Non-payers: ${non.join(', ')}`);
+  if (unknownIncome.length) lines.push(`Income unknown: ${unknownIncome.join(', ')}`);
+  g('nonpayers').textContent = lines.length ? lines.join(' · ') : 'Every position pays a dividend.';
   // card help
   const card = id => g(id).parentElement;
   F.help(card('h-monthly'), {lead: 'When dividends are projected to arrive over the next year, month by month.',

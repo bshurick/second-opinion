@@ -47,8 +47,12 @@ def yahoo(monkeypatch):
         calls["payout_info"].append(list(symbols))
         return {s: {"payout_ratio": 0.15, "eps_ttm": 7.0, "dividend_rate": 1.04} for s in symbols}
 
+    def quote(symbols, hub=None):
+        return [{"symbol": s, "price": 50.0, "quote_type": "EQUITY", "source": "yahoo"} for s in symbols]
+
     monkeypatch.setattr(market, "dividend_histories", dividend_histories)
     monkeypatch.setattr(market, "payout_info", payout_info)
+    monkeypatch.setattr(market, "quote", quote)
     return calls
 
 
@@ -167,6 +171,186 @@ def test_dividends_next_ex_amount_est_is_last_regular_dividend_times_units(sdk, 
     aapl = next(p for p in out["positions"] if p["symbol"] == "AAPL")
     assert aapl["next_ex_date_est"] == "2026-11-09" and aapl["next_ex_amount_est"] == 5.2  # 0.26 x 20 units
     assert next(p for p in out["positions"] if p["symbol"] == "GROW")["next_ex_amount_est"] is None
+
+
+# ---------------------------------------------------------------------------
+# money market funds and holdings with no public data
+# ---------------------------------------------------------------------------
+
+def _pos(symbol, units, price, name=None, avg=None):
+    row = {"symbol": {"symbol": {"symbol": symbol, "description": name}}, "units": units, "price": price}
+    if avg is not None:
+        row["average_purchase_price"] = avg
+    return row
+
+
+MIXED = {
+    "acc-1": [_pos("AAPL", 10, 100.0, avg=80.0), _pos("SPAXX", 100000, 1.0, "Fidelity Government Money Market Fund", 1.0), _pos("GROW", 5, 50.0)],
+    "acc-2": [_pos("QBN5", 100, 300.0, "ACME INST 500 IDX TR"), _pos("MYSTRY", 10, 100.0, "PLAN STABLE VALUE"), _pos("FDRXX", 1000, 1.0, "Fidelity Government Cash Reserves", 1.0)],
+}
+
+
+@pytest.fixture
+def mixed(monkeypatch):
+    fake = FakeSdk(list_user_accounts=ACCOUNTS, list_brokerage_authorizations=[TRADE_AUTH, READ_AUTH], get_user_account_positions=lambda account_id: MIXED[account_id])
+    monkeypatch.setattr(client, "get_client", lambda settings=None: fake)
+    monkeypatch.setattr(router, "load", lambda settings=None: fake_hub(fake))
+    calls = {"histories": []}
+
+    def dividend_histories(symbols, years=5):
+        calls["histories"].append(list(symbols))
+        history = {"AAPL": AAPL, "VOO": [{"date": "2026-06-20", "dividend": 2.0}, {"date": "2026-03-20", "dividend": 2.0}]}
+        return {s: history.get(s, []) for s in symbols}
+
+    def quote(symbols, hub=None):
+        known = {
+            "SPAXX": {"price": 1.0, "seven_day_yield": 3.6, "source": "etrade"},
+            "FDRXX": {"price": 1.0, "quote_type": "MONEYMARKET", "source": "yahoo"},  # no E*Trade yield
+            "GROW": {"price": 50.0, "quote_type": "EQUITY", "source": "yahoo"},
+            "VOO": {"price": 400.0, "quote_type": "ETF", "source": "yahoo"},
+        }
+        return [{"symbol": s, "source": "yahoo", "price": None, **known.get(s, {})} for s in symbols]
+
+    monkeypatch.setattr(market, "dividend_histories", dividend_histories)
+    monkeypatch.setattr(market, "quote", quote)
+    return calls
+
+
+def _row(out, symbol):
+    return next(p for p in out["positions"] if p["symbol"] == symbol)
+
+
+def _flag(out, code):
+    return next((f["message"] for f in out["flags"] if f["code"] == code), None)
+
+
+def test_money_market_income_comes_from_the_seven_day_yield(mixed, capsys) -> None:
+    rc, out = run_json(load_script("dividend-income/scripts/dividends.py"), ["--as-of", "2026-11-01"], capsys)
+    assert rc == 0, out
+    fund = _row(out, "SPAXX")
+    assert fund["income_status"] == "money_market" and fund["seven_day_yield"] == 0.036
+    assert fund["annual_income"] == 3600.0 and fund["forward_yield"] == 0.036 and fund["frequency"] == "monthly"
+    assert fund["next_ex_amount_est"] == 300.0 and fund["next_ex_date_est"] == "2026-11-30"  # last weekday of the month
+    assert fund["ttm_income"] is None and fund["safety"] is None
+    # it pays in every month of the schedule, on top of AAPL's quarterly payments
+    assert all("SPAXX" in m["payers"] for m in out["monthly"]) and len(out["monthly"]) == 12
+    assert next(m for m in out["monthly"] if m["month"] == "2026-12")["income"] == 300.0  # QBN5 pays in Mar and Jun in the fake
+    assert next(m for m in out["monthly"] if m["month"] == "2026-11")["income"] == 302.6  # + AAPL 0.26 x 10
+    assert out["totals"]["money_market_income"] == 3600.0
+    assert out["totals"]["annual_income"] == 4210.4
+    assert _flag(out, "MONEY_MARKET_ESTIMATED") == "money market income of $3,600.00 a year is estimated from seven-day yields (SPAXX 3.60%), which change often; trailing 12 months excludes it"
+    assert "SPAXX" not in (_flag(out, "NO_DIVIDENDS") or "")
+
+
+def test_month_end_rolls_to_the_next_month_and_skips_weekends(mixed, capsys) -> None:
+    rc, out = run_json(load_script("dividend-income/scripts/dividends.py"), ["--as-of", "2027-01-29"], capsys)
+    assert rc == 0, out
+    assert _row(out, "SPAXX")["next_ex_date_est"] == "2027-02-26"  # Jan 29 is January's last weekday and has arrived
+
+
+def test_holdings_with_no_public_data_are_unknown_not_zero(mixed, capsys) -> None:
+    rc, out = run_json(load_script("dividend-income/scripts/dividends.py"), ["--as-of", "2026-11-01"], capsys)
+    assert rc == 0, out
+    row = _row(out, "MYSTRY")
+    assert row["income_status"] == "unknown" and row["annual_income"] is None and row["forward_yield"] is None and row["safety"] is None
+    # a money market fund with no yield from this source is unknown too, never a non-payer
+    assert _row(out, "FDRXX")["income_status"] == "unknown"
+    assert _row(out, "GROW")["income_status"] == "no_dividends" and _row(out, "AAPL")["income_status"] == "dividends"
+    assert _flag(out, "NO_DIVIDENDS") == "no dividends in history for: GROW"
+    t = out["totals"]
+    assert t["unknown_income_value"] == 2000.0 and t["market_value"] == 133250.0
+    assert t["income_coverage"] == 0.985 and t["payer_count"] == 3 and t["position_count"] == 6
+    # the yield is measured on what is known, so unknown holdings do not dilute it
+    assert t["portfolio_yield"] == round(4210.4 / 131250.0, 4)
+    message = _flag(out, "INCOME_UNKNOWN")
+    assert message == "income unknown for $2,000.00 of holdings, counted in no income figure: FDRXX ($1,000.00), MYSTRY ($1,000.00)."
+
+
+def test_unquoted_fund_counts_through_its_tracking_etf(mixed, capsys) -> None:
+    rc, out = run_json(load_script("dividend-income/scripts/dividends.py"), ["--as-of", "2026-11-01"], capsys)
+    assert rc == 0, out
+    row = _row(out, "QBN5")
+    assert row["income_status"] == "lookthrough" and row["lookthrough_proxy"] == "VOO"
+    # VOO pays 2.00 a quarter on a 400 price; a 300 unit earns the same yield: 1.50 a quarter
+    assert row["forward_yield"] == round(row["annual_income"] / 30000.0, 4) and row["annual_income"] > 0
+    assert row["frequency"] == "quarterly" and row["annual_income"] == 600.0 and row["last_dividend"] == 1.5
+    assert row["next_ex_amount_est"] == 150.0
+    # an estimate of what the index earns: no trailing figures, no safety score of its own
+    assert row["ttm_income"] is None and row["ttm_change"] is None and row["safety"] is None
+    assert out["totals"]["lookthrough_income"] == 600.0
+    assert out["totals"]["annual_income"] == 4210.4 and out["totals"]["ttm_income"] == _row(out, "AAPL")["ttm_income"]
+    # its months say how much of that month is this estimate, because it is not paid out as cash
+    june = next(m for m in out["monthly"] if m["month"] == "2027-06")
+    assert "QBN5" in june["payers"] and june["lookthrough_income"] == 150.0
+    assert next(m for m in out["monthly"] if m["month"] == "2027-01")["lookthrough_income"] == 0.0
+    message = _flag(out, "LOOKTHROUGH_ESTIMATED")
+    assert message.startswith("income of $600.00 a year is estimated from tracking ETFs (QBN5 via VOO)")
+    assert "not paid out as cash" in message
+    # MYSTRY matches no ETF and stays unknown; the proxy's history is one extra download
+    assert _row(out, "MYSTRY")["income_status"] == "unknown" and "QBN5" not in _flag(out, "INCOME_UNKNOWN")
+    assert mixed["histories"][-1] == ["VOO"] and len(mixed["histories"]) == 2
+
+
+def test_cost_unknown_on_a_tracked_fund_keeps_yield_on_cost(mixed, capsys) -> None:
+    rc, out = run_json(load_script("dividend-income/scripts/dividends.py"), ["--as-of", "2026-11-01"], capsys)
+    assert rc == 0, out
+    assert out["totals"]["cost_basis"] == 100800.0 and out["totals"]["yield_on_cost"] == round(3610.4 / 100800.0, 4)
+
+
+def test_tracked_fund_with_a_failed_proxy_stays_unknown(mixed, monkeypatch, capsys) -> None:
+    real = market.quote
+    monkeypatch.setattr(market, "quote", lambda symbols, hub=None: [] if symbols == ["VOO"] else real(symbols, hub=hub))
+    rc, out = run_json(load_script("dividend-income/scripts/dividends.py"), ["--as-of", "2026-11-01"], capsys)
+    assert rc == 0, out
+    assert _row(out, "QBN5")["income_status"] == "unknown" and "QBN5 ($30,000.00)" in _flag(out, "INCOME_UNKNOWN")
+
+
+def test_cash_placeholder_is_a_non_payer_not_unknown(mixed, monkeypatch, capsys) -> None:
+    monkeypatch.setitem(MIXED, "acc-1", [*MIXED["acc-1"], _pos("FCASH", 5, 1.0, "CASH")])
+    rc, out = run_json(load_script("dividend-income/scripts/dividends.py"), ["--as-of", "2026-11-01"], capsys)
+    assert rc == 0, out
+    assert _row(out, "FCASH")["income_status"] == "no_dividends"
+
+
+def test_failed_quote_is_unknown_not_a_non_payer(mixed, monkeypatch, capsys) -> None:
+    def boom(symbols, hub=None):
+        raise RuntimeError("quote down")
+
+    monkeypatch.setattr(market, "quote", boom)
+    rc, out = run_json(load_script("dividend-income/scripts/dividends.py"), ["--as-of", "2026-11-01"], capsys)
+    assert rc == 0, out
+    assert _row(out, "GROW")["income_status"] == "unknown" and _flag(out, "NO_DIVIDENDS") is None
+    assert _row(out, "AAPL")["income_status"] == "dividends"
+
+
+def test_yield_context_skips_money_market_funds(mixed, monkeypatch, capsys) -> None:
+    calls = _patch_closes(monkeypatch, {})
+    rc, out = run_json(load_script("dividend-income/scripts/dividends.py"), ["--as-of", "2026-11-01", "--yield-context"], capsys)
+    assert rc == 0, out
+    assert calls[0][0] == ["AAPL"] and "price_1y_change" not in _row(out, "SPAXX")
+
+
+def test_income_py_treats_a_symbol_with_no_history_supplied_as_unknown() -> None:
+    income = load_script("dividend-income/scripts/income.py")
+    out = income.run_income({"as_of": "2026-11-01", "positions": [{"symbol": "AAA", "units": 1, "price": 10.0}], "dividends": {}})
+    assert out["positions"][0]["income_status"] == "unknown"
+    assert out["totals"]["unknown_income_value"] == 10.0 and out["totals"]["income_coverage"] == 0.0 and out["totals"]["portfolio_yield"] is None
+    assert [f["code"] for f in out["flags"]] == ["INCOME_UNKNOWN"]
+
+
+def test_render_shows_unknown_income_and_money_market_on_the_page(mixed, tmp_path, capsys) -> None:
+    import json
+
+    rc, report = run_json(load_script("dividend-income/scripts/dividends.py"), ["--as-of", "2026-11-01"], capsys)
+    assert rc == 0, report
+    src = tmp_path / "income.json"
+    src.write_text(json.dumps(report))
+    out = tmp_path / "page.html"
+    rc, res = run_json(load_script("dividend-income/scripts/render.py"), ["--in", str(src), "--out", str(out)], capsys)
+    assert rc == 0, res
+    html = out.read_text()
+    for text in ("unknown_income_value", "Income unknown:", "seven-day yield", "lookthrough_income", "QBN5"):
+        assert text in html
 
 
 INCOME_REPORT = {

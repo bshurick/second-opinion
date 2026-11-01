@@ -323,25 +323,20 @@ _FRACTION_SUM_NORMALIZE_MAX = 1.1
 # SECTOR_LOOKTHROUGH_PARTIAL flag's own "partial: ..." message, never in "missing_data"
 _PARTIAL_LOOKTHROUGH_MIN_VALUE_FRAC = 0.005
 # quote types MISSING_SECTOR never names -- they're funds, not single stocks
-# Institutional index-fund share classes Yahoo has no quote type (or fund data) for at all: match
-# by name and borrow a retail ETF's sector look-through instead of dropping the position. Order
-# matters -- first match wins.
+# Index funds Yahoo has no quote type (or fund data) for at all, such as a 401(k) plan's own share
+# classes: match the index in the name, from any provider, and borrow a retail ETF's data instead of
+# dropping the position. Every caller checks first that the holding has no data of its own, and a
+# symbol is never proxied to itself. Order matters -- first match wins.
 LOOKTHROUGH_PROXIES: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"INST(ITUTIONAL)?\b.*500 (IDX|INDEX)", re.I), "VOO"),
-    (re.compile(r"500 INDEX TR", re.I), "VOO"),
-    # A plain S&P 500 index ETF Yahoo has no fund data for at all (e.g. SPYM raises "No Fund data
-    # found"). VOO's own name ("Vanguard S&P 500 ETF") matches this too, but VOO is never proxied
-    # to itself: a symbol with its own fund_sectors is never a look-through candidate in the
-    # first place (see the has-own-data guard in snapshot.py), and proxy == sym is guarded too.
-    (re.compile(r"S&P 500 (ETF|INDEX)|500 INDEX (ETF|TR|TRUST)|PORTFOLIO S&P 500", re.I), "VOO"),
-    (re.compile(r"T(OTA)?L INTL STK|TOTAL INTERNATIONAL STOCK", re.I), "VXUS"),
-    (re.compile(r"TOT(AL)? BD MKT|TOTAL BOND MARKET", re.I), "BND"),
-    (re.compile(r"TOT(AL)? STK MKT|TOTAL STOCK MARKET", re.I), "VTI"),
+    (re.compile(r"\b500\s+(IDX|INDEX)\b|S&P\s*500\s+(ETF|IDX|INDEX|TR|TRUST|FUND)|PORTFOLIO S&P 500", re.I), "VOO"),
+    (re.compile(r"^(?!.*\b(BD|BOND)\b).*\bINT(ERNATIONA)?L\b.*\b(STK|STOCK|EQUITY|IDX|INDEX)\b", re.I), "VXUS"),
+    (re.compile(r"^(?!.*\bINT(ERNATIONA)?L\b).*(\b(TOT(AL)?|AGG(REGATE)?|U\.?S\.?)\s+(BD|BOND)\b|\b(BD|BOND)\s+(MKT|MARKET|IDX|INDEX)\b)", re.I), "BND"),
+    (re.compile(r"\bTOT(AL)?\s+(U\.?S\.?\s+)?(STK|STOCK|MARKET|MKT)\b", re.I), "VTI"),
 ]
 
 
 def lookthrough_proxy_for(name: str | None) -> str | None:
-    """The look-through proxy ETF for a holding's name (e.g. "VANG INST 500 IDX TR" -> "VOO"), for
+    """The look-through proxy ETF for a holding's name (e.g. "ACME INST 500 IDX TR" -> "VOO"), for
     an institutional share class Yahoo has no quote type for; None when nothing matches."""
     if not name:
         return None

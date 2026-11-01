@@ -3,8 +3,15 @@
 
 Dividend income for every open connected account in one run: SnapTrade
 accounts (one call) and positions (one call per account), then ONE batched
-Yahoo download of dividend history, fed to income.py. Output is income.py's
-contract (per-payer "safety" block included) plus:
+Yahoo download of dividend history, fed to income.py. A symbol with no dividends
+in that history gets one quote, which sorts it into one of three groups: a money
+market fund with a seven-day yield (E*Trade only, Yahoo's fund yields are
+unreliable), a priced holding that pays nothing, or unknown income (no price
+anywhere, a money market fund with no yield, or a failed quote). An unknown fund
+whose name matches a tracking ETF earns that ETF's dividends scaled to its own
+price (one more batched dividend download and one quote per ETF); a failed lookup
+leaves it unknown. A cash placeholder such as FCASH is a non-payer. Output is income.py's contract (per-payer "safety" block included)
+plus:
 
   sources  {"holdings": the broker that served the accounts ("snaptrade", a
             direct broker's name, or "mixed"), "dividends": "yahoo",
@@ -45,11 +52,12 @@ sys.path.insert(0, str(_HERE.parents[2] / "lib"))
 sys.path.insert(0, str(_HERE))
 
 import income  # noqa: E402
-from second_opinion import market, output  # noqa: E402
+from second_opinion import market, output, proxies  # noqa: E402
 from second_opinion.brokers import router  # noqa: E402
 from second_opinion.errors import ApiError, InvalidInput  # noqa: E402
 
 _YIELD_CONTEXT_DAYS = 370  # fetch a little more than the ~365d analysis window
+_CASH_PLACEHOLDERS = {"FCASH", "CASH", "USD"}  # a broker's cash line, not a fund with a yield
 
 
 def _closes(history: dict, symbol: str) -> list[tuple[date, float]]:
@@ -99,6 +107,61 @@ def _yield_context(symbol: str, dividends: dict, history: dict, as_of: date) -> 
     return fields, flags
 
 
+def _names(rows: list[dict]) -> dict[str, str]:
+    """Each symbol's broker description; SnapTrade nests it, E*Trade has it on the position too."""
+    names: dict[str, str] = {}
+    for r in rows:
+        for pos in r["positions"]:
+            if not isinstance(pos, dict):
+                continue
+            node, found = pos.get("symbol"), pos.get("description")
+            while isinstance(node, dict):
+                found = node.get("description") or found
+                node = node.get("symbol")
+            if found:
+                names.setdefault(income._symbol(pos), str(found))  # noqa: SLF001
+    return names
+
+
+def _one_quote(symbol: str, hub: object) -> dict:
+    """One quote row; empty when the quote fails, so the caller reads it as no data."""
+    try:
+        rows = market.quote([symbol], hub=hub)
+    except Exception:  # noqa: BLE001 — a failed quote means unknown income, never a failed run
+        return {}
+    return rows[0] if rows else {}
+
+
+def _sort_no_history(symbols: list[str], dividends: dict, names: dict[str, str], hub: object) -> tuple[dict, list[str]]:
+    """Quote each symbol with no dividends. Returns the money market yields and the unknown symbols."""
+    money_market: dict[str, dict] = {}
+    unknown: list[str] = []
+    for sym in symbols:
+        if dividends.get(sym) or sym in _CASH_PLACEHOLDERS:
+            continue
+        quote = _one_quote(sym, hub)
+        seven_day = quote.get("seven_day_yield")
+        if seven_day is not None:
+            money_market[sym] = {"yield": float(seven_day) / 100, "source": quote.get("source")}
+        elif quote.get("price") is None or quote.get("quote_type") == "MONEYMARKET" or proxies.is_cash_like(sym, names.get(sym)):
+            unknown.append(sym)
+    return money_market, unknown
+
+
+def _lookthrough(unknown: list[str], names: dict[str, str], hub: object, years: int) -> dict[str, dict]:
+    """The dividend history and price of the ETF tracking each unknown fund's index, where one matches."""
+    wanted = {sym: proxies.lookthrough_proxy_for(names.get(sym)) for sym in unknown}
+    wanted = {sym: proxy for sym, proxy in wanted.items() if proxy}
+    if not wanted:
+        return {}
+    try:
+        histories = market.dividend_histories(sorted(set(wanted.values())), years=years)
+    except Exception:  # noqa: BLE001 — without it the fund stays unknown, never a failed run
+        return {}
+    prices = {proxy: _one_quote(proxy, hub).get("price") for proxy in sorted(set(wanted.values()))}
+    return {sym: {"proxy": proxy, "price": prices[proxy], "dividends": histories.get(proxy) or []} for sym, proxy in wanted.items() if prices[proxy]}
+
+
 class _Parser(argparse.ArgumentParser):
     def error(self, message: str) -> None:  # type: ignore[override]
         raise InvalidInput(f"dividends.py: {message}")
@@ -139,14 +202,22 @@ def main(argv: list[str] | None = None) -> int:
             fundamentals = market.payout_info(symbols)
             sources["fundamentals"] = "yahoo"
 
-        params = {"accounts": rows, "dividends": dividends, "fundamentals": fundamentals or {}}
+        names = _names(rows)
+        money_market, unknown = _sort_no_history(symbols, dividends, names, hub)
+        params = {
+            "accounts": rows,
+            "dividends": {s: h for s, h in dividends.items() if s not in unknown},
+            "fundamentals": fundamentals or {},
+            "money_market": money_market,
+            "lookthrough": _lookthrough(unknown, names, hub, ns.years),
+        }
         if ns.as_of:
             params["as_of"] = ns.as_of
         result = income.run_income(params)
 
         if ns.yield_context:
             as_of = date.fromisoformat(result["as_of"])
-            payers = sorted(r["symbol"] for r in result["positions"] if (r.get("annual_income") or 0.0) > 0)
+            payers = sorted(r["symbol"] for r in result["positions"] if r["income_status"] == "dividends" and (r.get("annual_income") or 0.0) > 0)
             if payers:
                 history: dict = {}
                 try:

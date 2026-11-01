@@ -24,8 +24,17 @@ Input JSON contract (stdin)::
       },                                    #   envelope is accepted as-is
       "fundamentals": {                     # optional
         "AAPL": {"payout_ratio": 0.15, "eps_ttm": 6.5}
+      },
+      "money_market": {                     # optional: funds paid by yield, not by history
+        "SPAXX": {"yield": 0.0355, "source": "etrade"}
+      },
+      "lookthrough": {                      # optional: the ETF tracking an unquoted fund's index
+        "QBN5": {"proxy": "VOO", "price": 610.0, "dividends": [...]}
       }
     }
+
+A symbol absent from ``dividends`` has unknown income; an empty list means it
+was checked and pays nothing.
 
 Output JSON contract (stdout)::
 
@@ -33,8 +42,11 @@ Output JSON contract (stdout)::
       "as_of": "YYYY-MM-DD",
       "totals": {annual_income, ttm_income, market_value, portfolio_yield,
                  cost_basis, yield_on_cost, payer_count, position_count,
-                 top_payer, top_payer_share},
+                 top_payer, top_payer_share, money_market_income,
+                 lookthrough_income, unknown_income_value, income_coverage},
       "positions": [{symbol, units, price, market_value, cost_basis,
+                     income_status,   # dividends|no_dividends|money_market|lookthrough|unknown
+                     seven_day_yield?, lookthrough_proxy?,
                      frequency, payments_per_year, last_dividend, last_ex_date,
                      next_ex_date_est, next_ex_amount_est, forward_rate, forward_yield,
                      yield_on_cost, annual_income, income_share,
@@ -42,9 +54,11 @@ Output JSON contract (stdout)::
                      ttm_change, growth_1y, growth_3y, growth_5y,
                      special_ttm, payout_ratio,
                      safety | null}],   # annual_income desc, symbol asc
-      "monthly": [{month: "YYYY-MM", income, payers: [...]}],   # next 12 months
+      "monthly": [{month: "YYYY-MM", income, lookthrough_income, payers: [...]}],   # next 12 months;
+                                     # lookthrough_income is the part of income that is estimated
       "flags": [{code, message}]     # DIVIDEND_CUT, HIGH_PAYOUT, NEGATIVE_EARNINGS,
-                                     # INCOME_CONCENTRATED, NO_DIVIDENDS, MISSING_HISTORY
+                                     # INCOME_CONCENTRATED, NO_DIVIDENDS, INCOME_UNKNOWN,
+                                     # MONEY_MARKET_ESTIMATED, LOOKTHROUGH_ESTIMATED
     }
 
 Method:
@@ -63,6 +77,20 @@ Method:
 - The monthly schedule places one forward payment (last regular dividend x
   units) in the calendar month of each of the last payments_per_year regular
   ex-dates; irregular payers use their actual last-12-month payments.
+- A money market fund's income is its market value x seven-day yield, paid in
+  twelve equal parts on the last weekday of each month. Its balance history is
+  not known, so it has no trailing figures and stays out of ``ttm_income``.
+- A fund with no public data and a ``lookthrough`` entry earns what the ETF
+  tracking its index earns: the ETF's dividend history is scaled by the fund's
+  price over the ETF's price, then follows the method above. It counts in
+  ``annual_income``, the yield and the schedule, and is the estimate in
+  ``lookthrough_income``. Such funds usually keep this income inside their price,
+  so it is not cash paid out. They have no trailing figures, safety score or cut
+  flag, because the history is the ETF's, and stay out of ``ttm_income``,
+  ``cost_basis`` and ``yield_on_cost``.
+- A holding with unknown income is counted in no income figure and is left out
+  of the ``portfolio_yield`` denominator; ``market_value`` still includes it and
+  ``income_coverage`` is the share of market value whose income is known.
 - Payout ratio is taken from fundamentals, else forward_rate / eps_ttm when
   eps_ttm > 0. Money 2 dp, per-share amounts and ratios 4 dp.
 - ``safety`` (heuristic screen, NOT a rating) is a per-payer block
@@ -286,6 +314,19 @@ def _safety(regular: list[tuple[date, float]], as_of: date, payout: float | None
     }
 
 
+def _next_month_end(as_of: date) -> date:
+    """The first last-weekday-of-a-month after ``as_of``."""
+    y, m = as_of.year, as_of.month
+    while True:
+        next_first = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
+        last = next_first - timedelta(days=1)
+        while last.weekday() >= 5:
+            last -= timedelta(days=1)
+        if last > as_of:
+            return last
+        y, m = next_first.year, next_first.month
+
+
 def _month_labels(as_of: date) -> list[str]:
     labels = []
     y, m = as_of.year, as_of.month
@@ -305,14 +346,19 @@ def run_income(params: dict) -> dict:
     )
     dividends = params.get("dividends") or {}
     fundamentals = params.get("fundamentals") or {}
-    if not isinstance(dividends, dict) or not isinstance(fundamentals, dict):
-        raise ValueError("dividends and fundamentals must be objects")
+    money_market = params.get("money_market") or {}
+    lookthrough = params.get("lookthrough") or {}
+    for block in (dividends, fundamentals, money_market, lookthrough):
+        if not isinstance(block, dict):
+            raise ValueError("dividends, fundamentals, money_market and lookthrough must be objects")
+    money_market = {str(k).upper(): v for k, v in money_market.items()}
+    lookthrough = {str(k).upper(): v for k, v in lookthrough.items()}
     dividends = {str(k).upper(): v for k, v in dividends.items()}
     fundamentals = {str(k).upper(): v for k, v in fundamentals.items()}
 
     ttm_start, prior_start = as_of - timedelta(days=365), as_of - timedelta(days=730)
     labels = _month_labels(as_of)
-    schedule: dict[str, dict] = {m: {"income": 0.0, "payers": []} for m in labels}
+    schedule: dict[str, dict] = {m: {"income": 0.0, "lookthrough": 0.0, "payers": []} for m in labels}
     by_month_of_year = {int(m[5:]): m for m in labels}
 
     rows: list[dict] = []
@@ -320,7 +366,9 @@ def run_income(params: dict) -> dict:
     high_payout: list[tuple[str, float]] = []
     negative_eps: list[str] = []
     no_dividends: list[str] = []
-    missing_history: list[str] = []
+    unknown: list[dict] = []
+    funds: list[dict] = []
+    tracked: list[dict] = []
 
     for pos in positions:
         sym = pos["symbol"]
@@ -328,6 +376,7 @@ def run_income(params: dict) -> dict:
         cost = pos["cost"] if pos["has_cost"] else None
         row: dict = {
             "symbol": sym,
+            "income_status": "unknown",
             "units": _ratio(pos["units"]),
             "price": _money(pos["price"]),
             "market_value": _money(mv),
@@ -354,11 +403,45 @@ def run_income(params: dict) -> dict:
             "payout_ratio": None,
             "safety": None,
         }
-        if sym not in dividends:
-            missing_history.append(sym)
+        fund_yield = (money_market.get(sym) or {}).get("yield") if isinstance(money_market.get(sym), dict) else None
+        if fund_yield is not None and pos["price"]:
+            fund_yield = float(_number(fund_yield, "yield"))
+            forward = pos["price"] * fund_yield
+            annual = forward * pos["units"]
+            for label in labels:
+                schedule[label]["income"] += annual / 12
+                schedule[label]["payers"].append(sym)
+            row.update(
+                {
+                    "income_status": "money_market",
+                    "seven_day_yield": _ratio(fund_yield),
+                    "frequency": "monthly",
+                    "payments_per_year": 12,
+                    "next_ex_date_est": _next_month_end(as_of).isoformat(),
+                    "next_ex_amount_est": _money(annual / 12),
+                    "forward_rate": _ratio(forward),
+                    "forward_yield": _ratio(fund_yield),
+                    "yield_on_cost": _ratio(annual / cost) if cost else None,
+                    "annual_income": _money(annual),
+                    "_forward_income": annual,
+                }
+            )
+            funds.append(row)
             rows.append(row)
             continue
-        hist = _history(dividends[sym])
+        proxy = None
+        if sym not in dividends:
+            candidate = lookthrough.get(sym) if isinstance(lookthrough.get(sym), dict) else None
+            proxy_price = _number(candidate.get("price"), "price") if candidate else None
+            proxy_hist = _history(candidate.get("dividends") or []) if candidate else []
+            if not (proxy_price and pos["price"] and proxy_hist):
+                unknown.append(row)
+                rows.append(row)
+                continue
+            proxy = str(candidate.get("proxy") or "")
+            hist = [(d, a * pos["price"] / proxy_price) for d, a in proxy_hist]
+        else:
+            hist = _history(dividends[sym])
         regular, special = _split_specials(hist)
         ttm = sum(a for d, a in hist if ttm_start < d <= as_of)
         prior = sum(a for d, a in hist if prior_start < d <= ttm_start)
@@ -383,7 +466,7 @@ def run_income(params: dict) -> dict:
         if payout is not None and payout > _HIGH_PAYOUT:
             high_payout.append((sym, payout))
         change = (ttm / prior - 1) if prior > 0 else None
-        if change is not None and change < _CUT_THRESHOLD:
+        if proxy is None and change is not None and change < _CUT_THRESHOLD:
             cut.append((sym, change))
 
         # monthly schedule
@@ -391,16 +474,21 @@ def run_income(params: dict) -> dict:
             for d, _ in regular[-per_year:]:
                 label = by_month_of_year[d.month]
                 schedule[label]["income"] += regular[-1][1] * pos["units"]
+                if proxy is not None:
+                    schedule[label]["lookthrough"] += regular[-1][1] * pos["units"]
                 schedule[label]["payers"].append(sym)
         else:
             for d, a in hist:
                 if ttm_start < d <= as_of:
                     label = by_month_of_year[d.month]
                     schedule[label]["income"] += a * pos["units"]
+                    if proxy is not None:
+                        schedule[label]["lookthrough"] += a * pos["units"]
                     schedule[label]["payers"].append(sym)
 
         row.update(
             {
+                "income_status": "dividends" if hist else "no_dividends",
                 "frequency": freq,
                 "payments_per_year": per_year,
                 "last_dividend": _ratio(last[1]) if last else None,
@@ -428,6 +516,20 @@ def run_income(params: dict) -> dict:
             }
         )
         row["safety"] = _safety(regular, as_of, payout) if hist else None
+        if proxy is not None:
+            row.update(
+                {
+                    "income_status": "lookthrough",
+                    "lookthrough_proxy": proxy,
+                    "ttm_per_share": None,
+                    "ttm_income": None,
+                    "prior_ttm_per_share": None,
+                    "ttm_change": None,
+                    "special_ttm": None,
+                    "safety": None,
+                }
+            )
+            tracked.append(row)
         rows.append(row)
 
     # --- totals ----------------------------------------------------------------------
@@ -435,8 +537,14 @@ def run_income(params: dict) -> dict:
     annual_income = sum(r["_forward_income"] for r in payers)
     ttm_income = sum((r["ttm_income"] or 0.0) for r in rows)
     market_value = sum(p["units"] * p["price"] for p in positions if p["price"] is not None)
-    payer_cost_known = payers and all(r["cost_basis"] is not None for r in payers)
-    cost_basis = sum(r["cost_basis"] for r in payers) if payer_cost_known else None
+    unknown_value = sum(r["market_value"] or 0.0 for r in unknown)
+    known_value = market_value - unknown_value
+    money_market_income = sum(r["annual_income"] for r in funds)
+    lookthrough_income = sum(r["_forward_income"] for r in tracked)
+    cost_payers = [r for r in payers if r["income_status"] != "lookthrough"]
+    payer_cost_known = cost_payers and all(r["cost_basis"] is not None for r in cost_payers)
+    cost_basis = sum(r["cost_basis"] for r in cost_payers) if payer_cost_known else None
+    cost_income = sum(r["_forward_income"] for r in cost_payers)
     top = max(payers, key=lambda r: (r["_forward_income"], r["symbol"])) if payers else None
     for r in rows:
         if r.get("_forward_income") is not None:
@@ -449,19 +557,24 @@ def run_income(params: dict) -> dict:
         "annual_income": _money(annual_income),
         "ttm_income": _money(ttm_income),
         "market_value": _money(market_value),
-        "portfolio_yield": _ratio(annual_income / market_value) if market_value > 0 else None,
+        "portfolio_yield": _ratio(annual_income / known_value) if known_value > 0 else None,
         "cost_basis": _money(cost_basis),
-        "yield_on_cost": _ratio(annual_income / cost_basis) if cost_basis else None,
+        "yield_on_cost": _ratio(cost_income / cost_basis) if cost_basis else None,
         "payer_count": len(payers),
         "position_count": len(rows),
         "top_payer": top["symbol"] if top else None,
         "top_payer_share": _ratio(top["income_share"]) if top else None,
+        "money_market_income": _money(money_market_income),
+        "lookthrough_income": _money(lookthrough_income),
+        "unknown_income_value": _money(unknown_value),
+        "income_coverage": _ratio(known_value / market_value) if market_value > 0 else None,
     }
 
     monthly = [
         {
             "month": m,
             "income": _money(schedule[m]["income"]),
+            "lookthrough_income": _money(schedule[m]["lookthrough"]),
             "payers": sorted(set(schedule[m]["payers"])),
         }
         for m in labels
@@ -506,12 +619,32 @@ def run_income(params: dict) -> dict:
                 "message": f"no dividends in history for: {', '.join(sorted(no_dividends))}",
             }
         )
-    if missing_history:
-        missing = ", ".join(sorted(missing_history))
+    if funds:
+        detail = ", ".join(f"{r['symbol']} {r['seven_day_yield'] * 100:.2f}%" for r in sorted(funds, key=lambda r: r["symbol"]))
         flags.append(
             {
-                "code": "MISSING_HISTORY",
-                "message": "no dividend history supplied for: " + missing,
+                "code": "MONEY_MARKET_ESTIMATED",
+                "message": f"money market income of ${money_market_income:,.2f} a year is estimated from seven-day yields ({detail}), which change often; trailing 12 months excludes it",
+            }
+        )
+    if tracked:
+        via = ", ".join(f"{r['symbol']} via {r['lookthrough_proxy']}" for r in sorted(tracked, key=lambda r: r["symbol"]))
+        flags.append(
+            {
+                "code": "LOOKTHROUGH_ESTIMATED",
+                "message": (
+                    f"income of ${lookthrough_income:,.2f} a year is estimated from tracking ETFs ({via}); "
+                    "funds with no public quote usually keep it inside their price, so it is usually not paid out as cash"
+                ),
+            }
+        )
+    if unknown:
+        ranked = sorted(unknown, key=lambda r: (-(r["market_value"] or 0.0), r["symbol"]))
+        detail = ", ".join(f"{r['symbol']} (${r['market_value']:,.2f})" if r["market_value"] is not None else r["symbol"] for r in ranked)
+        flags.append(
+            {
+                "code": "INCOME_UNKNOWN",
+                "message": f"income unknown for ${unknown_value:,.2f} of holdings, counted in no income figure: {detail}.",
             }
         )
 

@@ -107,7 +107,7 @@ A small card at the top of the page: a headline, "What stands out", "What to loo
 - Carry dates when a reading is older than the page's prices.
 - Name the bull and the bear side when reading a market condition or a security.
 - No buy, sell or hold call, and no forecast. `for_you` says how a reading touches the person's holdings, not what to do. The forbidden verbs are rejected in every field.
-- `for_you` takes portfolio numbers only from a read taken on this run or today, never from memory. Non-numeric context from memory or the profile is allowed, such as a paycheck and RSUs being Amazon exposure.
+- `for_you` takes portfolio numbers only from a read taken on this run or today, never from memory. Non-numeric context from memory or the profile is allowed, such as a paycheck and stock awards both depending on one employer.
 - A file that breaks a rule exits 2 with `error` naming the rule and writes no page. Rewrite the file and render again.
 
 Write each field so a reader follows it on the first read:

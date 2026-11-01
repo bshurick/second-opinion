@@ -593,6 +593,28 @@ def test_classify_buckets_and_leaves_unknown_types_out() -> None:
     assert unknown == ["NONE", "OPT"]
 
 
+def test_classify_counts_unquoted_index_trust_as_core_and_cash_placeholder_as_cash() -> None:
+    rows = [{"symbol": "QBN5", "units": 1.0, "price": 10.0, "account": "acc-1", "name": "ACME INST 500 IDX TR"},
+            {"symbol": "FCASH", "units": 1.0, "price": 1.0, "account": "acc-1", "name": "CASH"},
+            {"symbol": "ODD", "units": 1.0, "price": 1.0, "account": "acc-1", "name": "PLAN STABLE VALUE"}]
+    out, unknown = load_script(R)._classify(rows, {}, None)
+    assert {p["symbol"]: p["bucket"] for p in out} == {"QBN5": "core", "FCASH": "cash"} and unknown == ["ODD"]
+
+
+def test_core_rank_reads_an_unquoted_trust_from_its_name() -> None:
+    rows = [{"symbol": "QBN5", "bucket": "core", "name": "ACME INST 500 IDX TR"}, {"symbol": "QBMZ", "bucket": "core", "name": "ACME TOT BD MKT IDX"}]
+    assert load_script(R)._core_rank(rows, {}) == {"QBN5": 0, "QBMZ": 3}
+
+
+def test_run_counts_unquoted_index_trust_in_the_mix(cs_sdk, capsys, monkeypatch) -> None:
+    trust = {"symbol": {"symbol": {"symbol": "QBN5", "description": "ACME INST 500 IDX TR"}}, "units": 100, "price": 10.0}
+    monkeypatch.setitem(CS_POSITIONS, "acc-1", [*CS_POSITIONS["acc-1"], trust])
+    rc, out = run_json(load_script(R), ["mix"], capsys)
+    assert rc == 0, out
+    assert not [f for f in out["flags"] if f["code"] == "UNCLASSIFIED" and "QBN5" in f["message"]]
+    assert out["mix"]["total"]["value"] == 18500.0  # 17500 plus the trust
+
+
 def test_run_leaves_unclassified_holding_out(cs_sdk, capsys, monkeypatch) -> None:
     ddd = {"symbol": {"symbol": {"symbol": "DDD"}}, "units": 5, "price": 10.0, "average_purchase_price": 10.0}
     monkeypatch.setitem(CS_POSITIONS, "acc-1", [*CS_POSITIONS["acc-1"], ddd])

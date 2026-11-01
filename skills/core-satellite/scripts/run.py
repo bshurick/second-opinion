@@ -228,17 +228,19 @@ def _classify(positions: list[dict], info: dict, employer: str | None,
 
     employer for the saved employer symbol; core for quote type ETF or MUTUALFUND or a
     fund-marked entry (fund_sectors or proxy); cash for MONEYMARKET; satellite only for a
-    plain EQUITY; anything else (no sectors entry, another quote type) is unclassified."""
+    plain EQUITY. With no quote type at all, the broker's name decides: a 401(k) trust matching
+    a tracking ETF is core and a cash line is cash. Anything else is unclassified."""
     out, unknown = [], set()
     for p in positions:
         sym = p["symbol"]
         entry = info.get(sym) or {}
         qt = str(entry.get("quote_type") or "").upper()
+        name = p.get("name")
         if employer and sym == employer and sym not in deep:
             bucket = "employer"
-        elif qt in _FUND_TYPES or _fund_marked(entry):
+        elif qt in _FUND_TYPES or _fund_marked(entry) or (not qt and proxies.lookthrough_proxy_for(name)):
             bucket = "core"
-        elif qt == "MONEYMARKET":
+        elif qt == "MONEYMARKET" or (not qt and proxies.is_cash_like(sym, name)):
             bucket = "cash"
         elif qt == "EQUITY":
             bucket = "satellite"
@@ -258,7 +260,8 @@ def _core_rank(positions: list[dict], info: dict) -> dict[str, int]:
     out = {}
     for p in positions:
         if p["bucket"] == "core":
-            out[p["symbol"]] = _CORE_RANK.get(proxies.asset_bucket(p["symbol"], info.get(p["symbol"])) or "", 2)
+            entry = info.get(p["symbol"]) or {"name": p.get("name")}
+            out[p["symbol"]] = _CORE_RANK.get(proxies.asset_bucket(p["symbol"], entry) or "", 2)
     return out
 
 

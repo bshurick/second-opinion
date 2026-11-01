@@ -6,7 +6,13 @@ Reports the dividend income the user's holdings generate: one script run, one fi
 
 ## Background
 
-- **What `dividends.py` fetches.** Accounts once, positions once per account, and ONE batched Yahoo download of dividend history. It then runs `income.py`.
+- **What `dividends.py` fetches.** Accounts once, positions once per account, and ONE batched Yahoo download of dividend history. Each symbol with no dividends in that history then gets one quote, and funds with no public data add one more download for their tracking ETFs. It then runs `income.py`.
+- **`income_status`.** Every position has one: `dividends`, `no_dividends` (priced with nothing in its history, or a broker's cash line), `money_market`, `lookthrough` or `unknown`.
+- **Money market funds.** Yahoo has no payment history for them and its fund yields are unreliable. Income is market value × E*Trade's seven-day yield, in twelve equal parts on the last weekday of each month. These are estimates, and the funds stay out of the trailing 12 months. Without an E*Trade session a fund has no yield, so its income is `unknown`.
+- **Funds with no public quote.** A fund only a plan offers, such as a 401(k) trust (`lookthrough`), earns what the ETF tracking the same index earns, matched by the index in its name.
+  - It counts in the annual income, yield and schedule as an estimate, and `lookthrough_proxy` names the ETF. It has no trailing figures or safety score.
+  - These funds usually keep the income inside their price, so it is usually not paid out as cash. `totals.lookthrough_income` and each month's `lookthrough_income` give the amount to subtract for cash arriving.
+- **Unknown income.** A holding that matches no tracking ETF, or whose lookup failed, is not a non-payer. It is counted in no income figure and left out of the portfolio yield's denominator. `totals.unknown_income_value` is the amount and `totals.income_coverage` the share of market value that is known.
 - **The math.** `income.py` is the shared math. The method (special-dividend filter, frequency inference, trailing windows, growth, monthly schedule, safety screen) and both contracts are in its docstring.
 - **Forward figures.** The last regular dividend times the inferred payments per year. They assume the payer keeps paying.
 - **Trailing figures.** What was actually declared by ex-date in the last 12 months.
@@ -84,7 +90,7 @@ Run with the Bash tool. All three scripts print JSON.
 In this order, then stop:
 
 1. The artifact link on its own line.
-2. One line: Projected annual income `totals.annual_income` · Portfolio yield `totals.portfolio_yield` · Yield on cost `totals.yield_on_cost` · Trailing 12m received `totals.ttm_income` · `totals.payer_count` of `totals.position_count` positions pay
+2. One line: Projected annual income `totals.annual_income` · Portfolio yield `totals.portfolio_yield` · Yield on cost `totals.yield_on_cost` · Trailing 12m received `totals.ttm_income` · `totals.payer_count` of `totals.position_count` positions pay. When `totals.unknown_income_value` is above 0, add · Income unknown on `totals.unknown_income_value`.
 3. **Flags** — one bullet per `flags[].message`, or "None".
 
 Do not repeat the sections the page carries. If the user asks for a number the page shows, read it from the script's JSON.
@@ -95,12 +101,12 @@ Render the script's JSON in exactly this order, then stop.
 
 **Dividend income** — as of `as_of`
 
-One line: Projected annual income `totals.annual_income` · Portfolio yield `totals.portfolio_yield` · Yield on cost `totals.yield_on_cost` · Trailing 12m received `totals.ttm_income` · `totals.payer_count` of `totals.position_count` positions pay
+One line: Projected annual income `totals.annual_income` · Portfolio yield `totals.portfolio_yield` · Yield on cost `totals.yield_on_cost` · Trailing 12m received `totals.ttm_income` · `totals.payer_count` of `totals.position_count` positions pay. When `totals.unknown_income_value` is above 0, add · Income unknown on `totals.unknown_income_value`.
 
 1. **Payers** — table from `positions` where `annual_income` > 0: Symbol · Units · Frequency · Last dividend (ex-date) · Forward rate · Yield · Yield on cost · Annual income · Share · TTM change · 3y growth · Payout · Safety.
    - The Safety cell is `safety.score`/10, plus the `safety.flags` codes. Say once that the Safety column is a heuristic screen, not a rating.
    - When rows carry yield-context fields, add a line under the table: Symbol · `price_1y_change` · `yield_1y_ago` · `yield_vs_1y_ago`.
-   - Then one line listing non-payers (`annual_income` 0 or null).
+   - Then one line listing non-payers (`income_status` `no_dividends`), and one line listing `income_status` `unknown` with each `market_value`.
 2. **Next 12 months** — table from `monthly`: Month · Income · Payers. Skip zero months only if more than half the months are zero, then say "other months: 0".
 3. **Upcoming ex-dates** — payers sorted by `next_ex_date_est`: Symbol · Est. ex-date · Est. amount (`next_ex_amount_est`). Note that dates are estimates from the last ex-date plus the usual interval.
 4. **Flags** — one bullet per `flags[].message`, or "None".
@@ -122,6 +128,8 @@ One line: Projected annual income `totals.annual_income` · Portfolio yield `tot
 - Publish the page or write the markdown fallback, never both.
 - No commentary or opinions outside the Flags section.
 - Say once when a figure is a projection: forward figures assume the payer keeps paying.
+- Never describe a holding with `income_status` `unknown` as paying nothing.
+- When the user asks about cash arriving or payment dates, leave `lookthrough` holdings out of the amounts and say so.
 - When the user asks, say whether a number is forward or trailing.
 - Present spending coverage as arithmetic on the report's own figures, never as advice on how to close the gap.
 - Say nothing about yield on cost versus current yield unless asked.

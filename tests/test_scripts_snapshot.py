@@ -665,9 +665,9 @@ def test_asset_bucket_rules() -> None:
     m = load_script("portfolio-snapshot/scripts/summary.py")
     ab = m.asset_bucket
     assert ab("BND", {"quote_type": "ETF", "category": "Intermediate Core Bond", "name": "Vanguard Total Bond"}) == "bonds"
-    assert ab("QBMZ", {"name": "VG IS TOT BD MKT IDX"}) == "bonds"
-    assert ab("QBN5", {"name": "VANG INST 500 IDX TR"}) == "us_equity"
-    assert ab("ONMY", {"name": "VG IS TL INTL STK MK"}) == "intl_equity"
+    assert ab("QBMZ", {"name": "ACME TOT BD MKT IDX"}) == "bonds"
+    assert ab("QBN5", {"name": "ACME INST 500 IDX TR"}) == "us_equity"
+    assert ab("QBMY", {"name": "ACME TL INTL STK MK"}) == "intl_equity"
     assert ab("VEA", {"quote_type": "ETF", "category": "Foreign Large Blend", "name": "Vanguard FTSE Developed Markets"}) == "intl_equity"
     assert ab("GLD", {"quote_type": "ETF", "category": "Commodities Focused", "name": "SPDR Gold Shares"}) == "other"
     assert ab("MVRXX", {"quote_type": "MONEYMARKET", "name": "Government Portfolio"}) == "cash"
@@ -897,7 +897,7 @@ def test_summary_sector_exposure_proxied_institutional_fund(capsys, monkeypatch)
             "AAPL": {"quote_type": "EQUITY", "sector": "Technology"},
             # a 401(k) institutional S&P 500 share class Yahoo has no quote type for; snapshot.py
             # already borrowed VOO's fund data for it and marked it "proxy": "VOO"
-            "QBN5": {"quote_type": None, "name": "VANG INST 500 IDX TR",
+            "QBN5": {"quote_type": None, "name": "ACME INST 500 IDX TR",
                      "fund_sectors": {"technology": 0.30, "financial_services": 0.70},
                      "fund_asset_classes": {"stockPosition": 1.0}, "proxy": "VOO"},
         },
@@ -978,9 +978,9 @@ def test_summary_sector_exposure_survives_when_every_holding_is_proxied(capsys, 
             # a 401(k)-only book: both institutional share classes have no quote_type of their
             # own -- the ONLY thing that makes them sectorizable is the borrowed proxy data --
             # so the old has_any_quote_type gate would have nulled sector_exposure entirely
-            "QBN5": {"quote_type": None, "name": "VANG INST 500 IDX TR",
+            "QBN5": {"quote_type": None, "name": "ACME INST 500 IDX TR",
                      "fund_sectors": {"technology": 1.0}, "fund_asset_classes": {"stockPosition": 1.0}, "proxy": "VOO"},
-            "QBMZ": {"quote_type": None, "name": "VG IS TOT BD MKT IDX",
+            "QBMZ": {"quote_type": None, "name": "ACME TOT BD MKT IDX",
                      "fund_sectors": {}, "fund_asset_classes": {"bondPosition": 0.98}, "proxy": "BND"},
         },
     }
@@ -1118,7 +1118,7 @@ def test_summary_sector_exposure_null_when_proxy_data_is_null(capsys, monkeypatc
         "asset_info": {
             # "proxy" is set, but the proxy fetch itself produced nothing usable: fund_sectors is
             # still null. A bare "proxy" marker must not count as sectorizable on its own.
-            "QBN5": {"quote_type": None, "name": "VANG INST 500 IDX TR",
+            "QBN5": {"quote_type": None, "name": "ACME INST 500 IDX TR",
                      "fund_sectors": None, "fund_asset_classes": None, "proxy": "VOO"},
         },
     }
@@ -1252,7 +1252,7 @@ def test_snapshot_looks_through_a_proxied_institutional_fund(monkeypatch, capsys
             {"symbol": {"symbol": {"symbol": "AAPL", "description": "Apple Inc."}}, "units": 1, "price": 1000.0},
             # a 401(k) institutional S&P 500 share class: the broker reports it by its
             # institutional ticker and description; Yahoo has no quote type for it at all
-            {"symbol": {"symbol": {"symbol": "QBN5", "description": "VANG INST 500 IDX TR"}}, "units": 1, "price": 4000.0},
+            {"symbol": {"symbol": {"symbol": "QBN5", "description": "ACME INST 500 IDX TR"}}, "units": 1, "price": 4000.0},
         ],
         "acc-2": [],
     }
@@ -1300,7 +1300,7 @@ def test_snapshot_looks_through_a_proxied_institutional_fund(monkeypatch, capsys
     assert calls[1] == ["VOO"]  # the proxy fetch triggered by QBN5's name, after the main lookup
     se = out["sector_exposure"]
     assert se is not None and se["looked_through"] == ["QBN5 (via VOO)"]
-    assert out["profiles"]["QBN5"]["name"] == "VANG INST 500 IDX TR"  # the broker description, unproxied
+    assert out["profiles"]["QBN5"]["name"] == "ACME INST 500 IDX TR"  # the broker description, unproxied
 
 
 def test_snapshot_proxies_a_sector_less_equity_etf_yahoo_cannot_describe(monkeypatch, capsys) -> None:
@@ -1379,7 +1379,7 @@ def test_snapshot_proxy_fetch_failure_keeps_base_sector_data_and_flags(monkeypat
     positions = {
         "acc-1": [
             {"symbol": {"symbol": {"symbol": "AAPL", "description": "Apple Inc."}}, "units": 1, "price": 1000.0},
-            {"symbol": {"symbol": {"symbol": "QBN5", "description": "VANG INST 500 IDX TR"}}, "units": 1, "price": 4000.0},
+            {"symbol": {"symbol": {"symbol": "QBN5", "description": "ACME INST 500 IDX TR"}}, "units": 1, "price": 4000.0},
         ],
         "acc-2": [],
     }
@@ -1683,7 +1683,7 @@ def _proxy_quote_setup(monkeypatch, day_changes, close_histories=None):
         "acc-1": [
             {"symbol": {"symbol": {"symbol": "AAPL", "description": "Apple Inc."}}, "units": 10, "price": 100.0},
             {"symbol": {"symbol": {"symbol": "BND", "description": "Vanguard Total Bond Market ETF"}}, "units": 10, "price": 70.0},
-            {"symbol": {"symbol": {"symbol": "QBN5", "description": "VANG INST 500 IDX TR"}}, "units": 10, "price": 400.0},
+            {"symbol": {"symbol": {"symbol": "QBN5", "description": "ACME INST 500 IDX TR"}}, "units": 10, "price": 400.0},
             {"symbol": {"symbol": {"symbol": "QZZ9", "description": "ACME STABLE VALUE"}}, "units": 10, "price": 50.0},
         ],
         "acc-2": [],

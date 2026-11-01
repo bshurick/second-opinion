@@ -1,6 +1,6 @@
 """Public-ETF proxies for holdings Yahoo cannot describe, and the cash-like symbol test.
 
-Institutional 401(k) share classes (e.g. "VANG INST 500 IDX TR") have no Yahoo quote type,
+Institutional 401(k) share classes (e.g. "ACME INST 500 IDX TR") have no Yahoo quote type,
 sector data or price history. ``lookthrough_proxy_for`` matches such a holding's broker
 description to the retail ETF that tracks the same index so a script can borrow that ETF's
 data. ``is_cash_like`` names money-market funds and cash placeholders that trade at a flat
@@ -20,12 +20,10 @@ from __future__ import annotations
 import re
 
 LOOKTHROUGH_PROXIES: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"INST(ITUTIONAL)?\b.*500 (IDX|INDEX)", re.I), "VOO"),
-    (re.compile(r"500 INDEX TR", re.I), "VOO"),
-    (re.compile(r"S&P 500 (ETF|INDEX)|500 INDEX (ETF|TR|TRUST)|PORTFOLIO S&P 500", re.I), "VOO"),
-    (re.compile(r"T(OTA)?L INTL STK|TOTAL INTERNATIONAL STOCK", re.I), "VXUS"),
-    (re.compile(r"TOT(AL)? BD MKT|TOTAL BOND MARKET", re.I), "BND"),
-    (re.compile(r"TOT(AL)? STK MKT|TOTAL STOCK MARKET", re.I), "VTI"),
+    (re.compile(r"\b500\s+(IDX|INDEX)\b|S&P\s*500\s+(ETF|IDX|INDEX|TR|TRUST|FUND)|PORTFOLIO S&P 500", re.I), "VOO"),
+    (re.compile(r"^(?!.*\b(BD|BOND)\b).*\bINT(ERNATIONA)?L\b.*\b(STK|STOCK|EQUITY|IDX|INDEX)\b", re.I), "VXUS"),
+    (re.compile(r"^(?!.*\bINT(ERNATIONA)?L\b).*(\b(TOT(AL)?|AGG(REGATE)?|U\.?S\.?)\s+(BD|BOND)\b|\b(BD|BOND)\s+(MKT|MARKET|IDX|INDEX)\b)", re.I), "BND"),
+    (re.compile(r"\bTOT(AL)?\s+(U\.?S\.?\s+)?(STK|STOCK|MARKET|MKT)\b", re.I), "VTI"),
 ]
 
 _CASH_SYMBOLS = CASH_SYMBOLS = {"FCASH", "SPAXX", "FDRXX", "MVRXX", "CASH", "USD"}
@@ -99,7 +97,7 @@ def tracking_reference(bucket: str | None, benchmark: str) -> str | None:
 
 
 def lookthrough_proxy_for(name: str | None) -> str | None:
-    """The proxy ETF for a holding's name (e.g. "VANG INST 500 IDX TR" -> "VOO"); None when nothing matches."""
+    """The proxy ETF for a holding's name (e.g. "ACME INST 500 IDX TR" -> "VOO"); None when nothing matches."""
     if not name:
         return None
     for pattern, proxy in LOOKTHROUGH_PROXIES:

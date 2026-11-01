@@ -16,7 +16,7 @@ Measures the risk of the connected accounts from price history and stresses it a
 **Holdings that need special handling**
 
 - **Cash-like holdings.** A money-market fund or cash placeholder (SPAXX, MVRXX, FDRXX, FCASH, or a name like "Government Money Market") counts as cash, not as an unpriced position. `sources.cash_like` lists them.
-- **Institutional share classes.** A class Yahoo has no history for (a 401(k)'s "VANG INST 500 IDX TR") borrows its public twin's price history: VOO, VXUS, BND or VTI, matched by name, in one extra batched call.
+- **Institutional share classes.** A class Yahoo has no history for (a 401(k)'s "ACME INST 500 IDX TR") borrows its public twin's price history: VOO, VXUS, BND or VTI, matched by name, in one extra batched call.
   - `sources.proxies` maps each such symbol to its proxy, and a `PROXY_HISTORY` flag names them.
   - A failed proxy fetch leaves the class unpriced and adds `PROXY_HISTORY_UNAVAILABLE`.
   - Liquidity is null for a proxied class.
