@@ -79,6 +79,27 @@ function scene() {
 /** The record now lives in the data dir, where it survives plugin updates. */
 const installed = (data: string) => JSON.parse(fs.readFileSync(path.join(data, "installed.json"), "utf8"));
 
+describe("a skill extra that is on by default", () => {
+  const defaultOnRoot = () => {
+    const root = extrasRoot();
+    const file = path.join(root, "skills.json");
+    const catalog = JSON.parse(fs.readFileSync(file, "utf8"));
+    catalog.skills.find((s: { name: string }) => s.name === "c").default = true;
+    fs.writeFileSync(file, JSON.stringify(catalog));
+    return root;
+  };
+
+  it("is selected on a fresh install", () => {
+    expect(initialSelection(loadCatalog(defaultOnRoot()), opts([]), null).names).toContain("c");
+  });
+
+  it("stays off when an existing install has it off", () => {
+    const previous = record({ skills: ["a", "b"], extras: { c: false } });
+    expect(initialSelection(loadCatalog(defaultOnRoot()), opts([]), previous).names).not.toContain("c");
+    expect(initialSelection(loadCatalog(defaultOnRoot()), opts([]), previous, true).names).not.toContain("c");
+  });
+});
+
 describe("plain driver with extras", () => {
   it("a fresh install leaves extras off, records them, and reports them", async () => {
     const { root, environ, target, data } = scene();

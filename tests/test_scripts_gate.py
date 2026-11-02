@@ -227,11 +227,16 @@ def test_without_the_trade_journal_skill_bad_arguments_still_fail(data_dir, caps
 
 
 @pytest.mark.parametrize(
-    "record",
-    [None, '{"skills": [], "extras": {"trade-journal": false}}', '{"skills": ["trading"], "extras": {"follow_ups": true}}', "not json"],
+    "record, expected",
+    [
+        (None, "REVIEW"),
+        ("not json", "REVIEW"),
+        ('{"skills": [], "extras": {"trade-journal": false}}', "SKIP"),
+        ('{"skills": ["trading"], "extras": {"follow_ups": true}}', "SKIP"),
+    ],
 )
-def test_the_gate_skips_unless_the_record_turns_the_extra_on(data_dir, capsys, monkeypatch, record) -> None:
-    """A marketplace install ships the trade-journal skill to everyone; the extra stays opt-in."""
+def test_the_gate_follows_the_record_and_defaults_on_without_one(data_dir, capsys, monkeypatch, record, expected) -> None:
+    """A recorded choice stands. With no readable record, the extra's default applies, which is on."""
     from second_opinion import config
 
     monkeypatch.setattr(config, "PLUGIN_ROOT", data_dir / "no-root")
@@ -240,7 +245,7 @@ def test_the_gate_skips_unless_the_record_turns_the_extra_on(data_dir, capsys, m
     else:
         (data_dir / "installed.json").write_text(record)
     rc, out = _gate(["AAPL", "BUY", "5"], capsys)
-    assert rc == 0 and out["decision"] == "SKIP"
+    assert rc == 0 and out["decision"] == expected
 
 
 def test_a_copy_install_record_listing_the_skill_turns_the_gate_on(data_dir, capsys) -> None:

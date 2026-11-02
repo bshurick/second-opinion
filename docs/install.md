@@ -36,7 +36,7 @@ cd second-opinion
 node install.js
 ```
 
-The steps: check Node and Python, choose the core skills (all preselected), choose optional extras (all off), choose how brokerages connect (SnapTrade, E*Trade direct, or both) and enter only the keys your selection needs, review the plan, then install. The installer writes to exactly three places:
+The steps: check Node and Python, choose the core skills (all preselected), choose optional extras (the trade plan on, the others off), choose how brokerages connect (SnapTrade, E*Trade direct, or both) and enter only the keys your selection needs, review the plan, then install. The installer writes to exactly three places:
 
 | | Path |
 |---|---|
@@ -50,7 +50,7 @@ Re-run `node install.js` from your checkout to add or remove skills, change extr
 
 ## Optional extras
 
-All off unless you turn them on:
+`trade-journal` is on by default on a fresh install; the others are off unless you turn them on. Reinstalling keeps your earlier choices.
 
 | Key | Label | What it does |
 |---|---|---|

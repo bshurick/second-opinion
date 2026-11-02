@@ -37,7 +37,7 @@ Install the Second Opinion plugin for Claude Code with the skills you choose.
 Run it with no options for the guided installer.
 
 Selection        --all | --skills a,b,c | --without x,y      (default: the core skills, or the previous selection)
-                 --extras KEY=on|off,...   optional extras, off unless chosen: follow_ups, trade-journal, financial-education
+                 --extras KEY=on|off,...   optional extras: trade-journal (on by default), follow_ups, financial-education
 Credentials      --snaptrade-client-id ID --snaptrade-consumer-key KEY
                  --etrade-consumer-key KEY --etrade-consumer-secret SECRET [--etrade-sandbox]
                  --brokers snaptrade,etrade   which brokerage connections to configure (default: whichever keys are present)

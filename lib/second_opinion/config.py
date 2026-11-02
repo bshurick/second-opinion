@@ -126,15 +126,19 @@ def installed_record() -> dict | None:
     return None
 
 
+# Extras on when nothing has been recorded. Keep in step with "default" in skills.json, which is not installed.
+EXTRAS_ON_BY_DEFAULT = frozenset({"trade-journal"})
+
+
 def extra_enabled(key: str, record: dict | None = None) -> bool:
-    """Optional extras are opt-in: on only when the record says so; no record means off.
+    """Whether an optional extra is on. With no record, its default applies: see EXTRAS_ON_BY_DEFAULT.
 
     ``extras[key]`` decides when it is a boolean; otherwise a skill extra is on when the record's
     ``skills`` list names it (records written before skill extras were recorded in ``extras``).
     """
     rec = installed_record() if record is None else record
     if not rec:
-        return False
+        return key in EXTRAS_ON_BY_DEFAULT
     extras = rec.get("extras")
     if isinstance(extras, dict) and isinstance(extras.get(key), bool):
         return extras[key]

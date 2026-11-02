@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -157,6 +158,23 @@ def test_skill_extras_fall_back_to_the_skills_list() -> None:
     assert config.extra_enabled("trade-journal", {"skills": ["trade-journal"], "extras": {"follow_ups": False}}) is True
     assert config.extra_enabled("trade-journal", {"skills": ["trade-journal"], "extras": {"trade-journal": False}}) is False
     assert config.extra_enabled("trade-journal", {"skills": [], "extras": {}}) is False
+
+
+def test_with_no_record_an_extra_takes_its_default(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(config, "installed_record", lambda: None)
+    assert config.extra_enabled("trade-journal") is True
+    assert config.extra_enabled("financial-education") is False
+    assert config.extra_enabled("follow_ups") is False
+
+
+def test_a_recorded_off_beats_the_default() -> None:
+    assert config.extra_enabled("trade-journal", {"skills": [], "extras": {"trade-journal": False}}) is False
+
+
+def test_extras_on_by_default_match_the_catalog() -> None:
+    catalog = json.loads((Path(__file__).parent.parent / "skills.json").read_text())
+    declared = {s["name"] for s in catalog["skills"] if s.get("extra") and s.get("default")} | {e["key"] for e in catalog["extras"] if e.get("default")}
+    assert config.EXTRAS_ON_BY_DEFAULT == declared
 
 
 def test_parse_account_types() -> None:

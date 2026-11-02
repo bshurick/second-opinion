@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { coreSkills, loadCatalog, loadExtras, type Extra, type Skill } from "../engine/catalog.js";
 import { brokersFrom, type BrokerChoice, type EnvValues } from "../engine/env.js";
 import { InstallError } from "../engine/errors.js";
+import { resolveSelection } from "../engine/selection.js";
 import { applyExtras, extrasState, nonSkillDefaults, type ExtrasState } from "../engine/extras.js";
 import { buildPlan, initialExtras, initialSelection, initialValues, INSTALLER_VERSION, type Context, type Plan, type Preflight, type Summary } from "../engine/installer.js";
 import type { UninstallResult } from "../engine/link.js";
@@ -86,7 +87,7 @@ export function App({ ctx: initialCtx, commit, onExit }: Props) {
     }
     record("Fresh install", color.dim);
     if (sel.explicit || ctx.options.extras !== undefined) return startExplicit(pre, sel.names);
-    setPhase({ name: "pick", pre, initial: sel.names.filter((n) => coreNames.has(n)), scope: "core", nonSkill: nonSkillDefaults(extras, null) });
+    setPhase({ name: "pick", pre, initial: sel.names, scope: "core", nonSkill: nonSkillDefaults(extras, null) });
   };
 
   /** A /plugin install ships every skill: extras (unless --extras chose them), then keys. */
@@ -134,8 +135,9 @@ export function App({ ctx: initialCtx, commit, onExit }: Props) {
 
   const onPicked = (pre: Preflight, selected: string[], scope: "core" | "all", nonSkill: Record<string, boolean>) => {
     if (scope === "core" && extras.length) {
-      // The core step keeps any skill extras already chosen (after Back from review) for the extras step.
-      return openExtras(pre, selected, nonSkill, () => setPhase({ name: "pick", pre, initial: selected, scope: "core", nonSkill }));
+      // The core step keeps skill extras that are on by default or already chosen (after Back from review), unless it just dropped a skill they need.
+      const kept = resolveSelection(catalog, selected, { dropDependents: true }).names;
+      return openExtras(pre, kept, nonSkill, () => setPhase({ name: "pick", pre, initial: kept, scope: "core", nonSkill }));
     }
     record(`Skills ${glyph.dot} ${selected.length} of ${catalog.length} selected`);
     startCredentials(pre, selected, nonSkill);

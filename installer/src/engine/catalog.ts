@@ -9,9 +9,9 @@ export interface Skill {
   requires: Requirement[];
   dependsOn: string[];
   description: string;
-  /** An optional extra: off unless chosen, offered on the installer's Extras step. */
+  /** An optional extra, offered on the installer's Extras step. */
   extra: boolean;
-  /** Selected on a fresh install without selection flags. False only for extras declared default-off. */
+  /** Selected on a fresh install without selection flags. False only for extras not declared default-on. */
   defaultOn: boolean;
 }
 

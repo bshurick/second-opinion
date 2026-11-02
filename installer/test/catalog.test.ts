@@ -52,7 +52,7 @@ describe("catalog", () => {
     const extras = loadExtras(REAL_ROOT);
     expect(extras.map((e) => e.key)).toEqual(["trade-journal", "financial-education", "follow_ups"]);
     for (const e of extras) {
-      expect(e.defaultOn, e.key).toBe(false);
+      expect(e.defaultOn, e.key).toBe(e.key === "trade-journal");
       expect(e.label && e.blurb, e.key).toBeTruthy();
     }
     expect(extras.find((e) => e.key === "trade-journal")!.friction).toMatch(/every buy/);

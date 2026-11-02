@@ -86,7 +86,7 @@ so_record() {
   return 1
 }
 
-# Optional extras are opt-in: on only when the record says "<key>": true. No record, a record
+# For extras that default to off: on only when the record says "<key>": true. No record, a record
 # from before extras, or anything unreadable means off.
 so_extra_on() {
   so_record || return 1

@@ -23,8 +23,8 @@ export function parseExtrasFlag(raw: string, extras: Extra[]): Record<string, bo
 
 /**
  * Non-skill extras before any flag: the previous record's switch when it has one, else the
- * declared default. Extras are opt-in, so a missing record (or one written before extras
- * existed) leaves them at their defaults, which are off; hooks/common.sh reads it the same way.
+ * declared default. A missing record (or one written before extras existed) leaves them at
+ * their defaults, which are off for every non-skill extra; hooks/common.sh reads it the same way.
  */
 export function nonSkillDefaults(extras: Extra[], previous: InstalledRecord | null): Record<string, boolean> {
   const out: Record<string, boolean> = {};

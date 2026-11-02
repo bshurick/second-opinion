@@ -42,7 +42,7 @@ In Claude Code:
 
 Every skill is installed, including the two extra skills; the pre-buy check and suggested follow-up questions stay off until you turn them on. The Python virtualenv is built by the plugin's session-start hook the first time a session starts. Changes apply after `/reload-plugins` or in a new session.
 
-To add brokerage keys or turn on optional extras, run the installer from a terminal. It detects the marketplace install and only writes settings, never plugin files:
+To add brokerage keys or change optional extras, run the installer from a terminal. It detects the marketplace install and only writes settings, never plugin files:
 
 ```bash
 node ~/.claude/plugins/marketplaces/second-opinion/install.js
@@ -191,7 +191,7 @@ Saved results can be checked later without rerunning the research. Each check sa
 
 ## Skills
 
-27 skills. `setup` is always installed; `trade-journal` and `financial-education` are opt-in extras, as is suggested follow-up questions, which is not a skill but an instruction loaded at session start. **key** means a SnapTrade or E*Trade key; **EDGAR** means an SEC contact address in `EDGAR_USER_AGENT`.
+27 skills. `setup` is always installed. `trade-journal` is an optional extra that is on by default and adds a confirmation step to every buy. `financial-education` and suggested follow-up questions are opt-in extras; the follow-up questions are not a skill but an instruction loaded at session start. **key** means a SnapTrade or E*Trade key; **EDGAR** means an SEC contact address in `EDGAR_USER_AGENT`.
 
 | Family | Skill | What it does | Needs |
 |---|---|---|---|
@@ -205,7 +205,7 @@ Saved results can be checked later without rerunning the research. Each check sa
 | | risk-analysis | Volatility, beta, correlation, drawdown, VaR, crash replays, what-if shocks | key |
 | History and decisions | statement-import | Local ledger from CSV exports or two years of SnapTrade activity | key |
 | | trade-review | Round trips, win rate, disposition effect, buy-and-hold counterfactuals, a deep review of skill against luck | |
-| | trade-journal (extra) | Thesis, target, and exit written down; checked before each buy | trade-review |
+| | trade-journal (extra, on by default) | Thesis, target, and exit written down; checked before each buy | trade-review |
 | | tax-aware | Realized gains with wash sales, open lots, estimated tax, harvesting, lot choice, a deep comparison of multi-year plans | |
 | | spending | Card and bank exports or transcribed receipts; categories, recurring charges, cash flow | |
 | Planning | rebalancing | Drift, 5/25 bands, trade list, contribution and tax-aware sell routing | key |

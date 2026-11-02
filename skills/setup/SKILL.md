@@ -21,7 +21,7 @@ Installs or reconfigures this plugin by running its installer for the user. Keys
 - **Data directory.** Both routes keep settings in `~/.claude/plugins/data/second-opinion/` (or `$SECOND_OPINION_DATA`), so keys and extras survive plugin updates.
 - **Requirements.** The installer needs Node.js 20+, which Claude Code already requires.
 - **Brokerage choice.** If a brokerage is needed, the installer asks how it connects: SnapTrade (hosted portal, one free key), E*Trade direct (your developer key, real-time quotes, daily re-auth), or both.
-- **Optional extras.** Extras are opt-in: with no record they are off.
+- **Optional extras.** With no record, `trade-journal` is on and the others are off. A choice in the record always stands.
 
   | Key | What it is | Note |
   |---|---|---|
@@ -77,7 +77,7 @@ Find the route first (Background table). If neither `install.js` exists, ask the
 1. Say in two sentences what will happen.
    - Plugin install: "The installer saves your keys and optional extras in the plugin's data directory and builds a virtualenv with the three Python dependencies; Claude Code keeps managing the plugin files."
    - Guided install: "The installer copies the chosen skills plus the shared library into `~/.claude/plugins/second-opinion/`, builds a virtualenv with the three Python dependencies, saves your keys and extras in the data directory, links the plugin into `~/.claude/skills/`, and runs a smoke test."
-2. Guided install only, if the user has not said which skills they want, ask once: "The core skills are installed by default and three optional extras are off (suggested follow-up questions, the trade plan and pre-buy check, and lessons and quizzes); anything to leave out or turn on?" For a plugin install ask only about the extras. Do not ask again.
+2. Guided install only, if the user has not said which skills they want, ask once: "The core skills and the trade plan and pre-buy check are installed by default, and two optional extras are off (suggested follow-up questions, and lessons and quizzes); anything to leave out or turn on?" For a plugin install ask only about the extras. Do not ask again.
 3. If they ask what exists, show the family list and the extras (with their `label` and `blurb`) from `skills.json`.
 4. If a key is needed and none is set, follow "A key is needed" below instead of running the installer yourself.
 5. If the user wants to preview the plan before anything is written, run the command with `--dry-run` first.

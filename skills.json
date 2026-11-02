@@ -9,7 +9,7 @@
     {"name": "risk-analysis", "family": "Accounts and holdings", "requires": ["brokerage"], "depends_on": []},
     {"name": "statement-import", "family": "History and decisions", "requires": ["brokerage"], "depends_on": []},
     {"name": "trade-review", "family": "History and decisions", "requires": [], "depends_on": []},
-    {"name": "trade-journal", "family": "History and decisions", "requires": [], "depends_on": ["trade-review"], "extra": true, "default": false, "label": "Trade plan and pre-buy check", "blurb": "Write down why you are buying, your target and your exit; before each order Claude checks it against that plan.", "friction": "Adds a confirmation step to every buy."},
+    {"name": "trade-journal", "family": "History and decisions", "requires": [], "depends_on": ["trade-review"], "extra": true, "default": true, "label": "Trade plan and pre-buy check", "blurb": "Write down why you are buying, your target and your exit; before each order Claude checks it against that plan.", "friction": "Adds a confirmation step to every buy."},
     {"name": "tax-aware", "family": "History and decisions", "requires": [], "depends_on": []},
     {"name": "spending", "family": "History and decisions", "requires": [], "depends_on": []},
     {"name": "rebalancing", "family": "Planning", "requires": ["brokerage"], "depends_on": []},

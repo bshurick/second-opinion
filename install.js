@@ -36953,7 +36953,7 @@ Install the Second Opinion plugin for Claude Code with the skills you choose.
 Run it with no options for the guided installer.
 
 Selection        --all | --skills a,b,c | --without x,y      (default: the core skills, or the previous selection)
-                 --extras KEY=on|off,...   optional extras, off unless chosen: follow_ups, trade-journal, financial-education
+                 --extras KEY=on|off,...   optional extras: trade-journal (on by default), follow_ups, financial-education
 Credentials      --snaptrade-client-id ID --snaptrade-consumer-key KEY
                  --etrade-consumer-key KEY --etrade-consumer-secret SECRET [--etrade-sandbox]
                  --brokers snaptrade,etrade   which brokerage connections to configure (default: whichever keys are present)
@@ -39001,7 +39001,7 @@ function ExtrasScreen({ extras, initial, onDone, onCustomize, onCancel }) {
   if (onCancel) hints.push(["esc", "back"]);
   return /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(Box_default, { flexDirection: "column", children: [
     /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(Text, { bold: true, children: "Optional extras" }),
-    /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(Text, { color: color.dim, wrap: "wrap", children: "Off unless you turn them on. Change them any time by running the installer again, or ask Claude to turn one on or off." }),
+    /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(Text, { color: color.dim, wrap: "wrap", children: "Change them any time by running the installer again, or ask Claude to turn one on or off." }),
     /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(Box_default, { flexDirection: "column", marginTop: 1, children: extras.map((e, i) => {
       const active = i === cursor;
       const isOn = state[e.key];
@@ -39587,7 +39587,7 @@ function App2({ ctx: initialCtx, commit, onExit }) {
     }
     record("Fresh install", color.dim);
     if (sel.explicit || ctx.options.extras !== void 0) return startExplicit(pre, sel.names);
-    setPhase({ name: "pick", pre, initial: sel.names.filter((n) => coreNames.has(n)), scope: "core", nonSkill: nonSkillDefaults(extras, null) });
+    setPhase({ name: "pick", pre, initial: sel.names, scope: "core", nonSkill: nonSkillDefaults(extras, null) });
   };
   const startConfigure = (pre) => {
     let sel;
@@ -39625,7 +39625,8 @@ function App2({ ctx: initialCtx, commit, onExit }) {
   };
   const onPicked = (pre, selected, scope, nonSkill) => {
     if (scope === "core" && extras.length) {
-      return openExtras(pre, selected, nonSkill, () => setPhase({ name: "pick", pre, initial: selected, scope: "core", nonSkill }));
+      const kept = resolveSelection(catalog, selected, { dropDependents: true }).names;
+      return openExtras(pre, kept, nonSkill, () => setPhase({ name: "pick", pre, initial: kept, scope: "core", nonSkill }));
     }
     record(`Skills ${glyph.dot} ${selected.length} of ${catalog.length} selected`);
     startCredentials(pre, selected, nonSkill);

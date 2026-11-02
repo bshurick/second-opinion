@@ -437,6 +437,46 @@ describe("App wizard", () => {
     expect(lastFrame()).toContain("Extras • Skill C extra");
   });
 
+  const defaultOnExtra = (dependsOn: string[]) => {
+    const root = extrasRoot();
+    const file = path.join(root, "skills.json");
+    const catalog = JSON.parse(fs.readFileSync(file, "utf8"));
+    Object.assign(catalog.skills.find((s: { name: string }) => s.name === "c"), { default: true, depends_on: dependsOn });
+    fs.writeFileSync(file, JSON.stringify(catalog));
+    return root;
+  };
+
+  it("a fresh install shows a default-on extra as on and keeps it", async () => {
+    const home = tmpDir();
+    const ctx = createContext(defaultOnExtra(["a"]), opts([]), { HOME: home, SECOND_OPINION_DATA: path.join(home, "data") }, new FakeRunner());
+    const { lastFrame, stdin } = render(<App ctx={ctx} commit={null} onExit={() => {}} />);
+    for (let i = 0; i < 50 && !lastFrame()!.includes("Choose the core skills"); i++) await tick();
+    stdin.write(ENTER);
+    await tick();
+    expect(lastFrame()).toContain("Optional extras");
+    stdin.write(ENTER);
+    await tick();
+    expect(lastFrame()).toContain("Skills • 3 of 3 selected");
+    expect(lastFrame()).toContain("Extras • Skill C extra");
+  });
+
+  it("dropping the skill a default-on extra needs turns the extra off, not the skill back on", async () => {
+    const home = tmpDir();
+    const ctx = createContext(defaultOnExtra(["b"]), opts([]), { HOME: home, SECOND_OPINION_DATA: path.join(home, "data") }, new FakeRunner());
+    const { lastFrame, stdin } = render(<App ctx={ctx} commit={null} onExit={() => {}} />);
+    for (let i = 0; i < 50 && !lastFrame()!.includes("Choose the core skills"); i++) await tick();
+    stdin.write(DOWN);
+    stdin.write(" ");
+    await tick();
+    stdin.write(ENTER);
+    await tick();
+    expect(lastFrame()).toContain("Optional extras");
+    stdin.write(ENTER);
+    await tick();
+    expect(lastFrame()).toContain("Skills • 1 of 3 selected");
+    expect(lastFrame()).toContain("Extras • all off");
+  });
+
   it("a catalog without extras skips the extras step", async () => {
     const root = miniRoot();
     const home = tmpDir();

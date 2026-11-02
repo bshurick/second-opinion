@@ -12,7 +12,7 @@ Each setting is read in this order, first match wins:
 
 Nothing is written back to `.env` by the scripts. It is plaintext, the same trust model as most developer tools; see [SECURITY.md](../SECURITY.md).
 
-`installed.json` records the installed skills, the extras that are on, and (for a guided install) `source_path`, the checkout the installer ran from. Extras are opt-in: only `"<key>": true` turns one on.
+`installed.json` records the installed skills, the extras that are on, and (for a guided install) `source_path`, the checkout the installer ran from. A record's `"<key>"` decides. With no record, `trade-journal` is on and the other extras are off.
 
 ## Environment variables
 

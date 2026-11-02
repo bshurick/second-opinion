@@ -255,7 +255,7 @@ def _skip(ns: argparse.Namespace) -> dict:
 
 def run(argv: list[str]) -> dict:
     ns = _parse(argv)
-    # Opt-in: a marketplace install ships every skill, so the directory alone is not consent.
+    # A marketplace install ships every skill, so the directory alone does not mean the extra is on.
     if not _JOURNAL_DIR.is_dir() or not config.extra_enabled("trade-journal"):
         return _skip(ns)
     import journal as journal_mod  # noqa: PLC0415 — trade-journal's store, present only with that extra

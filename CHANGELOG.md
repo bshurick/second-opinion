@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- trade-journal: on by default on a fresh install, including its pre-buy check. Existing installs keep their recorded choice.
 - installer: the skill picker and the extras screen no longer lose a key pressed right after another. Enter could act on the selection from before the last key, which also made a CI test fail now and then.
 - trade-review: a deep review of skill against luck. It picks the largest decisions by money moved, researchers rebuild what was public before each, and a grader who sees no results grades them. `decisions.py` rejects evidence dated after a decision, sets each grade against its result and groups the results, `render_decisions.py` builds the page, and `decision_store.py check` re-measures results with the grades frozen.
 - tax-aware: a deep comparison of multi-year plans for lot sales, loss harvesting and Roth conversions. Rule checkers confirm each rule against primary sources. `tax_plans.py` runs each plan year by year on cited tables, compares after-tax wealth at one end date and reruns under other assumptions, `render_plans.py` builds the page, and `plan_store.py check` reruns the plans on newer lots. It names no plan to take.

@@ -22,7 +22,7 @@ Keeps the user's pre-trade journal and reviews it against what happened. The ent
 - **Conviction.** Conviction predicts results when the judgment behind it is sound. If 5s do no better than 2s, sizing by conviction adds risk without return.
 - **Overstayed entries.** Overstayed and stale-open entries are the disposition effect in plan form: the loser that was going to be sold at the stop and was not.
 - **Other skills.** Placing the order is portfolio-analysis's protocol. The trade-review skill supplies the round trips (with dividends) and the news context; this skill supplies the intent. Together they answer "was this a good decision at the time?"
-- **Optional extra.** This skill, and the pre-buy check that comes with it, is an optional extra. The setup skill turns it off with `--extras trade-journal=off`. The journal file stays in the data directory, so turning it back on restores the entries.
+- **Optional extra.** This skill, and the pre-buy check that comes with it, is an optional extra, on by default. The setup skill turns it off with `--extras trade-journal=off`. The journal file stays in the data directory, so turning it back on restores the entries.
 
 ## Scripts
 

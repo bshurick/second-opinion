@@ -15,7 +15,7 @@ interface Props {
 }
 
 /**
- * Optional extras in plain words, all off unless the user turns them on. Each row says
+ * Optional extras in plain words, each at its default until the user changes it. Each row says
  * what the extra does and, when it has one, what it costs (an extra step, a longer reply).
  */
 export function ExtrasScreen({ extras, initial, onDone, onCustomize, onCancel }: Props) {
@@ -51,7 +51,7 @@ export function ExtrasScreen({ extras, initial, onDone, onCustomize, onCancel }:
     <Box flexDirection="column">
       <Text bold>Optional extras</Text>
       <Text color={color.dim} wrap="wrap">
-        Off unless you turn them on. Change them any time by running the installer again, or ask Claude to turn one on or off.
+        Change them any time by running the installer again, or ask Claude to turn one on or off.
       </Text>
       <Box flexDirection="column" marginTop={1}>
         {extras.map((e, i) => {
