@@ -147,6 +147,42 @@ Skills that produce a report publish an interactive page, hosted as a private Ar
 
 </details>
 
+## Skills
+
+27 skills. `setup` is always installed. `trade-journal` is an optional extra that is on by default and adds a confirmation step to every buy. `financial-education` and suggested follow-up questions are opt-in extras; the follow-up questions are not a skill but an instruction loaded at session start. **key** means a SnapTrade or E*Trade key; **EDGAR** means an SEC contact address in `EDGAR_USER_AGENT`.
+
+| Family | Skill | What it does | Needs |
+|---|---|---|---|
+| Getting started | onboarding | Six-question interview, a profile, next steps and starter questions | |
+| | setup | Install, reconfigure, or repair the plugin; extras on or off | |
+| Accounts and holdings | connect | Link, relink, or inspect brokerage connections | key |
+| | portfolio-snapshot | Daily brief of every account, with headlines from the other skills | key |
+| | portfolio-analysis | Allocation, concentration, performance against a benchmark, a deep review of the beliefs your holdings share, order preview and placement | key |
+| | dividend-income | Projected income, yields, trailing 12 months, ex-dates, payer safety | key |
+| | watchlist | Alert rules checked when you ask or by a cron job, not pushed | |
+| | risk-analysis | Volatility, beta, correlation, drawdown, VaR, crash replays, what-if shocks | key |
+| History and decisions | statement-import | Local ledger from CSV exports or two years of SnapTrade activity | key |
+| | trade-review | Round trips, win rate, disposition effect, buy-and-hold counterfactuals, a deep review of skill against luck | |
+| | trade-journal (extra, on by default) | Thesis, target, and exit written down; checked before each buy | trade-review |
+| | tax-aware | Realized gains with wash sales, open lots, estimated tax, harvesting, lot choice, a deep comparison of multi-year plans | |
+| | spending | Card and bank exports or transcribed receipts; categories, recurring charges, cash flow | |
+| Planning | rebalancing | Drift, 5/25 bands, trade list, contribution and tax-aware sell routing | key |
+| | core-satellite | ETF vs individual-stock mix, a satellite ceiling, picks split equally, by market cap, by deep valuation or by size, new-pick sizing, step-up plans, rebalancing on request | key |
+| | retirement | Monte Carlo projection, nest egg required, withdrawal rates | key |
+| | real-estate | Mortgage, refinance, rent vs buy, rental underwriting, affordability, REIT metrics, a deep review of one property or market | |
+| | personal-finance | Budgeting, debt payoff, cash-flow planning, reminders | |
+| | debt-tracker | Card and loan statements recorded from PDFs; balances, APRs, interest paid | |
+| Research and markets | valuation | DCF, dividend discount, multiples, Graham and Buffett intrinsic value, and a [deep mode](#deep-research) that researches filings and values named scenarios | deep mode: EDGAR |
+| | fundamental-research | SEC EDGAR financials, quality checklist, 10-K/10-Q reader, 13F diffs | EDGAR |
+| | stock-screener | Every US-listed company's filings screened seven ways (growth, value, quality, GARP, magic formula, Graham, payout), a look-back check on past picks, a [deep picker](#deep-research), and re-checks of saved picks against their valuation | EDGAR |
+| | options | Chains, implied volatility, expected move, greeks, payoffs | |
+| | trading | Price action and technicals for one security, plus the order scripts | key |
+| | market-analysis | Indices, sectors, yields, earnings calendar, market flows | |
+| | fixed-income | What bonds earn held to your horizon, and the rate path the price implies | |
+| Learning | financial-education (extra) | One concept at a time with worked numbers, sources, and quizzes | |
+
+Every script behind these skills, with flags and exit codes, is in [docs/scripts.md](docs/scripts.md).
+
 ## Deep research
 
 Six modes go beyond the scripted answers. Research subagents work through primary sources and the news, so a run takes longer and uses much more of your Claude usage than an ordinary question.
@@ -188,42 +224,6 @@ Saved results can be checked later without rerunning the research. Each check sa
   - report pages, which Claude Code publishes as private Artifacts on your claude.ai account. Ask for the answer in chat if you do not want a page published.
 
 **How it differs.** Anthropic's financial-services plugins are built for analysts at firms; Second Opinion is for your own household. SnapTrade's hosted, read-only [MCP server](https://docs.snaptrade.com/docs/mcp-server) shows balances and positions in chat with no API key and is simpler if that is all you want; it does no analysis and cannot place orders. This plugin adds the analysis, a local ledger that outlives SnapTrade's two-year activity window, and gated order preview and placement, which is why it uses a Personal API key (or E*Trade's own API) rather than OAuth.
-
-## Skills
-
-27 skills. `setup` is always installed. `trade-journal` is an optional extra that is on by default and adds a confirmation step to every buy. `financial-education` and suggested follow-up questions are opt-in extras; the follow-up questions are not a skill but an instruction loaded at session start. **key** means a SnapTrade or E*Trade key; **EDGAR** means an SEC contact address in `EDGAR_USER_AGENT`.
-
-| Family | Skill | What it does | Needs |
-|---|---|---|---|
-| Getting started | onboarding | Six-question interview, a profile, next steps and starter questions | |
-| | setup | Install, reconfigure, or repair the plugin; extras on or off | |
-| Accounts and holdings | connect | Link, relink, or inspect brokerage connections | key |
-| | portfolio-snapshot | Daily brief of every account, with headlines from the other skills | key |
-| | portfolio-analysis | Allocation, concentration, performance against a benchmark, a deep review of the beliefs your holdings share, order preview and placement | key |
-| | dividend-income | Projected income, yields, trailing 12 months, ex-dates, payer safety | key |
-| | watchlist | Alert rules checked when you ask or by a cron job, not pushed | |
-| | risk-analysis | Volatility, beta, correlation, drawdown, VaR, crash replays, what-if shocks | key |
-| History and decisions | statement-import | Local ledger from CSV exports or two years of SnapTrade activity | key |
-| | trade-review | Round trips, win rate, disposition effect, buy-and-hold counterfactuals, a deep review of skill against luck | |
-| | trade-journal (extra, on by default) | Thesis, target, and exit written down; checked before each buy | trade-review |
-| | tax-aware | Realized gains with wash sales, open lots, estimated tax, harvesting, lot choice, a deep comparison of multi-year plans | |
-| | spending | Card and bank exports or transcribed receipts; categories, recurring charges, cash flow | |
-| Planning | rebalancing | Drift, 5/25 bands, trade list, contribution and tax-aware sell routing | key |
-| | core-satellite | ETF vs individual-stock mix, a satellite ceiling, picks split equally, by market cap, by deep valuation or by size, new-pick sizing, step-up plans, rebalancing on request | key |
-| | retirement | Monte Carlo projection, nest egg required, withdrawal rates | key |
-| | real-estate | Mortgage, refinance, rent vs buy, rental underwriting, affordability, REIT metrics, a deep review of one property or market | |
-| | personal-finance | Budgeting, debt payoff, cash-flow planning, reminders | |
-| | debt-tracker | Card and loan statements recorded from PDFs; balances, APRs, interest paid | |
-| Research and markets | valuation | DCF, dividend discount, multiples, Graham and Buffett intrinsic value, and a [deep mode](#deep-research) that researches filings and values named scenarios | deep mode: EDGAR |
-| | fundamental-research | SEC EDGAR financials, quality checklist, 10-K/10-Q reader, 13F diffs | EDGAR |
-| | stock-screener | Every US-listed company's filings screened seven ways (growth, value, quality, GARP, magic formula, Graham, payout), a look-back check on past picks, a [deep picker](#deep-research), and re-checks of saved picks against their valuation | EDGAR |
-| | options | Chains, implied volatility, expected move, greeks, payoffs | |
-| | trading | Price action and technicals for one security, plus the order scripts | key |
-| | market-analysis | Indices, sectors, yields, earnings calendar, market flows | |
-| | fixed-income | What bonds earn held to your horizon, and the rate path the price implies | |
-| Learning | financial-education (extra) | One concept at a time with worked numbers, sources, and quizzes | |
-
-Every script behind these skills, with flags and exit codes, is in [docs/scripts.md](docs/scripts.md).
 
 ## Safety and disclaimer
 
