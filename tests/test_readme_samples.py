@@ -13,11 +13,11 @@ README = PLUGIN_ROOT / "README.md"
 
 # image name -> (renderer, render.py arguments naming fixtures in docs/samples)
 PAGES = {
-    "portfolio-brief": ("portfolio-snapshot/scripts/render.py", ["--in", "portfolio-brief.json", "--summary", "portfolio-brief-summary.json"]),
+    "portfolio-brief": ("portfolio-analysis/scripts/render_brief.py", ["--in", "portfolio-brief.json", "--summary", "portfolio-brief-summary.json"]),
     "risk-analysis": ("risk-analysis/scripts/render.py", ["--in", "risk-analysis.json"]),
     "valuation": ("valuation/scripts/render.py", ["--in", "valuation.json"]),
     "retirement": ("retirement/scripts/render.py", ["--in", "retirement.json"]),
-    "rebalancing": ("rebalancing/scripts/render.py", ["--in", "rebalancing.json"]),
+    "rebalancing": ("portfolio-plan/scripts/render.py", ["--in", "rebalancing.json"]),
     "spending": ("spending/scripts/render.py", ["--in", "spending-month.json", "--changes", "spending-changes.json"]),
     "fixed-income": ("fixed-income/scripts/render.py", ["--in", "fixed-income.json"]),
 }
@@ -40,8 +40,8 @@ def test_sample_fixture_still_renders(name, tmp_path, capsys) -> None:
 def test_build_script_and_this_test_cover_the_same_pages() -> None:
     build = _build_script()
     assert set(build.PAGES) == set(PAGES)
-    for name, (skill, args, _crop) in build.PAGES.items():
-        assert PAGES[name] == (f"{skill}/scripts/render.py", args)
+    for name, (renderer, args, _crop) in build.PAGES.items():
+        assert PAGES[name] == (renderer, args)
 
 
 def test_readme_images_exist_and_none_are_orphaned() -> None:

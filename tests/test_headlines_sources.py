@@ -34,8 +34,8 @@ def _source(tmp_path, monkeypatch, *, name="stub", ready=None, commands=None, br
 
 def test_registry_lists_twelve_sources_in_brief_order() -> None:
     assert [s.skill for s in S.SOURCES] == [
-        "watchlist", "market-analysis", "portfolio-snapshot", "fundamental-research", "rebalancing", "tax-aware",
-        "dividend-income", "risk-analysis", "trade-journal", "debt-tracker", "spending", "statement-import"]
+        "watchlist", "market-analysis", "portfolio-analysis", "fundamental-research", "portfolio-plan", "tax-aware",
+        "dividend-income", "risk-analysis", "trade-journal", "personal-finance", "spending", "statement-import"]
     assert S.SOURCE_ORDER == [s.skill for s in S.SOURCES]
 
 
@@ -61,7 +61,7 @@ def test_missing_skill_directory_is_skipped_without_running(tmp_path, monkeypatc
     calls = []
     hs, cov = S.run_all(_ctx(tmp_path), runner=lambda a, t: calls.append(a) or (0, "{}", ""), sources=[src])
     assert hs == [] and calls == []
-    assert cov[0]["status"] == "skipped" and cov[0]["reason"] == "skill not installed" and cov[0]["hint"] == "install it with the setup skill"
+    assert cov[0]["status"] == "skipped" and cov[0]["reason"] == "skill not installed" and cov[0]["hint"] == "install it with the get-started skill"
 
 
 def test_not_ready_source_is_skipped_with_its_hint(tmp_path, monkeypatch) -> None:
@@ -258,12 +258,12 @@ def test_run_all_stores_raw_results_per_source_under_ctx_results(tmp_path, monke
 
 
 def _ex_dividend_headline(sym: str = "KO") -> dict:
-    return S.H.make("portfolio-snapshot", "EX_DIVIDEND", "alert", f"{sym} goes ex-dividend on 2026-09-18",
+    return S.H.make("portfolio-analysis", "EX_DIVIDEND", "alert", f"{sym} goes ex-dividend on 2026-09-18",
                     symbol=sym, discriminator="2026-09-18", as_of="2026-09-14", answer="")
 
 
 def _earnings_headline(sym: str = "KO") -> dict:
-    return S.H.make("portfolio-snapshot", "EARNINGS", "alert", f"{sym} reports earnings on 2026-09-18",
+    return S.H.make("portfolio-analysis", "EARNINGS", "alert", f"{sym} reports earnings on 2026-09-18",
                     symbol=sym, discriminator="2026-09-18", as_of="2026-09-14", answer="")
 
 

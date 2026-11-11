@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { ALWAYS_SKILLS } from "./catalog.js";
+import { ALWAYS_SKILLS, canonicalSkills } from "./catalog.js";
+import { InstallError } from "./errors.js";
 import type { Runner } from "./runner.js";
 
 export const INSTALLER_VERSION: string = process.env.INSTALLER_VERSION ?? "2.0.0-dev";
@@ -13,8 +14,8 @@ export interface InstalledRecord {
   source_commit: string | null;
   installer_version: string;
   installed_at: string;
-  /** Every optional extra on or off (non-skill switches such as follow_ups, and skill extras such as
-   *  trade-journal). Absent in records written before extras existed; only `true` turns one on. */
+  /** Optional switches on or off, as the installer sees them: read from settings.json, over a legacy
+   *  installed.json `extras` map. Never written to installed.json any more. */
   extras?: Record<string, boolean>;
   /** "copy" (node install.js copied the plugin) or "configure" (Claude Code manages the files). */
   mode?: "copy" | "configure";
@@ -37,9 +38,114 @@ export function readRecord(dirs: (string | null | undefined)[]): InstalledRecord
   for (const dir of dirs) {
     if (!dir) continue;
     const rec = readInstalled(dir);
-    if (rec) return rec;
+    if (!rec) continue;
+    const fromSettings = readSettingsSwitches(dirs);
+    return fromSettings ? { ...rec, extras: { ...(rec.extras ?? {}), ...fromSettings } } : rec;
   }
   return null;
+}
+
+/** installer extras key -> settings.json key (as second_opinion.config.EXTRA_SETTINGS). */
+export const SWITCH_KEYS: Record<string, string> = {
+  follow_ups: "replies.follow_ups",
+  "trade-journal": "guardrails.pre_buy_check",
+  "financial-education": "lessons",
+};
+
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** settings.json in dir as an object; null when absent. Throws InstallError when corrupt or from a newer schema. */
+function loadSettingsFile(dir: string): Record<string, unknown> | null {
+  const p = path.join(dir, "settings.json");
+  let raw: string;
+  try {
+    raw = fs.readFileSync(p, "utf8");
+  } catch {
+    return null;
+  }
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    throw new InstallError(`${p} is not valid JSON`, "fix or delete that file, then run the installer again");
+  }
+  if (!isObj(data)) throw new InstallError(`${p} is not a JSON object`, "fix or delete that file, then run the installer again");
+  if (typeof data.schema === "number" && data.schema > 2) {
+    throw new InstallError(`${p} was written by a newer Second Opinion (schema ${data.schema})`, "update this plugin, then run the installer again");
+  }
+  return data;
+}
+
+/** Switches recorded in the first readable settings.json among these directories; only keys present are returned. */
+export function readSettingsSwitches(dirs: (string | null | undefined)[]): Record<string, boolean> | null {
+  for (const dir of dirs) {
+    if (!dir) continue;
+    let data: Record<string, unknown> | null;
+    try {
+      data = loadSettingsFile(dir);
+    } catch {
+      continue;
+    }
+    if (!data) continue;
+    const out: Record<string, boolean> = {};
+    for (const [key, dotted] of Object.entries(SWITCH_KEYS)) {
+      let cur: unknown = data;
+      for (const k of dotted.split(".")) cur = isObj(cur) ? cur[k] : undefined;
+      if (typeof cur === "boolean") out[key] = cur;
+    }
+    return out;
+  }
+  return null;
+}
+
+/** Refuse early (before any write) when dir/settings.json is corrupt or from a newer schema. */
+export function checkSettings(dir: string): void {
+  loadSettingsFile(dir);
+}
+
+/**
+ * Save the switches (follow_ups, trade-journal, financial-education) through the plugin's own settings
+ * CLI, run by the system Python found in preflight (that CLI imports only the standard library, so it
+ * works before the venv exists). Going through Python means the first write also migrates the older
+ * files into settings.json. A switch already saved with the same value is not written again.
+ */
+export async function writeSwitches(
+  runner: Runner,
+  python: string[],
+  pluginRoot: string,
+  dataDir: string,
+  extras: Record<string, boolean>,
+): Promise<void> {
+  const script = path.join(pluginRoot, "skills", "get-started", "scripts", "settings.py");
+  for (const [key, dotted] of Object.entries(SWITCH_KEYS)) {
+    const want = extras[key];
+    if (typeof want !== "boolean") continue;
+    if (readSettingsSwitches([dataDir])?.[key] === want) continue;
+    const r = await runner.run([...python, script, "set", dotted, want ? "on" : "off"], {
+      env: { ...process.env, SECOND_OPINION_DATA: dataDir },
+      timeoutMs: 60_000,
+    });
+    if (r.code !== 0) throw settingsCliError(r, dotted, dataDir);
+  }
+}
+
+function settingsCliError(r: { code: number; stdout: string; stderr: string }, dotted: string, dataDir: string): InstallError {
+  let body: { error?: unknown; hint?: unknown } = {};
+  try {
+    const parsed = JSON.parse(r.stdout) as unknown;
+    if (isObj(parsed)) body = parsed;
+  } catch {
+    // not JSON: fall back to the raw output below
+  }
+  const file = path.join(dataDir, "settings.json");
+  const why = typeof body.error === "string" ? body.error : (r.stderr || r.stdout).trim().split(/\r?\n/).pop() || `exit ${r.code}`;
+  const hint =
+    typeof body.hint === "string" && body.hint
+      ? body.hint
+      : r.code === 5
+        ? `${file} is corrupt or was written by a newer Second Opinion; fix or move it aside, then run the installer again`
+        : "check the Python found by the installer works, then run the installer again";
+  return new InstallError(`could not save ${dotted} to settings.json: ${why}`, hint);
 }
 
 export function readInstalled(target: string): InstalledRecord | null {
@@ -54,7 +160,7 @@ export function readInstalled(target: string): InstalledRecord | null {
         ? Object.fromEntries(Object.entries(rawExtras).filter((kv): kv is [string, boolean] => typeof kv[1] === "boolean"))
         : undefined;
     return {
-      skills: Array.isArray(rec.skills) ? rec.skills.filter((s): s is string => typeof s === "string") : [],
+      skills: Array.isArray(rec.skills) ? canonicalSkills(rec.skills.filter((s): s is string => typeof s === "string")) : [],
       source_path: typeof rec.source_path === "string" ? rec.source_path : "",
       source_commit: typeof rec.source_commit === "string" ? rec.source_commit : null,
       installer_version: typeof rec.installer_version === "string" ? rec.installer_version : "",
@@ -110,8 +216,6 @@ export interface MaterializeOptions {
   /** Extra work on the staged tree before the swap; throwing leaves the old target intact. */
   build?: (staging: string) => void;
   now?: () => Date;
-  /** Extras written to installed.json. */
-  extras?: Record<string, boolean>;
   /** Where .env and installed.json go: the data dir in a real run; the target when omitted. */
   configDir?: string;
 }
@@ -119,7 +223,6 @@ export interface MaterializeOptions {
 export interface RecordOptions {
   commit?: string | null;
   now?: () => Date;
-  extras?: Record<string, boolean>;
   mode?: "copy" | "configure";
 }
 
@@ -130,13 +233,13 @@ export function makeRecord(root: string, skills: string[], opts: RecordOptions =
     source_commit: opts.commit ?? null,
     installer_version: INSTALLER_VERSION,
     installed_at: (opts.now?.() ?? new Date()).toISOString().replace(/\.\d{3}Z$/, "+00:00"),
-    extras: { ...(opts.extras ?? {}) },
     ...(opts.mode ? { mode: opts.mode } : {}),
   };
 }
 
-/** Write .env (0600) and installed.json into dir, each through a temp file and a rename. */
+/** Write .env (0600) and installed.json into dir, each through a temp file and a rename; switches go through writeSwitches. */
 export function writeConfig(dir: string, envText: string, record: InstalledRecord): void {
+  checkSettings(dir);
   fs.mkdirSync(dir, { recursive: true });
   const env = path.join(dir, ".env");
   fs.writeFileSync(`${env}.tmp`, envText, { mode: 0o600 });
@@ -147,7 +250,7 @@ export function writeConfig(dir: string, envText: string, record: InstalledRecor
   }
   fs.renameSync(`${env}.tmp`, env);
   const rec = path.join(dir, "installed.json");
-  fs.writeFileSync(`${rec}.tmp`, JSON.stringify(record, null, 1) + "\n");
+  fs.writeFileSync(`${rec}.tmp`, JSON.stringify({ ...record, extras: undefined }, null, 1) + "\n");
   fs.renameSync(`${rec}.tmp`, rec);
 }
 
@@ -163,7 +266,8 @@ export function materialize(root: string, target: string, skills: string[], envT
   const old = path.join(parent, `${path.basename(target)}.previous`);
   for (const stale of [building, old]) if (fs.existsSync(stale)) fs.rmSync(stale, { recursive: true, force: true });
   fs.mkdirSync(parent, { recursive: true });
-  const record = makeRecord(root, skills, { commit: opts.commit, now: opts.now, extras: opts.extras, mode: "copy" });
+  const record = makeRecord(root, skills, { commit: opts.commit, now: opts.now, mode: "copy" });
+  if (opts.configDir) checkSettings(opts.configDir);
   try {
     buildTree(root, building, skills);
     if (!opts.configDir) writeConfig(building, envText, record);

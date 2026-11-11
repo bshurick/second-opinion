@@ -25,7 +25,7 @@ Analyzes listed options: what the chain is pricing, what a contract's greeks are
   - the contract's greeks and the strategy's payoff diagram with breakevens marked
   - the assignment candidates and the risk notes
 - **Curves the page draws itself.** `render.py`'s docstring names the two curves drawn from the scripts' numbers: the cone between today and expiry, and a single contract's payoff when only `greeks` ran.
-- **Other skills.** The plugin trades equities only, through portfolio-analysis. Options orders are not implemented.
+- **Other skills.** The plugin trades equities only, through the trading skill. Options orders are not implemented.
 
 ## Scripts
 
@@ -56,7 +56,7 @@ All scripts print JSON.
 | 2 | Bad input or unknown expiry | `error`, which lists available expiries |
 | 2 from `render.py` | The input is not a chain result | `error` |
 | 5 | Yahoo error | the error |
-| 6 | Python dependencies missing | the error, and say the setup skill repairs it |
+| 6 | Python dependencies missing | the error, and say the get-started skill repairs it |
 
 ## Steps
 

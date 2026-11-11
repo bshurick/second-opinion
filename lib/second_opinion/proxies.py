@@ -10,7 +10,7 @@ $1.00 and belong with cash rather than among priced positions.
 intl_equity, cash, other) from its quote type, fund category, country and name, and
 ``tracking_reference`` names the index fund a bucket's tracking error is measured against.
 
-The tables and ``asset_bucket`` here are copies of the ones in the portfolio-snapshot skill's
+The tables and ``asset_bucket`` here are copies of the ones in the portfolio-analysis skill's
 ``summary.py``, which must stay a stdlib-only script and
 so cannot import this module; ``tests/test_proxies.py`` asserts the copies stay equal.
 """

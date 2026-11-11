@@ -7,7 +7,7 @@ import sys
 import pytest
 from scripts_util import load_script, run_json
 
-SCRIPT = "debt-tracker/scripts/record-statement.py"
+SCRIPT = "personal-finance/scripts/record-statement.py"
 
 
 @pytest.fixture

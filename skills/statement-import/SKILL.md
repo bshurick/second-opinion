@@ -58,7 +58,7 @@ Every script prints JSON.
 | 4 | Credentials missing | Show the `hint`. |
 | 4 with code `ETRADE_REAUTH` | An E*Trade login is needed | Follow the E*Trade login steps below. |
 | 5 | SnapTrade error or a corrupt ledger | Show the error. Code `LEDGER_CORRUPT` carries a `hint`; show it. |
-| 6 | Python dependencies missing | Show the error, and say the setup skill repairs it. |
+| 6 | Python dependencies missing | Show the error, and say the get-started skill repairs it. |
 
 ## Steps
 

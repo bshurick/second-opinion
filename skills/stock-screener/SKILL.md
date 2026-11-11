@@ -68,12 +68,9 @@ Saved picks are re-checked later against the valuation they were picked on, with
 | `PRICE_FALLING` | The 12-month price change is below −20%. |
 | `LATEST_QUARTER_NOT_REPORTED` | The most important test was not applied. |
 
-### Two modes
+### Depth
 
-| The person says | Mode |
-|---|---|
-| "find stocks", "screen for value", a preset by name | The funnel |
-| "deep pick", "best opportunities", "find me the best stocks", "deep screen" | The deep picker |
+The saved depth decides the default; when it is deep, the session's depth rule says what changes (the deep picker, deep picks only, and a preset screen labelled as candidates). In standard depth the funnel answers "find stocks", "screen for value" and a preset by name. These words upgrade one request to the deep picker: "deep pick", "best opportunities", "find me the best stocks", "deep screen".
 
 ### The deep picker
 
@@ -174,7 +171,7 @@ Run with the Bash tool. Scripts print JSON.
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/render_pick.py" --in DIR/pick-DATE/pick.json --out DIR/pick-DATE/page.html
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/sentiment.py" SYM[,SYM...] [--days 20] [--news-days 30] [--news 10]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/picks.py" save-deep SYM (--case DIR/deep-SYM | --page FILE) [--thesis TEXT] [--source URL] [--added-price P] [--base-end YYYY-MM-DD]
-"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/picks.py" save-light SYM --in DIR/light-SYM.json
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/picks.py" save-light SYM --in DIR/light-SYM.json   # standard depth only
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/picks.py" list | remove SYM | due [--move 0.15]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/picks.py" check SYM [--release FILE] [--segments FILE] [--evidence FILE] [--exclude SEG,SEG] [--record]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/track_math.py" < track.json
@@ -203,12 +200,12 @@ Run with the Bash tool. Scripts print JSON.
 
 Pick the case that matches the request.
 
-**The user wants companies to look at (the funnel)**
+**The user wants companies to look at (the funnel; standard depth)**
 
 The funnel has five steps, in order. Say which step you are on.
 
 1. **Screen** (this skill).
-   1. If a brokerage is connected, read today's holdings first: portfolio-snapshot's `brief.py --no-headlines`, unless a read from today is already in the conversation. Pass the held symbols as `--held SYM,SYM`. Survivors already owned are marked. Add `--exclude-held` when the person wants new names only.
+   1. If a brokerage is connected, read today's holdings first: portfolio-analysis's `brief.py --no-headlines`, unless a read from today is already in the conversation. Pass the held symbols as `--held SYM,SYM`. Survivors already owned are marked. Add `--exclude-held` when the person wants new names only.
    2. Pick the preset that matches the ask. Translate the person's words into `--set` overrides; do not invent a preset:
 
       | The person says | Override |
@@ -242,13 +239,13 @@ The funnel has five steps, in order. Say which step you are on.
    2. Challenge `inputs.py`'s defaults: its discount rate can be too low for a concentrated or volatile company.
    3. A company whose price sits at or above its base case has no margin of safety on these assumptions. Say which ones pass on that test.
 5. **Write it down** (trade-journal, when installed): thesis, what would prove it wrong, planned size, before any order.
-6. **Keep it for re-checks.** Offer to save each company the person picks. On yes, write `DIR/light-SYM.json` with `thesis`, `preset` and `fair_values` (`bear`, `base`, `bull` from step 4), then run `picks.py save-light SYM --in DIR/light-SYM.json`.
+6. **Keep it for re-checks.** In standard depth only: offer to save each company the person picks. On yes, write `DIR/light-SYM.json` with `thesis`, `preset` and `fair_values` (`bear`, `base`, `bull` from step 4), then run `picks.py save-light SYM --in DIR/light-SYM.json` (standard depth only; it exits 2 with `DEPTH_DEEP` at deep depth).
 
 **The user wants the best opportunities (the deep picker)**
 
-1. Run `edgar.py` from the fundamental-research skill on any ticker. If it exits 4, stop, say the deep picker needs SEC EDGAR, and offer the funnel.
+1. Run `edgar.py` from the fundamental-research skill on any ticker. If it exits 4, stop, say the deep picker needs SEC EDGAR, and in standard depth offer the funnel.
 2. Make `DIR/pick-DATE/` and its `context/`, `screen/`, `industries/` and `cards/` folders.
-   - When a brokerage is connected, take held symbols and sector weights from a portfolio-snapshot read taken today (`brief.py --no-headlines` when there is none yet). The person buys outside these sessions, so the pick store and the watchlist are not a list of holdings.
+   - When a brokerage is connected, take held symbols and sector weights from a portfolio-analysis read taken today (`brief.py --no-headlines` when there is none yet). The person buys outside these sessions, so the pick store and the watchlist are not a list of holdings.
    - Note the profile, and any theme or sector limit the person gives.
 3. Tell the person the run has started, and its size from Background.
    - Write `budget.json` in the run folder. The session has one shared pool of about 200 web searches, so plan at most 160 and keep 40 in reserve. Every plan below sums to 160 or less:
@@ -304,7 +301,7 @@ The funnel has five steps, in order. Say which step you are on.
 **The person asks how their picks are doing, or the session says a pick is due**
 
 1. Run `picks.py list`. When it is empty, say re-checks start from a saved pick, and stop.
-   - When a brokerage is connected, compare the list with today's holdings (portfolio-snapshot's `brief.py --no-headlines` when there is no read from today). Name held single stocks that are not saved picks, and offer to save the ones with a published deep page.
+   - When a brokerage is connected, compare the list with today's holdings (portfolio-analysis's `brief.py --no-headlines` when there is no read from today). Name held single stocks that are not saved picks, and offer to save the ones with a published deep page.
    - When the person names a pick that is not saved and its deep page was published, read the page with the Artifact tool and save its HTML to `DIR/deep-SYM.html`.
    - Then run `picks.py save-deep SYM --page DIR/deep-SYM.html --source <link>`, with `--added-price` from their cost when they hold it.
 2. Without a named pick, run `picks.py due` and re-check the due ones. Re-check every pick when the person asks for all of them.
@@ -321,6 +318,7 @@ The funnel has five steps, in order. Say which step you are on.
 5. When the scenarios differ mainly by segment, read the segment note of that 10-Q and write `DIR/segments-SYM.json` (each segment's TTM revenue and EBIT, in the model's units).
 6. Run `picks.py check SYM --record`, adding `--release`, `--evidence` and `--segments` when step 3, 4 or 5 wrote them.
 7. If `rerun_deep` is true, say the deep valuation is due again and why, from `reasons`. Offer to run the valuation skill's Deep steps, which replace the baseline when saved. For a light pick with `deep_review`, offer a deep valuation the same way.
+   - In deep depth a light pick gets no light re-check: `check` exits 2 with `DEEP_VALUATION_NEEDED`, and `list` and `due` mark it `needs_deep_valuation`. Say it needs a deep valuation and run the Deep steps under the session's depth rule (its size line and ask threshold).
 8. Reply with the re-check format below.
 
 **The user asks whether a screen works, or you are about to lean on a ranking**

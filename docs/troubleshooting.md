@@ -5,10 +5,10 @@ Scripts exit with the codes listed in [scripts.md](scripts.md). The data directo
 | Symptom | Fix |
 |---|---|
 | Skills don't appear in Claude | Run `/reload-plugins` or start a new session. `claude plugin list` should show `second-opinion`. For a guided install, check that `~/.claude/skills/second-opinion` exists. |
-| A script is blocked with "onboarding has not run" | Say "get started with Second Opinion" to answer the six questions, or "skip for now". The gate opens as soon as a profile exists. |
+| A script is blocked with "first run has not happened" | Say "get started with Second Opinion" to answer the three profile questions, or "skip for now". The gate opens as soon as a profile exists. |
 | Claude Code asks for approval before an order, cancel, or disconnect | That is the hard gate in `hooks/gate.sh`. Approve only if the command matches what you asked for. |
 | An order command is blocked in bypass-permissions mode | Intended: a hook cannot ask for approval there. Start a session without bypass mode and confirm the order there. |
-| exit 4 `CONFIG_MISSING` | A setting is missing. For brokerage scripts: no key, or only half of a pair (`SNAPTRADE_CLIENT_ID` and `SNAPTRADE_CONSUMER_KEY`, or `ETRADE_CONSUMER_KEY` and `ETRADE_CONSUMER_SECRET`). Re-run the installer or edit `.env` in the data directory. For debt-tracker and spending: nothing is recorded yet; record a statement or import an export first. |
+| exit 4 `CONFIG_MISSING` | A setting is missing. For brokerage scripts: no key, or only half of a pair (`SNAPTRADE_CLIENT_ID` and `SNAPTRADE_CONSUMER_KEY`, or `ETRADE_CONSUMER_KEY` and `ETRADE_CONSUMER_SECRET`). Run `configure.py keys` (get-started) in a terminal, or edit `.env` in the data directory. For the debt register (personal-finance) and spending: nothing is recorded yet; record a statement or import an export first. |
 | exit 6 `DEPENDENCY_MISSING` | Python packages did not install. Re-run the installer, or read `install.log` in the data directory. |
 | exit 5, `snaptrade_code` 1083 ("Invalid userID or userSecret") | The key has no registered user. The plugin registers one and retries. If it persists, register a user with the key; do not rotate the key. |
 | exit 5, `snaptrade_code` 1012 ("does not have a trade type available") | That brokerage offers only read connections. Claude falls back to a read-only connection. |

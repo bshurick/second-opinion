@@ -1,4 +1,4 @@
-"""hooks/gate.sh: block the plugin's analysis scripts until onboarding ran or was skipped."""
+"""hooks/gate.sh: block the plugin's analysis scripts until the first run happened or was skipped."""
 
 from __future__ import annotations
 
@@ -32,11 +32,11 @@ def test_hooks_json_registers_the_gate() -> None:
 def test_blocks_analysis_script_without_profile(tmp_path: Path) -> None:
     proc = run(tmp_path, f'{PY} "${{CLAUDE_PLUGIN_ROOT}}/skills/valuation/scripts/inputs.py" KO')
     assert proc.returncode == 2
-    assert "onboarding has not run" in proc.stderr and "skip for now" in proc.stderr
+    assert "first run has not happened" in proc.stderr and "get started with Second Opinion" in proc.stderr and "skip for now" in proc.stderr
     assert proc.stdout == ""
 
 
-@pytest.mark.parametrize("skill", ["onboarding", "setup"])
+@pytest.mark.parametrize("skill", ["get-started"])
 def test_exempt_skills_pass_without_profile(tmp_path: Path, skill: str) -> None:
     proc = run(tmp_path, f'{PY} "${{CLAUDE_PLUGIN_ROOT}}/skills/{skill}/scripts/profile.py" show')
     assert proc.returncode == 0 and proc.stderr == ""
@@ -70,7 +70,7 @@ def test_ignores_scripts_of_skills_that_do_not_exist(tmp_path: Path) -> None:
     assert proc.returncode == 0
 
 
-def test_passes_when_onboarding_skill_is_not_installed(tmp_path: Path) -> None:
+def test_passes_when_get_started_skill_is_not_installed(tmp_path: Path) -> None:
     root = tmp_path / "root"
     (root / "skills" / "valuation" / "scripts").mkdir(parents=True)
     proc = run(tmp_path, f'{PY} "${{CLAUDE_PLUGIN_ROOT}}/skills/valuation/scripts/inputs.py" KO', root=root)
@@ -86,7 +86,7 @@ def test_matches_path_adjacent_to_json_escaped_quote(tmp_path: Path) -> None:
     raw = '{"tool_name":"Bash","tool_input":{"command":"\\"$SNAPTRADE_PY\\" \\"$CLAUDE_PLUGIN_ROOT/skills/valuation/scripts/inputs.py\\" KO"}}'
     proc = run(tmp_path, None, raw=raw)
     assert proc.returncode == 2
-    assert "onboarding has not run" in proc.stderr and "skip for now" in proc.stderr
+    assert "first run has not happened" in proc.stderr and "get started with Second Opinion" in proc.stderr and "skip for now" in proc.stderr
 
 
 ORDER_COMMANDS = [

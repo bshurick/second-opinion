@@ -35,114 +35,56 @@ def test_hook_json_points_at_script() -> None:
     assert entry["timeout"] == 300
 
 
-WATCHLIST_HOOK = PLUGIN_ROOT / "hooks" / "watchlist-summary.sh"
+INBOX_HOOK = PLUGIN_ROOT / "hooks" / "inbox.sh"
 
 
-def test_hook_json_registers_the_watchlist_summary() -> None:
+def test_hook_json_registers_the_inbox() -> None:
     import json
 
     data = json.loads((PLUGIN_ROOT / "hooks" / "hooks.json").read_text())
     hooks = data["hooks"]["SessionStart"][0]["hooks"]
-    assert [h["args"][0].rsplit("/", 1)[1] for h in hooks] == ["session-start.sh", "watchlist-summary.sh", "picks-summary.sh", "core-satellite-summary.sh"]
-    assert hooks[1] == {"type": "command", "command": "bash", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/watchlist-summary.sh"], "timeout": 15}
-    assert hooks[2] == {"type": "command", "command": "bash", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/picks-summary.sh"], "timeout": 15}
-    assert hooks[3] == {"type": "command", "command": "bash", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/core-satellite-summary.sh"], "timeout": 15}
+    assert [h["args"][0].rsplit("/", 1)[1] for h in hooks] == ["session-start.sh", "inbox.sh"]
+    assert hooks[1] == {"type": "command", "command": "bash", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/inbox.sh"], "timeout": 15}
+    assert not (PLUGIN_ROOT / "hooks" / "watchlist-summary.sh").exists() and not (PLUGIN_ROOT / "hooks" / "picks-summary.sh").exists()
 
 
-def _run_watchlist_hook(tmp_path: Path, root: Path, **env: str) -> subprocess.CompletedProcess:
+def _run_inbox_hook(tmp_path: Path, root: Path, **env: str) -> subprocess.CompletedProcess:
     full = {**_base_env(), "CLAUDE_PLUGIN_ROOT": str(root), "SECOND_OPINION_DATA": str(tmp_path / "data"), **env}
-    return subprocess.run(["bash", str(WATCHLIST_HOOK)], capture_output=True, text=True, env=full, timeout=60)
+    return subprocess.run(["bash", str(INBOX_HOOK)], capture_output=True, text=True, env=full, timeout=60)
 
 
-def _stub_watchlist(root: Path, body: str, *, saved: bool = True) -> None:
-    script = root / "skills" / "watchlist" / "scripts" / "watchlist.py"
+def _stub_inbox(root: Path, body: str) -> None:
+    script = root / "skills" / "get-started" / "scripts" / "inbox.py"
     script.parent.mkdir(parents=True)
     script.write_text(body)
-    if saved:  # the hook stays silent until the user has saved a watchlist
-        data = root.parent / "data"
-        data.mkdir(exist_ok=True)
-        (data / "watchlist.json").write_text("{}")
+    (root.parent / "data").mkdir(exist_ok=True)
 
 
-def test_watchlist_summary_hook_is_silent_without_a_saved_watchlist(tmp_path: Path) -> None:
+def test_inbox_hook_prints_the_inbox(tmp_path: Path) -> None:
     root = tmp_path / "root"
-    _stub_watchlist(root, "print('Watchlist: nothing saved')\n", saved=False)
-    proc = _run_watchlist_hook(tmp_path, root, SECOND_OPINION_PYTHON=sys.executable)
+    _stub_inbox(root, "print('Second Opinion, 1 thing:')\nprint('- Picks: 1 of 3 due')\n")
+    proc = _run_inbox_hook(tmp_path, root, SECOND_OPINION_PYTHON=sys.executable)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.splitlines() == ["Second Opinion, 1 thing:", "- Picks: 1 of 3 due"] and proc.stderr == ""
+
+
+def test_inbox_hook_real_script_is_silent_for_a_new_user(tmp_path: Path) -> None:
+    (tmp_path / "data").mkdir()
+    proc = _run_inbox_hook(tmp_path, PLUGIN_ROOT, SECOND_OPINION_PYTHON=sys.executable)
     assert proc.returncode == 0 and proc.stdout == "" and proc.stderr == ""
 
 
-def test_watchlist_summary_hook_prints_the_stored_summary(tmp_path: Path) -> None:
+def test_inbox_hook_never_fails_the_session(tmp_path: Path) -> None:
     root = tmp_path / "root"
-    _stub_watchlist(root, "import sys\nassert sys.argv[1:] == ['summary'], sys.argv\nprint('Watchlist: 2 of 5 rules triggered')\n")
-    proc = _run_watchlist_hook(tmp_path, root, SECOND_OPINION_PYTHON=sys.executable)
-    assert proc.returncode == 0, proc.stderr
-    assert proc.stdout.strip() == "Watchlist: 2 of 5 rules triggered" and proc.stderr == ""
+    _stub_inbox(root, "import sys\nprint('boom', file=sys.stderr)\nsys.exit(4)\n")
+    proc = _run_inbox_hook(tmp_path, root, SECOND_OPINION_PYTHON=sys.executable)
+    assert proc.returncode == 0 and proc.stdout == "" and proc.stderr == ""
 
 
-def test_watchlist_summary_hook_is_silent_without_the_skill(tmp_path: Path) -> None:
+def test_inbox_hook_is_silent_without_the_script(tmp_path: Path) -> None:
     root = tmp_path / "root"
     (root / "skills").mkdir(parents=True)
-    proc = _run_watchlist_hook(tmp_path, root, SECOND_OPINION_PYTHON=sys.executable)
-    assert proc.returncode == 0 and proc.stdout == "" and proc.stderr == ""
-
-
-def test_watchlist_summary_hook_never_fails_the_session(tmp_path: Path) -> None:
-    root = tmp_path / "root"
-    _stub_watchlist(root, "import sys\nprint('boom', file=sys.stderr)\nsys.exit(4)\n")
-    proc = _run_watchlist_hook(tmp_path, root, SECOND_OPINION_PYTHON=sys.executable)
-    assert proc.returncode == 0 and proc.stdout == "" and proc.stderr == ""  # the script's stderr is swallowed
-
-
-def test_watchlist_summary_hook_prefers_the_managed_venv(tmp_path: Path) -> None:
-    root = tmp_path / "root"
-    _stub_watchlist(root, "raise SystemExit('the real python3 must not run')\n")
-    # a stand-in for <data>/venv/bin/python: the hook must call this one, with the script and "summary"
-    venv_py = tmp_path / "data" / "venv" / "bin" / "python"
-    venv_py.parent.mkdir(parents=True)
-    venv_py.write_text("#!/usr/bin/env bash\nprintf 'venv-python %s %s\\n' \"$(basename \"$1\")\" \"$2\"\n")
-    venv_py.chmod(0o755)
-    proc = _run_watchlist_hook(tmp_path, root)
-    assert proc.returncode == 0, proc.stderr
-    assert proc.stdout.strip() == "venv-python watchlist.py summary"
-
-
-PICKS_HOOK = PLUGIN_ROOT / "hooks" / "picks-summary.sh"
-
-
-def _run_picks_hook(tmp_path: Path, root: Path, **env: str) -> subprocess.CompletedProcess:
-    full = {**_base_env(), "CLAUDE_PLUGIN_ROOT": str(root), "SECOND_OPINION_DATA": str(tmp_path / "data"), **env}
-    return subprocess.run(["bash", str(PICKS_HOOK)], capture_output=True, text=True, env=full, timeout=60)
-
-
-def _stub_picks(root: Path, body: str, *, saved: bool = True) -> None:
-    script = root / "skills" / "stock-screener" / "scripts" / "picks.py"
-    script.parent.mkdir(parents=True)
-    script.write_text(body)
-    if saved:  # the hook stays silent until a pick has been saved
-        data = root.parent / "data"
-        data.mkdir(exist_ok=True)
-        (data / "picks.json").write_text("{}")
-
-
-def test_picks_summary_hook_is_silent_without_saved_picks(tmp_path: Path) -> None:
-    root = tmp_path / "root"
-    _stub_picks(root, "print('Pick re-check: nothing')\n", saved=False)
-    proc = _run_picks_hook(tmp_path, root, SECOND_OPINION_PYTHON=sys.executable)
-    assert proc.returncode == 0 and proc.stdout == "" and proc.stderr == ""
-
-
-def test_picks_summary_hook_prints_the_summary(tmp_path: Path) -> None:
-    root = tmp_path / "root"
-    _stub_picks(root, "import sys\nassert sys.argv[1:] == ['summary'], sys.argv\nprint('Pick re-check: 1 of 3 picks due')\n")
-    proc = _run_picks_hook(tmp_path, root, SECOND_OPINION_PYTHON=sys.executable)
-    assert proc.returncode == 0, proc.stderr
-    assert proc.stdout.strip() == "Pick re-check: 1 of 3 picks due" and proc.stderr == ""
-
-
-def test_picks_summary_hook_never_fails_the_session(tmp_path: Path) -> None:
-    root = tmp_path / "root"
-    _stub_picks(root, "import sys\nprint('boom', file=sys.stderr)\nsys.exit(4)\n")
-    proc = _run_picks_hook(tmp_path, root, SECOND_OPINION_PYTHON=sys.executable)
+    proc = _run_inbox_hook(tmp_path, root, SECOND_OPINION_PYTHON=sys.executable)
     assert proc.returncode == 0 and proc.stdout == "" and proc.stderr == ""
 
 
@@ -330,7 +272,7 @@ def test_session_start_prints_follow_ups_rule(tmp_path: Path) -> None:
     assert proc.stdout.count("Next you could ask:") == FOLLOW_UPS.read_text().count("Next you could ask:")
 
 
-def test_follow_ups_rule_printed_even_without_python(tmp_path: Path) -> None:
+def test_follow_ups_rule_falls_back_to_off_without_python(tmp_path: Path) -> None:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     real_bash = os.environ.get("BASH") or subprocess.run(
@@ -340,7 +282,7 @@ def test_follow_ups_rule_printed_even_without_python(tmp_path: Path) -> None:
     _turn_on_follow_ups(tmp_path)
     proc, _ = _run(tmp_path, PATH=str(bin_dir))
     assert proc.returncode == 0
-    assert "Next you could ask:" in proc.stdout
+    assert "Next you could ask:" not in proc.stdout  # settings are read through python; no python means the defaults
 
 
 def test_follow_ups_rule_wording() -> None:
@@ -365,6 +307,8 @@ def test_follow_ups_rule_wording() -> None:
 def test_follow_ups_rule_follows_the_extras_record(tmp_path: Path, record: str | None, shown: bool, where: str) -> None:
     root = tmp_path / "root"
     shutil.copytree(PLUGIN_ROOT / "hooks", root / "hooks")
+    shutil.copytree(PLUGIN_ROOT / "lib", root / "lib", ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copytree(PLUGIN_ROOT / "skills" / "get-started" / "scripts", root / "skills" / "get-started" / "scripts", ignore=shutil.ignore_patterns("__pycache__"))  # the record migrates into settings.json
     shutil.copy(PLUGIN_ROOT / "requirements.txt", root / "requirements.txt")
     (tmp_path / "data").mkdir()
     if record is not None:
@@ -469,32 +413,95 @@ def test_broker_login_rule_wording() -> None:
         assert banned not in text.lower(), f"broker-login rule must not use '{banned}'"
 
 
-CORE_SATELLITE_HOOK = PLUGIN_ROOT / "hooks" / "core-satellite-summary.sh"
-
-
-def _run_core_satellite_hook(tmp_path: Path, store: str | None) -> subprocess.CompletedProcess:
-    data = tmp_path / "data"
-    data.mkdir(exist_ok=True)
-    if store is not None:
-        (data / "core-satellite.json").write_text(store)
-    full = {**_base_env(), "CLAUDE_PLUGIN_ROOT": str(PLUGIN_ROOT), "SECOND_OPINION_DATA": str(data), "SECOND_OPINION_PYTHON": sys.executable}
-    return subprocess.run(["bash", str(CORE_SATELLITE_HOOK)], capture_output=True, text=True, env=full, timeout=60)
-
-
-def test_core_satellite_hook_is_silent_without_store(tmp_path: Path) -> None:
-    proc = _run_core_satellite_hook(tmp_path, None)
-    assert proc.returncode == 0 and proc.stdout == "" and proc.stderr == ""
-
-
-def test_core_satellite_hook_prints_due_step(tmp_path: Path) -> None:
+def _seed_settings(tmp_path: Path, doc: dict) -> None:
     import json
 
-    store = {"plan": {"target": 0.18, "by_date": "2027-04-30", "cadence": "monthly", "status": "active", "next_due": "2020-01-31"}}
-    proc = _run_core_satellite_hook(tmp_path, json.dumps(store))
+    (tmp_path / "data").mkdir(exist_ok=True)
+    (tmp_path / "data" / "settings.json").write_text(json.dumps({"schema": 1, **doc}))
+
+
+def test_follow_ups_from_settings(tmp_path: Path) -> None:
+    _seed_settings(tmp_path, {"replies": {"follow_ups": True}})
+    proc, _ = _run(tmp_path, SECOND_OPINION_PYTHON=sys.executable)
     assert proc.returncode == 0, proc.stderr
-    assert proc.stdout.startswith("Core/satellite: plan step due")
+    assert "Second Opinion follow-ups" in proc.stdout
+    assert "turned report pages off" not in proc.stdout
 
 
-def test_core_satellite_hook_never_fails_the_session(tmp_path: Path) -> None:
-    proc = _run_core_satellite_hook(tmp_path, "{not json")
-    assert proc.returncode == 0 and proc.stderr == ""
+def test_pages_off_rule(tmp_path: Path) -> None:
+    _seed_settings(tmp_path, {"replies": {"pages": False}})
+    proc, _ = _run(tmp_path, SECOND_OPINION_PYTHON=sys.executable)
+    assert proc.returncode == 0, proc.stderr
+    assert "turned report pages off" in proc.stdout
+    assert "Second Opinion follow-ups" not in proc.stdout
+
+
+def test_no_settings_defaults(tmp_path: Path) -> None:
+    proc, _ = _run(tmp_path, SECOND_OPINION_PYTHON=sys.executable)
+    assert proc.returncode == 0, proc.stderr
+    assert "Second Opinion follow-ups" not in proc.stdout
+    assert "turned report pages off" not in proc.stdout
+
+
+def test_update_notice_once(tmp_path: Path) -> None:
+    import json
+
+    plugin = tmp_path / "plugin.json"
+    plugin.write_text(json.dumps({"version": "1.1.0"}))
+    _seed_settings(tmp_path, {"meta": {"seen_version": "1.0.0"}})
+    env = {"SECOND_OPINION_PYTHON": sys.executable, "SECOND_OPINION_PLUGIN_JSON": str(plugin), "SECOND_OPINION_LATEST_PLUGIN_JSON": str(tmp_path / "missing.json")}
+    first, _ = _run(tmp_path, **env)
+    assert first.returncode == 0, first.stderr
+    assert first.stdout.count("updated to 1.1.0") == 1
+    second, _ = _run(tmp_path, **env)
+    assert "updated to 1.1.0" not in second.stdout
+
+
+# --- depth rule (phase 2) ------------------------------------------------------------------
+
+DEPTH_RULE = PLUGIN_ROOT / "hooks" / "depth-deep.md"
+
+
+def _set_depth(tmp_path: Path, value: str) -> None:
+    import json
+
+    (tmp_path / "data").mkdir(exist_ok=True)
+    (tmp_path / "data" / "settings.json").write_text(json.dumps({"schema": 1, "depth": value, "meta": {"migrated_at": "2026-11-10"}}))
+
+
+def test_session_start_prints_depth_rule_when_deep(tmp_path: Path) -> None:
+    _set_depth(tmp_path, "deep")
+    proc, _ = _run(tmp_path, SECOND_OPINION_PYTHON=sys.executable)
+    assert proc.returncode == 0, proc.stderr
+    assert DEPTH_RULE.read_text().strip() in proc.stdout
+
+
+@pytest.mark.parametrize("value", ["standard", None])
+def test_no_depth_rule_when_standard_or_unset(tmp_path: Path, value: str | None) -> None:
+    if value:
+        _set_depth(tmp_path, value)
+    proc, _ = _run(tmp_path, SECOND_OPINION_PYTHON=sys.executable)
+    assert proc.returncode == 0 and "Second Opinion depth" not in proc.stdout
+
+
+def test_no_depth_rule_on_corrupt_settings(tmp_path: Path) -> None:
+    (tmp_path / "data").mkdir(exist_ok=True)
+    (tmp_path / "data" / "settings.json").write_text("{bad")
+    proc, _ = _run(tmp_path, SECOND_OPINION_PYTHON=sys.executable)
+    assert proc.returncode == 0 and "Second Opinion depth" not in proc.stdout
+
+
+def test_depth_rule_comes_before_follow_ups(tmp_path: Path) -> None:
+    import json
+
+    (tmp_path / "data").mkdir(exist_ok=True)
+    (tmp_path / "data" / "settings.json").write_text(json.dumps(
+        {"schema": 1, "depth": "deep", "replies": {"follow_ups": True}, "meta": {"migrated_at": "2026-11-10"}}))
+    out = _run(tmp_path, SECOND_OPINION_PYTHON=sys.executable)[0].stdout
+    assert out.index("Second Opinion depth") < out.index("Next you could ask:")
+
+
+def test_depth_rule_wording() -> None:
+    text = DEPTH_RULE.read_text().lower()
+    for banned in ("you should buy", "recommend", "guarantee"):
+        assert banned not in text, f"depth rule must not use '{banned}'"

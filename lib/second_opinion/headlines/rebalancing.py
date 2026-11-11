@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from second_opinion import headlines as H
 
-SKILL = "rebalancing"
+SKILL = "portfolio-plan"
 WHY = {"BAND_BREACH": "Your allocation drifted past the tolerance band you set around each target weight.",
        "UNMAPPED": "Holdings with no target class are ignored by the drift check."}
 

@@ -24,14 +24,12 @@ SKILLS_ROOT = PLUGIN_ROOT / "skills"
 PLUGIN_JSON = PLUGIN_ROOT / ".claude-plugin" / "plugin.json"
 
 SKILL_NAMES = [
-    "onboarding",
     "valuation",
     "portfolio-analysis",
     "trading",
     "market-analysis",
     "personal-finance",
     "connect",
-    "portfolio-snapshot",
     "dividend-income",
     "statement-import",
     "trade-review",
@@ -39,20 +37,18 @@ SKILL_NAMES = [
     "real-estate",
     "financial-education",
     "tax-aware",
-    "rebalancing",
-    "core-satellite",
+    "portfolio-plan",
     "retirement",
     "risk-analysis",
     "fundamental-research",
     "trade-journal",
     "watchlist",
-    "debt-tracker",
     "spending",
     "fixed-income",
     "stock-screener",
 ]
 
-TRADING_PROTOCOL_SKILLS = {"trading", "portfolio-analysis"}
+TRADING_PROTOCOL_SKILLS = {"trading"}
 
 # Every references/*.md file, registered so each one is checked for a link from its SKILL.md and a TOC.
 REFERENCE_FILES = [
@@ -66,14 +62,14 @@ REFERENCE_FILES = [
     "real-estate/references/deep-roles.md",
     "trade-review/references/deep-roles.md",
     "tax-aware/references/deep-roles.md",
-    "portfolio-snapshot/references/how-figures-are-built.md",
+    "portfolio-analysis/references/how-figures-are-built.md",
     "trading/references/momentum-research.md",
     "financial-education/references/curriculum.md",
     "personal-finance/references/account-rules.md",
     "fundamental-research/references/due-diligence.md",
     "fixed-income/references/bond-math.md",
     "fixed-income/references/treasuries.md",
-    "core-satellite/references/research.md",
+    "portfolio-plan/references/research.md",
 ]
 
 # FORBIDDEN_VERB_RE: the verbs the compliance block bans for financial actions. A reference file is
@@ -94,7 +90,7 @@ REFERENCE_FILES = [
 # income section with "not a view on where anyone SHOULD hold one" -- a true negation, and still
 # the banned word in a sentence about holding an instrument. It was reworded rather than
 # allowlisted, so the net can stay absolute and needs no judgement call at the boundary.
-VERB_GUARDED_REFERENCE_SKILLS = ("fixed-income", "core-satellite")
+VERB_GUARDED_REFERENCE_SKILLS = ("fixed-income", "portfolio-plan")
 GUARDED_REFERENCES = [
     rel for rel in REFERENCE_FILES if rel.split("/")[0] in VERB_GUARDED_REFERENCE_SKILLS
 ]
@@ -242,7 +238,7 @@ INVOCATION = '"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/'
 
 SAFETY_RULES = [
     "Never run a script with `--confirm` until the preview output has been shown in the chat and the user has explicitly said yes in their own message.",
-    "One order per confirmation. Never chain a sell into a buy on a single yes.",
+    "A confirmation covers only the orders in the block it answers: `confirm` places all of them, `yes SYMBOL` one. A new or changed order needs its own preview and block.",
     "Check the account's `supports_trading` flag from `accounts.py` before previewing.",
     "If the account is cash or unknown, warn when the order size exceeds the balance script's `cash` figure, and never infer margin from buying power.",
     "Do not place an order when `place-order.py` returned exit 3, 4, 5, or 6. Show the error and stop.",
@@ -281,11 +277,11 @@ SETTLEMENT_RULES = [
 ]
 
 
-def test_portfolio_analysis_carries_settlement_rules() -> None:
-    text = _skill_md_path("portfolio-analysis").read_text()
-    assert "Settlement rules" in text, "portfolio-analysis: missing settlement rules section"
+def test_trading_carries_settlement_rules() -> None:
+    text = _skill_md_path("trading").read_text()
+    assert "Settlement rules" in text, "trading: missing settlement rules section"
     for rule in SETTLEMENT_RULES:
-        assert rule in text, f"portfolio-analysis: missing settlement rule: {rule}"
+        assert rule in text, f"trading: missing settlement rule: {rule}"
 
 
 GATE_STEP = "Only when the trade-journal skill is installed (it is an optional extra): running the trading skill's `gate.py <symbol> <BUY|SELL> <qty> [--limit X]` and showing its `decision` and `reasons`."
@@ -298,7 +294,7 @@ def test_trading_protocol_starts_with_the_discipline_gate(skill_name: str) -> No
     assert text.index(GATE_STEP) < text.index("Running the trading skill's `preview-order.py"), f"{skill_name}: the gate step must come before preview"
 
 
-FORBIDDEN_TERMS = ["Cognito", "refresh token", "/api/v1/brokerage", ".sh"]
+FORBIDDEN_TERMS = ["Cognito", "refresh token", "/api/v1/brokerage"]
 
 
 def _all_python_scripts() -> list[Path]:
@@ -336,7 +332,7 @@ def test_safety_rules_verbatim(skill_name: str) -> None:
 # Every skill that waits on a user's yes before a --confirm run. A confirmation asked in an
 # ordinary sentence mid-reply was missed in real use, so each one ends the reply with the same
 # call-to-action block.
-CONFIRMATION_SKILLS = ["connect", "onboarding", "portfolio-analysis", "setup", "trading"]
+CONFIRMATION_SKILLS = ["connect", "get-started", "trading"]
 CONFIRMATION_HEADING = "### ⚠️ ACTION NEEDED"
 
 
@@ -352,6 +348,8 @@ def test_no_hosted_app_infrastructure_references(skill_name: str) -> None:
     text = _skill_md_path(skill_name).read_text()
     for term in FORBIDDEN_TERMS:
         assert term not in text, f"{skill_name}: still references {term!r}"
+    # a shell script by name (".sh" ending a word); a dotted settings key such as taxes.short_term_rate is fine
+    assert not re.search(r"\.sh\b", text), f"{skill_name}: still references a .sh script"
 
 
 def test_no_shell_wrapper_scripts() -> None:
@@ -370,7 +368,7 @@ def test_description_fits_the_routing_budget(skill_name: str) -> None:
 
 
 CATALOG = PLUGIN_ROOT / "skills.json"
-ALWAYS_INSTALLED_SKILLS = {"setup"}
+ALWAYS_INSTALLED_SKILLS = {"get-started"}
 
 
 def _catalog() -> list[dict]:
@@ -415,18 +413,18 @@ def test_catalog_brokerage_flag_matches_router_imports() -> None:
         )
 
 
-SETUP_SKILL = SKILLS_ROOT / "setup" / "SKILL.md"
+SETUP_SKILL = SKILLS_ROOT / "get-started" / "SKILL.md"
 
 
 def test_setup_skill_frontmatter_and_no_secrets_rule() -> None:
-    assert SETUP_SKILL.is_file(), "missing skills/setup/SKILL.md"
+    assert SETUP_SKILL.is_file(), "missing skills/get-started/SKILL.md"
     frontmatter, body = _parse_frontmatter(SETUP_SKILL.read_text())
-    assert frontmatter.get("name") == "setup"
+    assert frontmatter.get("name") == "get-started"
     assert frontmatter.get("description") and len(frontmatter["description"]) <= MAX_DESCRIPTION_CHARS
     assert "allowed-tools" not in frontmatter
     assert "install.js" in body and "--json" in body
     assert "install.py" not in body
-    assert "never" in body.lower() and "secret" in body.lower(), "setup skill must forbid secrets in chat"
+    assert "never" in body.lower() and "secret" in body.lower(), "get-started skill must forbid secrets in chat"
 
 
 def test_install_script_is_a_self_contained_node_bundle() -> None:
@@ -454,7 +452,7 @@ def test_debt_tracker_flags_are_documented_in_skill_md() -> None:
     so a new flag can't ship without being documented for the model that reads them."""
     import importlib.util
 
-    script_path = SKILLS_ROOT / "debt-tracker" / "scripts" / "debtpicture.py"
+    script_path = SKILLS_ROOT / "personal-finance" / "scripts" / "debtpicture.py"
     spec = importlib.util.spec_from_file_location("debtpicture_flag_check", script_path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -462,13 +460,13 @@ def test_debt_tracker_flags_are_documented_in_skill_md() -> None:
     flags = module.FLAG_ORDER
     assert flags, "debtpicture.py FLAG_ORDER is empty"
 
-    plugin_text = _skill_md_path("debt-tracker").read_text()
+    plugin_text = _skill_md_path("personal-finance").read_text()
     for flag in flags:
-        assert flag in plugin_text, f"debt-tracker: SKILL.md is missing flag {flag!r}"
+        assert flag in plugin_text, f"personal-finance: SKILL.md is missing flag {flag!r}"
 
 
 def test_order_protocols_run_the_gate_only_with_the_journal_extra() -> None:
-    for name in ("portfolio-analysis", "trading"):
+    for name in ("trading",):
         lines = (SKILLS_ROOT / name / "SKILL.md").read_text().splitlines()
         step = next(line for line in lines if "gate.py <symbol>" in line and line.lstrip().startswith("1."))
         assert "trade-journal" in step and "installed" in step and "SKIP" in step, name
@@ -483,7 +481,7 @@ def test_order_protocols_run_the_gate_only_with_the_journal_extra() -> None:
 # One layout for every skill (docs/skill-style.md): background, then what to do, in order.
 # ---------------------------------------------------------------------------
 
-ALL_SKILLS = SKILL_NAMES + ["setup"]
+ALL_SKILLS = SKILL_NAMES + ["get-started"]
 SECTION_ORDER = ["## Background", "## Scripts", "## Steps", "## Reply format", "## Rules"]
 MAX_PROSE_LINE = 400
 ALLOWED_TAGS = {"<research_dating>", "</research_dating>"}
@@ -549,7 +547,7 @@ def test_description_says_what_and_when_in_the_third_person(skill_name: str) -> 
     assert not re.match(r"(I|You|We)\b", description), f"{skill_name}: write the description in the third person"
 
 
-@pytest.mark.parametrize("skill", ["market-analysis", "portfolio-snapshot"])
+@pytest.mark.parametrize("skill", ["market-analysis", "portfolio-analysis"])
 def test_summary_skills_require_the_card(skill: str) -> None:
     body = _skill_md_path(skill).read_text()
     assert "--summary" in body and "What to look into" in body and "this run's script output" in body
@@ -558,3 +556,82 @@ def test_summary_skills_require_the_card(skill: str) -> None:
 def test_market_skill_guards_holdings_on_the_page() -> None:
     body = _skill_md_path("market-analysis").read_text()
     assert "brief.py --no-headlines" in body and "get_artifact" in body and "for_you_dropped" in body
+
+
+def test_no_skill_names_retired_files():
+    for skill in SKILLS_ROOT.glob("*/SKILL.md"):
+        text = skill.read_text()
+        assert "targets.json" not in text and "core-satellite.json" not in text, skill
+
+
+def test_deep_skills_name_the_depth_rule():
+    from second_opinion import settings
+
+    for name in settings.DEEP_PATHS:
+        assert "the session's depth rule" in _skill_md_path(name).read_text(), name
+
+
+def test_no_two_modes_tables_remain():
+    for skill in SKILLS_ROOT.glob("*/SKILL.md"):
+        assert "### Two modes" not in skill.read_text(), skill
+
+
+def test_light_paths_carry_the_standard_depth_condition():
+    for skill in SKILLS_ROOT.glob("*/SKILL.md"):
+        for line in skill.read_text().splitlines():
+            if "save-light" in line or line.startswith("**Quick"):
+                assert "standard depth" in line.lower(), f"{skill}: {line}"
+
+
+def test_no_skill_names_retired_skills():
+    retired = re.compile(r"core-satellite(?!\.json)|skills/rebalancing|rebalancing skill|\brun\.py\b"
+                         r"|skills/(setup|onboarding)/|\b(setup|onboarding) skill\b|\bsetup's\b|\bonboarding's\b"
+                         r"|portfolio-snapshot(?![.]html)|debt-tracker(?![.](json|html))")
+    for skill in SKILLS_ROOT.glob("*/SKILL.md"):
+        for line in skill.read_text().splitlines():
+            assert not retired.search(line), f"{skill}: {line}"
+
+
+def test_no_skill_text_asks_for_decision_needed() -> None:
+    """Unset decisions run on a stated default (STANDING_DEFAULT); no skill stops to ask for them."""
+    root = Path(__file__).resolve().parents[1] / "skills"
+    offenders = [str(p.relative_to(root)) for p in root.glob("*/SKILL.md") if "DECISION_NEEDED" in p.read_text()]
+    assert offenders == []
+    plan = (root / "portfolio-plan" / "SKILL.md").read_text()
+    assert "STANDING_DEFAULT" in plan
+
+
+def test_check_in_and_arrival_rows() -> None:
+    root = Path(__file__).resolve().parents[1] / "skills"
+    snapshot = (root / "portfolio-analysis" / "SKILL.md").read_text()
+    assert '**"Check in"' in snapshot and "plan.py status" in snapshot and "arrivals" in snapshot
+    plan = (root / "portfolio-plan" / "SKILL.md").read_text().lower()
+    assert '"put the new cash to work"' in plan and '"my rsus vested"' in plan and "sell_on_arrival" in plan
+    assert "plan's trade list" in (root / "trading" / "SKILL.md").read_text()
+
+
+def test_get_started_asks_three_profile_questions() -> None:
+    text = (SKILLS_ROOT / "get-started" / "SKILL.md").read_text()
+    for field in ("approach", "horizon", "pre_trade_check"):
+        assert f"→ `{field}`" in text, field
+    for field in ("risk_appetite", "experience", "goals", "trades_actively", "uses_options", "account_roles"):
+        assert f"→ `{field}`" not in text, field
+    assert "Six short questions" not in text and "six questions" not in text.lower()
+    for step in ("1. Check", "2. Keys", "3. Connect", "4. Accounts", "5. Depth", "6. Portfolio plan", "7. About you"):
+        assert f"| {step} |" in text, step
+    assert "roles.py" in text and "configure.py keys" in text
+    for key in ("plan.sleeves.EMPLOYER.members", "plan.sleeves.PICKS.target", "plan.cash_reserve", "taxes.short_term_gain_policy"):
+        assert key in text, key
+
+
+def test_orders_have_one_owner() -> None:
+    owners = [p.parent.name for p in SKILLS_ROOT.glob("*/SKILL.md") if "NEVER place an order without" in p.read_text()]
+    assert owners == ["trading"]
+    frontmatter, _ = _parse_frontmatter((SKILLS_ROOT / "portfolio-analysis" / "SKILL.md").read_text())
+    assert "order" not in frontmatter["description"].lower()
+    for p in SKILLS_ROOT.glob("*/SKILL.md"):
+        text = p.read_text()
+        assert "portfolio-analysis's order" not in text and "portfolio-analysis's preview" not in text, p
+    trading = (SKILLS_ROOT / "trading" / "SKILL.md").read_text()
+    for part in ("supports_trading", "floor(dollar_amount / price)", "### ⚠️ ACTION NEEDED", "cash account", "plan's trade list"):
+        assert part in trading, part

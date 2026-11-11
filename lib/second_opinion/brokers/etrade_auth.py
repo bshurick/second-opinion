@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from second_opinion import config
@@ -82,6 +83,13 @@ def _read(path: Path) -> dict[str, Any] | None:
     except (OSError, ValueError):
         return None
     return data if isinstance(data, dict) else None
+
+
+def _drop_pending() -> None:
+    try:
+        pending_path().unlink()
+    except FileNotFoundError:
+        pass
 
 
 def load_token() -> Token | None:
@@ -153,7 +161,7 @@ class ETradeAuth:
             pending = {
                 "request_token": rt["oauth_token"],
                 "request_token_secret": rt["oauth_token_secret"],
-                "url": AUTHORIZE_URL.format(key=self.settings.consumer_key, token=rt["oauth_token"]),
+                "url": AUTHORIZE_URL.format(key=quote(self.settings.consumer_key, safe=""), token=quote(rt["oauth_token"], safe="")),
                 "created_at": _iso(self._now()),
                 "sandbox": self.settings.sandbox,
             }
@@ -168,13 +176,11 @@ class ETradeAuth:
         try:
             at = s.fetch_access_token(OAUTH_BASE + "/oauth/access_token")
         except Exception as e:  # noqa: BLE001
-            raise ApiError(f"E*Trade access token failed (wrong or expired verifier?): {e}") from e
+            _drop_pending()  # E*Trade spends the request token on a failed exchange; the next start must fetch a new one
+            raise ApiError(f"E*Trade access token failed (wrong or expired verifier?): {e}; run etrade-login.py with no arguments for a new link") from e
         token = Token(at["oauth_token"], at["oauth_token_secret"], self._now(), self.settings.sandbox)
         save_token(token)
-        try:
-            pending_path().unlink()
-        except FileNotFoundError:
-            pass
+        _drop_pending()
         return token
 
     def renew(self, token: Token) -> bool:

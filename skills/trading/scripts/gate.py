@@ -8,6 +8,8 @@ blocks nothing — it prints a decision the agent shows before preview-order.py.
 
 Output: {decision, symbol, side, quantity, price, price_source, journal_id,
 checks: [{rule, status, detail, ...}], reasons, recorded, as_of}.
+When settings.json cannot be read, the pre-buy check stays on and a
+``settings_readable`` check (status review, with the error code, message and hint) is added.
 ``decision`` is GO, NO_GO (a written plan exists and the order violates it),
 or REVIEW (something is missing: no plan, no size, no price, or a recent
 loss). ``price`` is the limit price, ``--price``, or a live quote
@@ -36,8 +38,9 @@ unknown), days held and whether that is within the horizon; without one the
 When an entry matched, the decision is appended to that entry's ``gates``
 list (``recorded`` true) so a later journal review can see it.
 Without the trade-journal extra the gate checks nothing: the extra is on only when the trade-journal
-skill is present AND the installer's record (installed.json in the data dir, else the plugin root)
-turns it on; no record means off. After argument validation it prints ``decision: SKIP`` with the
+skill is present AND ``guardrails.pre_buy_check`` in settings.json is on (on when nothing is saved;
+an unreadable settings.json keeps it on and adds a ``settings_readable`` review check). After
+argument validation it prints ``decision: SKIP`` with the
 reason "the trade-journal extra is not installed",
 empty ``checks`` and ``recorded`` false, and never reads the journal or the ledger.
 stdin is unused. Exit codes: 0, 2 (bad arguments), 5 (corrupt journal or
@@ -60,7 +63,7 @@ sys.path.insert(0, str(_HERE.parents[1] / "trade-review" / "scripts"))
 
 from second_opinion import brokerage, config, ledger, market, output  # noqa: E402
 from second_opinion.brokers import router  # noqa: E402
-from second_opinion.errors import InvalidInput  # noqa: E402
+from second_opinion.errors import ApiError, InvalidInput  # noqa: E402
 
 DEFAULT_COOLDOWN_DAYS = 3
 
@@ -256,7 +259,16 @@ def _skip(ns: argparse.Namespace) -> dict:
 def run(argv: list[str]) -> dict:
     ns = _parse(argv)
     # A marketplace install ships every skill, so the directory alone does not mean the extra is on.
-    if not _JOURNAL_DIR.is_dir() or not config.extra_enabled("trade-journal"):
+    if not _JOURNAL_DIR.is_dir():
+        return _skip(ns)
+    settings_check = None
+    try:
+        enabled = config.extra_enabled("trade-journal")
+    except ApiError as exc:  # unreadable settings: keep the pre-buy check on (fail-safe) and say why
+        enabled = True
+        hint = exc.extra.get("hint")
+        settings_check = _check("settings_readable", "review", f"{exc}; the pre-buy check stays on" + (f" ({hint})" if hint else ""), code=exc.code)
+    if not enabled:
         return _skip(ns)
     import journal as journal_mod  # noqa: PLC0415 — trade-journal's store, present only with that extra
 
@@ -264,6 +276,8 @@ def run(argv: list[str]) -> dict:
     entry = _open_entry(book, ns.symbol)
     price, price_source = _resolve_price(ns)
     checks = _gate_buy(ns, entry, price) if ns.side == "BUY" else _gate_sell(ns, entry, price)
+    if settings_check:
+        checks.append(settings_check)
     decision = _decide(checks)
     reasons = [c["detail"] for c in checks if c["status"] in ("fail", "review")]
     recorded = False

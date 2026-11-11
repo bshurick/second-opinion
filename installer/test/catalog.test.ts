@@ -13,7 +13,7 @@ describe("catalog", () => {
       expect(s.description, s.name).not.toBe("");
       expect(s.description.endsWith(".")).toBe(true);
     }
-    expect(families(cat)).toEqual(["Getting started", "Accounts and holdings", "History and decisions", "Planning", "Research and markets", "Learning"]);
+    expect(families(cat)).toEqual(["Accounts and holdings", "History and decisions", "Planning", "Research and markets", "Learning"]);
     const journal = cat.find((s) => s.name === "trade-journal")!;
     expect(journal.dependsOn).toEqual(["trade-review"]);
   });
@@ -42,7 +42,7 @@ describe("catalog", () => {
     expect(cat.find((s) => s.name === "a")).toMatchObject({ extra: false, defaultOn: true });
     expect(loadExtras(root)).toEqual([
       { key: "c", label: "Skill C extra", blurb: "Does C.", friction: "Adds a step.", defaultOn: false, skill: true },
-      { key: "tips", label: "Tips", blurb: "Shows tips.", defaultOn: false, skill: false },
+      { key: "follow_ups", label: "Tips", blurb: "Shows follow_ups.", defaultOn: false, skill: false },
     ]);
     expect(coreSkills(cat).map((s) => s.name)).toEqual(["a", "b"]);
     expect(loadExtras(miniRoot())).toEqual([]);
@@ -72,5 +72,35 @@ describe("catalog", () => {
     const cat = loadCatalog(miniRoot());
     expect([...requirementsFor(cat, ["b"])]).toEqual([]);
     expect([...requirementsFor(cat, ["a", "c"])].sort()).toEqual(["brokerage", "edgar"]);
+  });
+});
+
+describe("renamed skills", () => {
+  it("maps retired skill names onto their replacement once", async () => {
+    const { canonicalSkills } = await import("../src/engine/catalog.js");
+    expect(canonicalSkills(["rebalancing", "core-satellite", "valuation"])).toEqual(["portfolio-plan", "valuation"]);
+    expect(canonicalSkills(["portfolio-plan", "rebalancing"])).toEqual(["portfolio-plan"]);
+    expect(canonicalSkills(["setup", "onboarding", "connect"])).toEqual(["get-started", "connect"]);
+    expect(canonicalSkills(["portfolio-snapshot", "portfolio-analysis"])).toEqual(["portfolio-analysis"]);
+    expect(canonicalSkills(["debt-tracker", "spending"])).toEqual(["personal-finance", "spending"]);
+  });
+
+  it("a previous install that listed rebalancing and core-satellite keeps portfolio-plan", async () => {
+    const { initialSelection } = await import("../src/engine/installer.js");
+    const { opts } = await import("./helpers.js");
+    const cat = loadCatalog(REAL_ROOT);
+    const prev = { skills: ["rebalancing", "core-satellite", "valuation"], extras: {} } as never;
+    const names = initialSelection(cat, opts([]), prev).names;
+    expect(names).toContain("portfolio-plan");
+    expect(names).not.toContain("rebalancing");
+    expect(names).not.toContain("core-satellite");
+  });
+
+  it("--skills and --without accept a retired name", async () => {
+    const { initialSelection } = await import("../src/engine/installer.js");
+    const { opts } = await import("./helpers.js");
+    const cat = loadCatalog(REAL_ROOT);
+    expect(initialSelection(cat, opts(["--skills", "rebalancing"]), null).names).toContain("portfolio-plan");
+    expect(initialSelection(cat, opts(["--without", "core-satellite"]), null).names).not.toContain("portfolio-plan");
   });
 });

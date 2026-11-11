@@ -1,25 +1,58 @@
 ---
 name: portfolio-analysis
-description: Examines the user's own holdings, allocation, concentration, cash and returns, runs a deep review of shared bets, and places orders. Use when the user asks "how diversified am I", for a deep review or to buy or sell. Holdings list is portfolio-snapshot.
+description: Gives the daily brief of all connected accounts and examines holdings, allocation, concentration, cash and returns, with a deep review of shared bets. Use when asked "how is my portfolio", "check in", for a brief, "how diversified am I" or a deep review.
 ---
-Examines the user's brokerage holdings for diversification, concentration, cash and return, and places or cancels orders through the trading skill's order scripts. A deep review sends research subagents to find the beliefs the holdings share. It does not cover general market conditions, fair value, or a plain summary of everything held.
+Two parts over the connected accounts.
+
+- **The daily brief** is one script run with one fixed layout and no analysis of its own.
+- **The analysis** examines the holdings for diversification, concentration, cash and return. A deep review sends research subagents to find the beliefs the holdings share.
+
+Orders belong to the trading skill. General market conditions and fair value belong to other skills.
 
 ## Background
+
+### The daily brief
+
+- **The brief.** `brief.py` is the default run. It runs `snapshot.py` with `--events` always on, then adds one-line headlines gathered live from the other installed Second Opinion skills.
+- **Headlines.** Every headline is a fact one of those skills already reports. Each is ranked alert, notice or info, and marked new when it was not in the last brief. New headlines lead the list whatever their rank, so what changed since the last brief is always at the top.
+- **Headline fields.** Each row of `headlines` is `{key, code, skill, severity, symbol, title, detail, as_of, status, ask, url, answer, why}`:
+
+  | Field | Meaning |
+  |---|---|
+  | `severity` | `alert`, `notice` or `info` |
+  | `status` | `new` or `still` |
+  | `url` | an https link to the item's page |
+  | `answer` | one sentence of fact, pre-computed from data the brief already fetched, or from one extra call for earnings (options expected move) and 10-Q/10-K filings (risk-factor diff) |
+  | `why` | one plain-language sentence saying what the item is and why it matters |
+  | `ask` | a follow-up question, shown only when there is no answer. It is the handoff question for the headline's skill. |
+
+- **Coverage.** `coverage` has one row per source: `skill, script, status, reason, hint, seconds, headlines`, with `status` one of `ok`, `skipped` or `failed`. A skill that is not installed, not set up, slow or broken becomes a coverage row and never fails the brief.
+- **Other brief fields.** `brief_as_of` and `brief_seconds`.
+- **Timing.** A brief takes 30 to 60 seconds. A slow source is bounded by `--timeout` (default 90 s) per source.
+- **Files in the plugin data directory.** `brief-last.json` remembers the last run's keys. `--save` appends a dated record to `snapshots.json`.
+- **Snapshot fields.** `snapshot.py` prints `summary.py`'s contract plus `as_of`, `sources` and `news`. `summary.py` is the shared math; its input and output contracts are in its docstring.
+- **Cash.** `totals.cash` is settled cash. `totals.cash_like` is cash plus money-market fund positions, each counted once.
+- **Quotes.** Quotes are delayed, not live, unless `sources.quotes` is `etrade`. If `sources.quotes` is `snaptrade` (Yahoo unavailable or `--no-quotes`), the Day column shows "—" and the QUOTES_UNAVAILABLE flag explains why.
+- **The page.** `render_brief.py` turns the saved result into one self-contained HTML page for the Artifact tool. The page carries the accounts, holdings, allocation, movers, events and comparison sections.
+- **More detail.** Read `references/how-figures-are-built.md` before answering how cash, concentration, sector exposure or a headline's `answer` was computed, why a source is missing from the headlines, or what the page contains.
+- **Other skills.** Drift against targets and what to rebalance belong to portfolio-plan, a single holding's outlook to trading or valuation, and every order to trading. Follow-up questions about the numbers are answered under "The analysis" below.
+
+### The analysis
 
 - **Where the data comes from.** Connected brokerage accounts, through SnapTrade or E*Trade direct. Every account row carries `broker` (`snaptrade` or `etrade`).
 - **Account ids.** `accounts.py` lists them. Never ask the user for an account id.
 - **Rate limit.** SnapTrade personal keys allow 10 calls/minute per account on holdings and balances. Call `accounts.py` once, fetch each account's portfolio once, and reuse the results. Never re-poll inside one answer.
 - **Positions repeat across accounts.** `aggregate_report.py` merges them by symbol. Its `positions` array pipes straight into `allocation.py`. Do not aggregate by hand.
 - **Quotes.** `quote.py` rows carry `source` and `realtime`: real-time from E*Trade when a direct session is live, otherwise delayed Yahoo. Say "real-time" only when `realtime` is true.
-- **Stored targets.** The rebalancing skill's `plan.py --target KEY=WEIGHT ... --save` writes `targets.json` in the plugin data directory. When that file exists, drift versus the saved targets is the default allocation view. `plan.py` picks up `targets.json` automatically.
+- **Stored targets.** The portfolio-plan skill saves the targets in settings.json (`plan.targets`). When saved targets exist, drift versus them is the default allocation view; its `plan.py status` reads them.
 - **Research corpus.** `references/portfolio-research.md` holds the evidence behind portfolio-construction answers: quick-reference decision rules, key numbers, weighting schemes, covariance estimators, rebalancing, momentum versus contrarian, benchmarking, performance pitfalls, factor exposure, drawdown control, a glossary, and the fallback formulas for `allocation.py`.
 - **Deep review.** It asks what single belief the person's financial life depends on most. `references/deep-review-roles.md` holds the brief for each research subagent.
   - For each link, `exposure.py` works out `exposed_value` (market value × `share`) and `loss_if_wrong` (`exposed_value` × `shock`). Each bet's `at_stake` adds one year of income at risk, and a net gain counts as nothing at stake.
   - Bets overlap, so their losses are never added together.
   - `history` shows whether a bet's holdings have moved together more than the portfolio has. `NOT_IN_PRICES` marks a bet that correlations would miss.
   - A share and a shock are stated assumptions with a source behind them, not forecasts.
-  - It gives no buy, sell or hold call, no target weights and no fair value. Rebalancing, core-satellite and valuation own those.
-- **Other skills.** General market conditions belong to market-analysis. Fair value belongs to valuation. A plain summary of everything held belongs to portfolio-snapshot. Linking a brokerage belongs to connect. Chart and timing questions belong to trading.
+  - It gives no buy, sell or hold call, no target weights and no fair value. Portfolio-plan and valuation own those.
+- **Other skills.** General market conditions belong to market-analysis. Fair value belongs to valuation. Linking a brokerage belongs to connect. Chart and timing questions belong to trading.
 
 ### Account fields to trust
 
@@ -61,22 +94,50 @@ Treating a $90k core fund as cash on top of itself is the error this table exist
   | 0.10–0.18 (inclusive) | 5.6–10 | moderate |
   | > 0.18 | < 5.6 | concentrated |
 
-### Settlement rules (cash accounts)
-
-Settlement rules — check `account_type` before sequencing any multi-leg trade.
-
-- **`margin`** — no settlement constraint.
-- **`cash`** — the settled-funds discipline applies. A purchase must be paid for in full by settlement. Stock settles **T+1** (one business day after the trade).
-- Buying with the proceeds of a sale that has not yet settled is allowed — the restriction falls on what happens to the new position afterwards.
-- The rules come from the Federal Reserve's Regulation T (12 CFR 220.8, the cash account). "Good faith violation" and "cash liquidation violation" are the names brokers give, in their own account policies, to the ways those rules get broken, so the exact penalties are each broker's and can differ.
-
-The three violations:
-
-- **Freeriding** — buying a security and then paying for it with proceeds from selling that same security. Reg T itself requires the broker to restrict the account for 90 days (purchases need settled cash up front) after a single occurrence. This is the one to never allow.
-- **Good faith violation** — buying with unsettled sale proceeds is fine; the violation happens only if the newly bought position is sold before the funds used to buy it have settled. Most brokers restrict the account to settled cash for 90 days after three or four in 12 months.
-- **Cash liquidation violation** — buying without enough cash to cover the purchase, then selling something else *after* the purchase date to raise it. Brokers typically restrict the account after three in 12 months.
-
 ## Scripts
+
+The daily brief:
+
+Run with the Bash tool. All four scripts print JSON.
+
+```bash
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-analysis/scripts/brief.py" [snapshot.py flags...] [--no-headlines] [--timeout SECONDS] [--workers N]
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-analysis/scripts/snapshot.py" [--account ID ...] [--events] [--no-quotes] [--no-news] [--save] [--compare] [--partial]
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-analysis/scripts/summary.py" < input.json
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-analysis/scripts/render_brief.py" --in snapshot.json --out page.html [--summary summary.json]
+```
+
+| Script | What it does |
+|---|---|
+| `brief.py` | The default run. The snapshot plus `headlines`, `coverage`, `brief_as_of` and `brief_seconds`. Every `snapshot.py` flag passes through. |
+| `snapshot.py` | The whole fetch in one go: accounts, positions, balances, prices, sectors, movers' news. |
+| `summary.py` | Pure math on data you already have. |
+| `render_brief.py` | Interactive page from a `snapshot.py` or `brief.py` result, with the headline analysis card when `--summary` is given. Prints `{"out", "title", "positions", "flags", "headlines"}`. |
+
+| Flag | Effect |
+|---|---|
+| `--no-headlines` | The fast snapshot alone, with no headlines. Writes nothing to `brief-last.json`. |
+| `--timeout SECONDS` | Limit per headline source. Default 90. |
+| `--workers N` | How many headline sources run in parallel. |
+| `--account ID` | Restrict to the named account or accounts. |
+| `--events` | Next earnings and ex-dividend date per symbol. `brief.py` always turns it on. |
+| `--no-quotes` | Skip the Yahoo fetches. Prices are the broker's last values. |
+| `--no-news` | Skip the dated headlines for the day's movers. |
+| `--save` | Append a dated record to `snapshots.json`. |
+| `--compare` | Add a `comparison` block with the delta against the most recent earlier saved snapshot. |
+| `--partial` | Run without E*Trade when its login is pending. |
+
+| Exit code | Meaning | What to do |
+|---|---|---|
+| 2 | Unknown account id, or (`render_brief.py`) the input is not a snapshot result, or the summary file breaks a rule | Show `error`. |
+| 4 | Credentials missing | Show the `hint`. |
+| 4, code `ETRADE_REAUTH` | An E*Trade login is needed | Follow the session's broker-login rule: show the `url`, get the verifier code, run the connect skill's `etrade-login.py --verifier CODE`, rerun once. `--partial` runs without E*Trade. |
+| 5 | SnapTrade or Yahoo error | Show the error. |
+| 5, code `NO_ACCOUNTS` | Nothing is connected | Point to the connect skill. |
+| 5, code `SNAPSHOTS_CORRUPT` | The saved-snapshots file is damaged | Show the `hint`. |
+| 6 | Python dependencies missing | Show `requirements` / `install_log`. |
+
+The analysis:
 
 Run with the Bash tool.
 
@@ -108,20 +169,87 @@ Run with the Bash tool.
 | `render_review.py` | Deep review page from `exposure.py` output, a headline of 25 words at most and a summary. |
 | `review_store.py` | Keeps deep reviews between sessions. `check` re-measures the latest one against a later snapshot, with no new research. |
 
-Orders and history use the trading skill's scripts: `gate.py`, `preview-order.py`, `place-order.py`, `cancel-order.py`, `orders.py`, `transactions.py`. Their commands are in the trading skill.
-
 Every script prints JSON.
 
 | Exit code | Meaning | What to do |
 |---|---|---|
 | 2 | Bad arguments or invalid input | Show `error`. |
-| 3 | `place-order.py` or `cancel-order.py` ran without `--confirm` | That is the gate. Show the output and stop. |
 | 4 | Credentials missing | Show the `hint` (credentials go in the plugin's `.env`). |
 | 4 with code `ETRADE_REAUTH` | E*Trade needs today's authorization | Show the `url`, get the verifier code from the user, run the connect skill's `etrade-login.py --verifier CODE`, then rerun the command once. `--partial` on the listing scripts runs without E*Trade. |
 | 5 | Broker or Yahoo error | Show the error. If it came from `accounts.py`, tell the user to run the connect skill. |
 | 6 | Python dependencies missing | Show the error. |
 
 ## Steps
+
+**"How is my portfolio", a summary or a daily brief**
+
+1. Pick the flags for `brief.py`:
+
+   | The request | Flags |
+   |---|---|
+   | A snapshot, summary or daily brief | none |
+   | A quick or plain snapshot | `--no-headlines` |
+   | The user names an account | `--account ID` |
+   | "The snapshot" again with no data change since the last one (no new trades, deposits or accounts) | `--compare` |
+   | The first run after a material change (a trade, a deposit, a new account) | `--save`, so later comparisons have a baseline |
+
+2. Run `brief.py` once, with a Bash timeout of at least 300 seconds, writing the output to a file: `> DIR/snapshot.json`. DIR is the session scratchpad.
+3. If the run exits non-zero, follow the exit code table and stop. A `coverage` row with status `failed` or `skipped` is not an error: it is information for the page and the reply's sources line, never a chat error and never a reason to rerun.
+4. If the Artifact tool is available in the session, deliver the page:
+   1. Write the headline analysis to `DIR/summary.json`, following the section below.
+   2. Run `render_brief.py --in DIR/snapshot.json --out DIR/portfolio-snapshot.html --summary DIR/summary.json`.
+   3. Publish the HTML with the Artifact tool: icon dashboard, description "Portfolio brief as of DATE".
+   4. On later runs republish the same file path, so the link stays stable.
+   5. Reply with the page reply format below.
+5. If the Artifact tool is not available (a headless or non-interactive host), reply with the markdown fallback format below instead.
+6. For a `--compare` run, present the delta against the saved snapshot instead of re-rendering every section.
+7. Offer the handoff. For each shown headline whose `ask` is non-empty, offer the `ask` verbatim. For anything else beyond the fixed layout, finish the brief first, then answer under "The analysis" below or hand off to the skill named in Background.
+
+### **"Check in"**
+
+"Check in", "catch me up" or "anything I should know" runs one sequence and gives one reply, one section per step:
+
+1. If a script exits 4 with `ETRADE_REAUTH`, do the E*Trade login first, under the session's broker-login rule.
+2. **Brief.** Run `brief.py --no-headlines > DIR/snapshot.json` and give the totals, the day's move and new flags in three lines or fewer. This run also records arrivals.
+3. **Plan.** Run the portfolio-plan skill's `plan.py status` and give the mix against the picks target, and drift against saved targets when there are any.
+4. **Since last time.** Run the get-started skill's `inbox.py`. It lists the cash and vested shares that arrived since an earlier read (the last-read record's `arrivals`), the picks due for a re-check and new watchlist alerts. Give each line with the sentence that handles it. Nothing printed means nothing new; say so in one line.
+5. End with the handling sentences as the offer. Run none of them until the person picks one.
+
+"Show my watchlist" belongs to the watchlist skill, not this one.
+
+### The headline analysis
+
+A small card at the top of the page: a headline, "What stands out", "What to look into", and a folded "What this means for you". The file is `{"headline", "stands_out", "look_into", "for_you"}`.
+
+- Limits, which `render_brief.py` enforces: `headline` 20 words, `stands_out` 90, `look_into` 90, `for_you` 70. `for_you` is optional and the rest are required.
+- Links take the form `[Sectors](sec-card)`, in `look_into` only, to these ids: `headlines-card`, `accounts-card`, `alloc-card`, `sector-card`, `movers-card`, `holdings-card`, `events-card`, `compare-card`, `flags-section`.
+- Every number comes from this run's script output, quoted as the script gives it.
+- Lead with what is unusual today, not a tour of the page. Say plainly when nothing stands out.
+- Separate data from inference, using words like "may" for inference.
+- Carry dates when a reading is older than the page's prices.
+- Name the bull and the bear side when reading a market condition or a security.
+- No buy, sell or hold call, and no forecast. `for_you` says how a reading touches the person's holdings, not what to do. The forbidden verbs are rejected in every field.
+- `for_you` takes portfolio numbers only from a read taken on this run or today, never from memory. Non-numeric context from memory or the profile is allowed, such as a paycheck and stock awards both depending on one employer.
+- A file that breaks a rule exits 2 with `error` naming the rule and writes no page. Rewrite the file and render again.
+
+Write each field so a reader follows it on the first read:
+
+- Each sentence makes one point, and the sentence after it starts a new one.
+- A comparison and its likely cause share a sentence: what happened, then "likely because" and the reason.
+- A caveat about a figure comes after the point it qualifies, in its own sentence: which figure, what is wrong with it, and why.
+- Name a group by what it is to the reader: "your 401(k) funds", "cash and bonds".
+- Write an estimated day change as "The 0.3% is partly an estimate, because your 401(k) funds have no public quote." The Flags section carries the share estimated.
+- Write a flag as the plain fact: "Cash and money-market funds are 48.8%, above the 20% line the page flags."
+
+Before: "The day's move was -$1,808.75 (-0.3%), against S&P 500 -1.8%; 25.55% of market value uses an estimated day change. Cash and money-market funds at 48.8% and bonds at 25.4% may explain the gap."
+
+After: "You fell 0.3% while the S&P 500 fell 1.8%, likely because about 74% of the portfolio is in cash and bonds. The 0.3% is partly an estimate, because your 401(k) funds have no public quote."
+
+What to look for on this page:
+
+- The day's move against the S&P 500, and whether it is partly estimated (`DAY_CHANGE_ESTIMATED`).
+- Concentration and flags that changed, cash share, and new alerts in `headlines`.
+- Events in the next few days.
 
 Start every request with step 0, then pick the case that matches.
 
@@ -138,7 +266,7 @@ Start every request with step 0, then pick the case that matches.
 
 **The user asks about allocation, concentration or drift**
 
-1. If `targets.json` exists, run the rebalancing skill's `plan.py` and lead with its drift and breach output. Ask the user for targets only when the file is absent.
+1. If the saved targets in settings.json exist, run the portfolio-plan skill's `plan.py status` and lead with its drift and breach output (`global.allocation`). Ask the user for targets only when none are saved.
 2. Otherwise run `aggregate_report.py <account_id>...`, then pipe its `positions` into `allocation.py`.
 3. Present the script's numbers. Do not recompute them by hand.
 4. If `allocation.py` cannot be run, use the formulas in the "Concentration and Drift Formulas" section of `references/portfolio-research.md` and say so.
@@ -169,9 +297,9 @@ Topics: the evidence behind a rule, weighting schemes, covariance or shrinkage c
 
 **The user asks for a deep review, or what they really depend on**
 
-Run this only when the person asks for a deep review or for depth. Otherwise answer from the holdings case, ending with one line: a deep review is available and sends about eight research subagents.
+Run this when the person asks for a deep review or for depth, or when the session's depth rule makes the deep review the default. Otherwise answer from the holdings case; in standard depth, end with one line: a deep review is available and sends about eight research subagents.
 
-1. If the portfolio-snapshot or risk-analysis skill is not installed, say the deep review needs both, and stop.
+1. If the risk-analysis skill is not installed, say the deep review needs it, and stop.
 2. Tell the person it has started: about 8 subagents and 40 web searches. If they have not mentioned income, ask once whether to include a paycheck or other income. Without an answer, cover holdings alone and say so. Income comes only from what they say in this session.
 3. Make `DIR/deep-review/` and its `baseline/`, `research/` and `threads/` folders, where DIR is the session scratchpad.
    - Write `snapshot.py --no-news` to `baseline/snapshot.json` and `stress.py --full-correlation` to `baseline/stress.json`. If either exits non-zero, follow its skill's exit codes and stop.
@@ -198,56 +326,90 @@ Run this only when the person asks for a deep review or for depth. Otherwise ans
 3. Say that this re-measures dollars only. The shares, shocks and verdicts are the review's own, and no new research ran.
 4. If `rerun_due` is true, give `rerun_reasons` and say a new deep review would refresh the evidence.
 
-**The user wants to place an order**
+**The user wants to place, cancel or see orders**
 
-Before the protocol:
-
-1. Pick the account. If exactly one account has `supports_trading` true, use it without asking. Ask the user to pick only when several accounts can trade.
-2. If the user names an account where `supports_trading` is false, explain that the connection is read-only and list the accounts that can accept trades. Stop.
-3. If `account_type` says `cash` and the user says the account is margin, point them to the `BROKER_ACCOUNT_TYPES` line (the connect skill documents it). Do not proceed on their word.
-4. For a dollar-amount request ("buy $500 of AAPL"), run `quote.py <symbol>` for the price (web search if `quote.py` is unavailable) and work out the quantity:
-
-   | Account `broker` | Quantity |
-   |---|---|
-   | `etrade` (connected directly) | dollar_amount / price rounded down to 3 decimals, within E*Trade's fractional rules in the trading skill; or floor(dollar_amount / price) |
-   | `snaptrade` | floor(dollar_amount / price). Whole shares only. |
-
-5. If the request has more than one leg, apply the cash-account case below first.
-
-Then the protocol.
-
-NEVER place an order without, in this exact order:
-1. Only when the trade-journal skill is installed (it is an optional extra): running the trading skill's `gate.py <symbol> <BUY|SELL> <qty> [--limit X]` and showing its `decision` and `reasons`. A SKIP decision (the journal is not installed) is not shown. The gate never blocks and never replaces the steps below.
-   - On NO_GO or REVIEW, state the reason in one sentence and ask whether to proceed anyway or journal the plan first (trade-journal skill); the user's answer in their own message decides.
-2. Running the trading skill's `preview-order.py <account_id> <symbol> <BUY|SELL> <qty> [--type ... --limit ... --stop ... --term ...]`.
-3. Showing the preview output (trade id, price, units, estimated cost, estimated commission, remaining cash, and any warnings) to the user. End that reply with the confirmation block in Reply format.
-4. Receiving explicit confirmation of that specific order in the user's own message.
-5. Only then running `place-order.py` with the exact same arguments plus `--confirm`. Without `--confirm` the script prints the preview and exits 3 — that is the gate, not a bug to work around. `place-order.py` re-runs the preview itself before placing, so the trade id you saw may differ; that is expected.
-
-If the preview carries `flags` with `UNSETTLED_CASH`, say so before asking for confirmation.
-
-**The order has several legs, or settlement affects the answer**
-
-1. Read the account's `account_type`. State which account type you are applying whenever settlement affects the answer, so a stale declaration is visible rather than silent.
-2. If it is `margin`, sequence trades normally and say nothing more about settlement.
-3. If it is `cash`, apply these four rules:
-   1. Buying with proceeds from a sale made the same day or earlier is fine. The new position then must not be sold until the sale proceeds that paid for it settle (T+1 after that sale) — say this when the user may want to trade out quickly. If they want to keep that freedom, sell first and let the proceeds settle (T+1) before buying.
-   2. Do not place a buy that only a *later* sale would pay for — sell first, then buy.
-   3. Never fund a purchase by selling the security you just bought.
-   4. Buying power reported by the broker may include unsettled proceeds. Do not treat it as settled cash; the balance script's `cash` figure is the number to check, and a preview carrying the `UNSETTLED_CASH` flag is the broker saying the same thing.
-4. If a requested sequence would risk a violation, say so plainly, name which violation and its consequence, and offer the compliant alternative. Do not refuse the trade — the user may have context you lack, and a margin account may simply be undeclared.
-5. Run the order protocol once per leg, each with its own confirmation.
-
-**The user wants to cancel an order, or see orders and history**
-
-1. Run the trading skill's `orders.py <account_id>` for open orders, or `transactions.py <account_id>` for history.
-2. Cancelling requires the exact order id (`order_id` on each `orders.py` row) and the user's confirmation before running `cancel-order.py <account_id> <order_id> --confirm`. Ask for it with the confirmation block in Reply format.
+Orders belong to the trading skill: its protocol, its scripts and its confirmation block. Hand off to it with the account and the order the person named.
 
 **The user wants to link a brokerage**
 
 Hand off to the connect skill.
 
 ## Reply format
+
+**The daily brief**
+
+### Page reply (the default, when the page was published)
+
+In this order, then stop:
+
+1. The artifact link on its own line.
+2. The summary's `headline`, on one line.
+3. One line: Total `totals.total_value` · Cash and money-market funds `totals.cash_like` (`totals.cash_like_pct`) · Day `totals.day_change` (`totals.day_change_pct`, covers `totals.day_change_coverage` of holdings) · Unrealized `totals.unrealized_pnl`
+4. Headlines, only when `headlines` is present:
+   - The line "Headlines (N new):", where N is the count of `status == "new"`. Write "Headlines: none today" when the list is empty.
+   - At most five bullets, in the script's order.
+   - Each bullet reads "SEVERITY title — answer". The prefix is the severity in caps for alerts, `NEW` for new notices, and nothing for the rest. Then the `title`. Then " — " and the `answer`, when it is non-empty.
+5. One line "Sources: X of Y checked, Z skipped" from `coverage`, only when any source was skipped or failed. Do not list skipped or failed sources by name in chat; the page's coverage table has them.
+6. **Flags** — one bullet per `flags[].message`, or "None".
+
+The session's standing "Next you could ask:" block draws its questions first from the shown headlines whose `ask` is non-empty.
+
+Do not repeat the sections the page carries. If the user asks for a number the page shows, read it from the script's JSON.
+
+### Markdown fallback (only when the Artifact tool is unavailable)
+
+Open with the whole headline analysis as text: the headline, "What stands out", "What to look into" without its links, and "What this means for you" when written. `render_brief.py` does not run here, so nothing enforces the limits and rules in the headline analysis section. Keep to them.
+
+Then render the script's JSON in exactly this order, then stop.
+
+**Portfolio snapshot** — as of `as_of` (or the current time when `as_of` is missing)
+
+One line: Total `totals.total_value` · Cash and money-market funds `totals.cash_like` (`totals.cash_like_pct`) · Day `totals.day_change` (`totals.day_change_pct`, covers `totals.day_change_coverage` of holdings) · Unrealized `totals.unrealized_pnl` (`totals.unrealized_pnl_pct`)
+
+- If `sources.quotes` is `etrade`, label the Day column real-time.
+- If `sources.quotes` is `mixed`, say which symbols are delayed only if asked.
+
+Sections, numbered as shown:
+
+0. **Headlines** — only when `headlines` is present.
+   - One bullet per headline in the script's order: `severity` in caps, "NEW" when `status` is new, the `title`, then " — " and the `answer` when it is non-empty. When there is no `answer`, the `detail` in parentheses when present.
+   - "none today" when the list is empty.
+   - Then "Sources: X of Y checked, Z skipped, W failed" from `coverage`.
+1. **Accounts** — table from `accounts`, in input order: Account · Institution · Type · Trading · Value · Cash · Weight.
+2. **Top holdings** — table from `top_holdings`: Symbol · Name · Units · Price · Total · Weight · Unrealized P&L · Day % · 1w % · 1m %.
+   - The 1w and 1m columns appear only when the run included them; "—" otherwise.
+   - If `positions` is longer than `top_holdings`, add one line: "N more positions not shown."
+3. **Allocation** — these parts, in order:
+   - One line: positions HHI `concentration.hhi` (`concentration.hhi_interpretation`), top-5 `concentration.top_5_concentration`, `concentration.position_count` positions, largest `concentration.largest_position` (symbol, weight, asset class).
+   - When `concentration.single_stock` is present, add: "single stocks `weight` of value in `count` names, HHI `hhi` (`hhi_interpretation`), largest `largest.symbol` `largest.weight`".
+   - When `allocation` is present: a Bucket · Weight · Value · Holdings table from `allocation.buckets`, in the order US equities, international equities, bonds, cash, other. Name `allocation.unclassified` as counted in other.
+   - When `sector_exposure` is present: a Sector · Weight · Direct · Via funds table from `sector_exposure.sectors`, sorted by weight.
+   - Then one line: "`not_sectorized.bonds_and_cash` bonds and cash and `not_sectorized.funds_without_data` in no sector data or partial fund data (institutional share classes, commodities, unknown quote types), not sectorized". Add ", no data for `missing_data`" when `missing_data` is non-empty.
+   - When `sector_exposure` is absent (an older snapshot): the `sector_weights` rows other than ETF and Unknown as a Sector · Weight table. Funds are not looked through.
+   - Only when `allocation` is absent: the Asset class · Weight · Value table from `asset_classes`.
+4. **Movers** — "Up:" and "Down:" lines listing symbol (day %, day $) from `movers`. Write "no quote data" when both are empty.
+   - Under each mover that has `news[symbol]` entries, one line per story: `published` date, `publisher`, `title` (linked to `url`).
+   - When `news` is present but the mover's list is empty, write "no dated story in the last 7 days".
+5. **Upcoming events** — only when `events` is not null: table Date · Symbol · Type.
+6. **Change since last snapshot** — only when `comparison` exists.
+   - One line: "Since `comparison.since` (`comparison.days` days ago): Total `comparison.total_value.before` → `comparison.total_value.after` (`comparison.total_value.delta`, `comparison.total_value.delta_pct`)".
+   - Then the first few `comparison.symbols` as a Symbol · Before · After · Change table ($ and %).
+   - Add "N more symbols not shown" when `comparison.n_more` > 0.
+   - When `comparison` is null and a NO_SNAPSHOT flag is present, write "no saved snapshot to compare against yet — run with --save to store one."
+7. **Flags** — one bullet per `flags[].message`, or "None".
+
+The only text after the Flags section is the session's standing "Next you could ask:" follow-ups block.
+
+### Number formats
+
+| Value | Format |
+|---|---|
+| Money | 2 dp with thousands separators |
+| Ratios (`*_pct`, `weight`, coverage) | percentages to 1 dp |
+| HHI (`hhi`) | a 4 dp ratio, not a percentage |
+| null | "—" |
+
+**The analysis**
 
 No fixed template. For every analysis reply:
 
@@ -268,38 +430,28 @@ No fixed template. For every analysis reply:
 
 **Deep review, markdown fallback:** the same parts without the link, plus each bet with its holdings and evidence on both sides, the overlaps and the unmapped holdings.
 
-For an order preview, show: trade id, price, units, estimated cost, estimated commission, remaining cash, and any warnings. Then the confirmation block.
-
-**Confirmation block.** A reply that waits on the user's yes ends with this block. It is the last thing in the reply: no follow-up questions, notes or disclaimers after it, so the question is never buried.
-
-```markdown
----
-### ⚠️ ACTION NEEDED: reply to confirm
-**Nothing has been placed yet.** Reply with the line for each order you want placed:
-- `yes GL`: BUY 10.867 GL, market, about $1,811.31
-- `yes CI`: BUY 6.452 CI, market, about $1,811.53
-Reply `no` to place nothing.
-```
-
-- One line per order, each with its own reply text, so every yes names one specific order.
-- Warnings (`UNSETTLED_CASH`, a cash shortfall, a NO_GO or REVIEW gate reason) go above the block, never after it.
-- For a cancellation, the line reads `` `yes cancel ORDER_ID` ``: cancel the open order and what it was.
-
 ## Rules
 
+- Every number and every headline comes from the script. Do not recompute or add figures.
+- Never run `brief.py` or `snapshot.py` twice in one answer. The one rerun after an E*Trade login is the only exception.
+- Do not run accounts.py, portfolio.py, or quote.py as well. The snapshot already contains that data.
+- Publish the page or write the markdown fallback, never both.
+- No commentary, bull/bear framing, or opinions outside the Flags section and the headline analysis card.
+- Quotes are delayed, not live. Say so plainly if the user asks for "live" prices.
+- A news story under a mover is dated context for the move, never stated as its cause.
+- If the user asks a follow-up question about the numbers, switch to the portfolio-analysis skill.
+- Never provide buy, sell, or hold recommendations. If a user asks whether they should buy, sell, or hold a security, state clearly that you cannot make investment recommendations, then present relevant analysis they can use to make their own decision.
+- Never use the words "recommend", "advise", "should", or "suggest" when referring to financial actions. Use "the data shows", "analysis indicates", "one factor to consider" instead.
+- Always present both bull and bear cases when analyzing a security or market condition.
+- Always surface key risks alongside opportunities.
+- When the answer is a figure the user could act on (a projection, valuation, trade preview, tax estimate, or allocation), say once that it is general information at the stated assumptions, not financial, tax, or legal advice.
+- Only explain financial concepts when the user asks for an explanation.
 - Present the scripts' numbers. Do not recompute by hand what a script already computed.
 - Do not ask the user for their account id. Look it up with `accounts.py`.
 - Never re-poll an account's holdings or balances inside one answer.
 - In a deep review, every dollar figure comes from `exposure.py`. A holding's value, income, an account name or a person's identifier never goes in a search, URL or fetch.
 - A deep review describes what the holdings depend on. It never says what to do about it.
 - Reconcile cash against `balance_total` before reporting it, and never add a core fund to itself.
-
-Safety rules:
-1. Never run a script with `--confirm` until the preview output has been shown in the chat and the user has explicitly said yes in their own message.
-2. One order per confirmation. Never chain a sell into a buy on a single yes.
-3. Check the account's `supports_trading` flag from `accounts.py` before previewing.
-4. If the account is cash or unknown, warn when the order size exceeds the balance script's `cash` figure, and never infer margin from buying power.
-5. Do not place an order when `place-order.py` returned exit 3, 4, 5, or 6. Show the error and stop.
 
 <research_dating>
 Every news item, analyst action, data release, or calendar entry you present carries the publication date printed on the source page, the source, and what it says. Search-result snippets blend years; the dateline on the article is the date.
@@ -310,9 +462,3 @@ Every news item, analyst action, data release, or calendar entry you present car
 5. Items appear newest first with the date inline, e.g. "(Sep 8, 2026, Reuters)".
 </research_dating>
 
-- Never provide buy, sell, or hold recommendations. If a user asks whether they should buy, sell, or hold a security, state clearly that you cannot make investment recommendations, then present relevant analysis they can use to make their own decision.
-- Never use the words "recommend", "advise", "should", or "suggest" when referring to financial actions. Use "the data shows", "analysis indicates", "one factor to consider" instead.
-- Always present both bull and bear cases when analyzing a security or market condition.
-- Always surface key risks alongside opportunities.
-- When the answer is a figure the user could act on (a projection, valuation, trade preview, tax estimate, or allocation), say once that it is general information at the stated assumptions, not financial, tax, or legal advice.
-- Only explain financial concepts when the user asks for an explanation.

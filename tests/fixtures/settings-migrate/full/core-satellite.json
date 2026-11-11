@@ -1,0 +1,16 @@
+{
+ "ceiling": 1.0,
+ "ceiling_agreed_on": "2026-10-29",
+ "weighting": "valuation",
+ "include_light": null,
+ "short_term_gain_policy": "allow",
+ "employer_symbol": "AMZN",
+ "decisions": [
+  {"date": "2026-10-29", "key": "ceiling", "value": 1.0},
+  {"date": "2026-10-29", "key": "weighting", "value": "valuation"},
+  {"date": "2026-10-29", "key": "short_term_gain_policy", "value": "allow"},
+  {"date": "2026-10-29", "key": "employer_symbol", "value": "AMZN"}
+ ],
+ "increases": [],
+ "plan": null
+}

@@ -252,7 +252,7 @@ def index_snapshot() -> dict[str, Any]:
     }
 
 
-# --- portfolio-snapshot helpers ---------------------------------------------------
+# --- portfolio-analysis helpers ---------------------------------------------------
 
 
 def _unique_upper(symbols: list[str]) -> list[str]:

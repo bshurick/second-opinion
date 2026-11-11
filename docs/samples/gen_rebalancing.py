@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "skills" / "rebalancing" / "scripts"))
+sys.path.insert(0, str(ROOT / "skills" / "portfolio-plan" / "scripts"))
 import rebalance  # noqa: E402
 BRK, ROTH, K401 = "Sample Brokerage", "Sample Roth IRA", "Sample 401(k)"
 H = [  # account, symbol, units, price, cost basis

@@ -241,12 +241,12 @@ def _dom_text(data, tmp_path, capsys) -> str:
     """The page's visible text after its script runs (headless Chrome)."""
     import re
     import subprocess
-    from page_dom import CHROME
+    from page_dom import chrome_cmd
     rc, res = _render(data, tmp_path, capsys)
     assert rc == 0, res
     doc = tmp_path / "full.html"
     doc.write_text(f'<!doctype html><html><head><meta charset="utf-8"></head><body>{(tmp_path / "p.html").read_text()}</body></html>')
-    out = subprocess.run([CHROME, "--headless=new", "--disable-gpu", "--virtual-time-budget=2000", "--dump-dom", doc.as_uri()],
+    out = subprocess.run([*chrome_cmd(tmp_path, budget_ms=2000), "--dump-dom", doc.as_uri()],
                          capture_output=True, text=True, timeout=90).stdout
     body = out[out.find("<body"):]
     body = re.sub(r"<script.*?</script>|<style.*?</style>", " ", body, flags=re.S)

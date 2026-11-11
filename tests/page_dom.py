@@ -37,12 +37,19 @@ ADVICE = re.compile(r"\b(recommend\w*|advis\w*|should|suggest\w*)\b", re.I)
 _AUDIT = re.compile(r'<script type="application/json" id="fa-audit">(.*?)</script>', re.S)
 
 
+def chrome_cmd(tmp_path: Path, *, budget_ms: int) -> list[str]:
+    """Headless Chrome with a mock keychain and a throwaway profile. Without them, every launch on
+    macOS reaches for the login keychain ("A keychain cannot be found to store Chrome") and the
+    user's real Chrome profile."""
+    return [CHROME, "--headless=new", "--disable-gpu", "--use-mock-keychain", "--password-store=basic",
+            f"--user-data-dir={tmp_path / 'chrome-profile'}", "--no-first-run", f"--virtual-time-budget={budget_ms}"]
+
+
 def audit_html(fragment: str, tmp_path: Path) -> dict:
     doc = f'<!doctype html><html><head><meta charset="utf-8"></head><body>{fragment}</body></html>'
     p = tmp_path / "audit.html"
     p.write_text(doc, encoding="utf-8")
-    out = subprocess.run([CHROME, "--headless=new", "--disable-gpu", "--virtual-time-budget=3000",
-                          "--window-size=1280,2000", "--dump-dom", p.as_uri() + "#fa-audit"],
+    out = subprocess.run([*chrome_cmd(tmp_path, budget_ms=3000), "--window-size=1280,2000", "--dump-dom", p.as_uri() + "#fa-audit"],
                          capture_output=True, text=True, timeout=90)
     m = _AUDIT.search(out.stdout)
     assert m, f"no audit JSON in Chrome output; stderr tail: {out.stderr[-500:]}"

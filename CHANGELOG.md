@@ -1,7 +1,60 @@
 # Changelog
 
-## Unreleased
+## 1.6.0
 
+- trading: every order belongs to trading. The protocol (account choice, dollar amounts, the pre-buy check, the preview, one confirmation block, cash-account settlement) moved there from portfolio-analysis, which hands order requests on.
+- portfolio-analysis: the daily brief and "check in" are its first part. portfolio-snapshot's scripts are under `portfolio-analysis/scripts/`, and `render.py` is `render_brief.py`. "How is my portfolio" and "how diversified am I" are one conversation.
+- personal-finance: the debt register is part of it. debt-tracker's scripts are under `personal-finance/scripts/`, and `render.py` is `render_debts.py`. Recording statements and planning their payoff are one skill.
+- installer: an install that listed `portfolio-snapshot` or `debt-tracker` keeps the merged skill, and `--skills`/`--without` accept the old names. 23 skills, no capability removed.
+- headlines: the brief's events and debt headlines carry the new skill names, so one already dismissed shows once more as new.
+
+## 1.5.0
+
+- get-started: one skill replaces `setup` and `onboarding`. "Get started with Second Opinion" runs the first run as seven steps, each skipped when already done: check, keys, connect, accounts, depth, portfolio plan, about you. The flow can stop at any step and pick up there. Settings, extras, repairs and the profile are the same skill.
+- get-started: `roles.py` shows every account with a proposed role (trading, retirement or savings) and `--accept` saves the proposals; a saved role is never overwritten.
+- get-started: `configure.py keys` takes brokerage keys in a terminal without Node: hidden input, `.env` at mode 0600, other lines kept.
+- get-started: the profile asks three questions (approach, horizon, the check before a buy). The other fields stay optional and are no longer asked. The first run records the standing plan answers once: employer stock, the picks' target, a cash reserve and the short-term gains policy.
+- renamed commands: `setup/scripts/settings.py`, `setup/scripts/inbox.py` and `onboarding/scripts/profile.py` are under `get-started/scripts/`. An install that listed `setup` or `onboarding` keeps `get-started`, and `--skills`/`--without` accept the old names.
+- installer: the guided installer installs every skill and no longer shows a skill picker; `--skills` and `--without` still choose. The README leads with the marketplace install, and the checkout install moved to `docs/install.md`.
+
+## 1.4.0
+
+- hooks: one session inbox replaces the watchlist and picks notices. It has at most six lines under `Second Opinion, N things:`, each ending with the sentence that handles it: cash that arrived, vested employer shares, picks due for a re-check (and how many wait for a 10-Q), new watchlist alerts. Nothing new prints nothing. "Show my watchlist" still gives the full table.
+- portfolio-snapshot: the last-read record keeps per-account cash and units, and lists arrivals between full reads: a cash rise of $100 or more in an account that sold nothing, and new units of an employer member. An arrival stays until the cash or shares are spent.
+- portfolio-snapshot: "check in" runs one sequence in one reply: the E*Trade login when needed, the brief, the plan status, then what arrived and what is due.
+- portfolio-plan: unset decisions no longer stop a run. An unset short-term policy runs as hold; an unset employer uses the vest deposits found in account history as employer stock, or none. A `STANDING_DEFAULT` flag (formerly `DECISION_NEEDED`) names the assumption and the sentence that changes it.
+- portfolio-plan: "put the new cash to work" contributes the arrived cash, and "my RSUs vested" follows the employer policy (under `sell_on_arrival`, the sale first, then its proceeds as a contribution). An approved trade list goes straight to the pre-buy check, the previews and one `confirm`.
+- trading: a broker's fractional refusal saves `accounts.<id>.whole_shares`, and plans that touch that account then size in whole shares.
+
+## 1.3.0
+
+- portfolio-plan: the rebalancing and core-satellite skills are one skill, `portfolio-plan`, with one plan in which the picks are a sleeve. The global plan rebalances classes, funds and the sleeve as one line; the picks keep their own rules inside it (four weightings, held picks, the 25%/$250 trim band, same-account routing, specific lots).
+- portfolio-plan: `plan.py` is the one entry point. `status` shows the sleeve mix, drift against saved targets and the pace of a glide. `contribute AMOUNT` routes cash already deposited: the picks first while they sit below their target, the rest by the targets with no sells, or into the core funds held, pro rata, when no targets are saved. `withdraw AMOUNT`, `rebalance` (no targets: today's weights offered, no trades), `rebalance --sleeve PICKS` and `open SYMBOL` cover the rest.
+- portfolio-plan: renamed commands. `rebalancing/scripts/plan.py` is `portfolio-plan/scripts/global_plan.py`. `core-satellite/scripts/run.py add` is `plan.py contribute AMOUNT --sleeve PICKS`, `run.py new-pick` is `plan.py open`, `run.py rebalance` is `plan.py rebalance --sleeve PICKS` and `run.py mix` is `plan.py status`. `run.py deposit` is `plan.py contribute`. `run.py grow`, `plan-step` and the step-up plan become a target with a date (`plan.sleeves.PICKS.glide`). `core-satellite/scripts/settings.py` is gone: settings change through setup's `settings.py set`.
+- portfolio-plan: an account's saved role decides taxability (trading and savings taxable, retirement tax-advantaged); accounts with no role keep the raw-type guess.
+- settings: schema 2. The picks sleeve has a `target` and a `glide` instead of a ceiling, increases and a step-up plan. A schema-1 file upgrades in place: a ceiling below 1 becomes the target, a step-up plan becomes a glide, and the retired values are kept under `meta.retired`. The employer sleeve holds `members` and a `policy`.
+- installer: a previous install that listed `rebalancing` or `core-satellite` keeps `portfolio-plan`, and `--skills`/`--without` accept the old names.
+- hooks: the core-satellite step reminder is gone with the step-up plan.
+
+## 1.2.0
+
+- depth: research depth is a saved setting, `depth` (standard or deep; standard by default). Say "change depth" to set it; Claude states what each choice costs first. Standard keeps today's behaviour, with "deep dive" and the other upgrade words still giving one deep answer.
+- depth, deep: a valuation or a pick is deep or it is not given. `picks.py save-light` exits 2 (`DEPTH_DEEP`), `check` on a light pick exits 2 (`DEEP_VALUATION_NEEDED`), and `list`, `due` and the session summary mark saved light picks as needing a deep valuation. Nothing saved is changed, and switching back to standard restores them.
+- core-satellite: at deep depth, light picks hold (`DEEP_VALUATION_NEEDED`), `--include-light` and `new-pick` on a light pick exit 2, and a saved `include_light` is ignored. `settings_used` reports `depth`.
+- hooks: at deep depth each session starts with one depth rule (`hooks/depth-deep.md`) that every skill follows: reuse a current deep result, state the size of a deep run, and ask before starting more than `deep.ask_above` (default 3) deep valuations.
+- valuation: the quick page says "Standard depth" under its title, so it can never pass as a deep one.
+- setup: "show my settings" lists the six skills that have a deep path.
+
+## 1.1.0
+
+- settings: one `settings.json` in the data directory now holds every setting: depth, accounts and their roles, the portfolio plan (targets, classes, bands, the picks and employer sleeves), taxes, the pre-buy check, reply switches and lessons. On first run it takes in `installed.json`'s extras, `core-satellite.json`, `targets.json` and the profile's account roles; the last two files are renamed to `.migrated`, never deleted. `.env`, `installed.json` and `profile.json` stay where they are.
+- setup: say "show my settings" to see each group as a table with defaults marked, "change a setting" to set one (`settings.py set`), or "is there an update" to compare the installed and latest versions. Turning an extra on or off no longer runs the installer and applies from the next session.
+- updates: the next session after an update prints "Second Opinion updated to X" once. Update with `claude plugin marketplace update second-opinion` and `claude plugin update second-opinion@second-opinion`, then restart Claude Code.
+- replies: a `replies.pages` switch turns report pages off, so answers come in chat only.
+- ci: `scripts/check-version.sh` fails a change to the shipped files that keeps the version of the latest `v*` tag.
+- connect: a rejected E*Trade verifier code no longer leaves its spent link behind, so the next login gets a new one, and the authorize link now percent-encodes the token (a raw `+` reads as a space).
+- core-satellite, stock-screener: a pick revalued after a check left every scenario is no longer held for a rerun. Saving a new baseline records `baseline_checks_from`, and only checks against the current baseline can hold a pick.
+- trading, portfolio-analysis, core-satellite, rebalancing: one `confirm` places every order in a preview, sells first, and stops at the first failure. `yes SYMBOL` still places one, and a NO_GO order still needs its own yes.
 - trade-journal: on by default on a fresh install, including its pre-buy check. Existing installs keep their recorded choice.
 - installer: the skill picker and the extras screen no longer lose a key pressed right after another. Enter could act on the selection from before the last key, which also made a CI test fail now and then.
 - trade-review: a deep review of skill against luck. It picks the largest decisions by money moved, researchers rebuild what was public before each, and a grader who sees no results grades them. `decisions.py` rejects evidence dated after a decision, sets each grade against its result and groups the results, `render_decisions.py` builds the page, and `decision_store.py check` re-measures results with the grades frozen.

@@ -75,7 +75,32 @@ It prints `{"out", "title", "symbol", "observations"}`.
   | MARKET only under one share | `FRACTIONAL_MARKET_ONLY` |
   | No GOOD_UNTIL_CANCEL | `FRACTIONAL_TERM` |
   | No fractional SELL_SHORT | `FRACTIONAL_SHORT` |
-  | SnapTrade accounts take whole shares only | `FRACTIONAL_NOT_SUPPORTED` |
+  | SnapTrade accounts take whole shares only (the account is saved as `accounts.<id>.whole_shares`) | `FRACTIONAL_NOT_SUPPORTED` |
+
+### Account fields to trust
+
+- **`supports_trading`** (boolean) is the authoritative signal for whether trades can be placed in that account. Do NOT guess from the broker name.
+- **`account_type`** is `margin` or `cash`. Trust this field — it is DECLARED, not detected.
+  - Order of precedence: a `BROKER_ACCOUNT_TYPES=<account_id>=margin` line in the plugin's `.env` wins, then what a direct broker adapter reports, and anything else defaults to `cash`.
+  - Never infer it from the broker name, the account name, `raw_type`, or balances.
+  - In particular do NOT conclude "margin" because buying power exceeds cash: a cash account holding unsettled sale proceeds reports exactly that, and that is precisely the state in which settlement violations occur.
+- **`balance_total`** is the broker's own account total. Cash figures are reconciled against it.
+
+
+### Settlement rules (cash accounts)
+
+Settlement rules — check `account_type` before sequencing any multi-leg trade.
+
+- **`margin`** — no settlement constraint.
+- **`cash`** — the settled-funds discipline applies. A purchase must be paid for in full by settlement. Stock settles **T+1** (one business day after the trade).
+- Buying with the proceeds of a sale that has not yet settled is allowed — the restriction falls on what happens to the new position afterwards.
+- The rules come from the Federal Reserve's Regulation T (12 CFR 220.8, the cash account). "Good faith violation" and "cash liquidation violation" are the names brokers give, in their own account policies, to the ways those rules get broken, so the exact penalties are each broker's and can differ.
+
+The three violations:
+
+- **Freeriding** — buying a security and then paying for it with proceeds from selling that same security. Reg T itself requires the broker to restrict the account for 90 days (purchases need settled cash up front) after a single occurrence. This is the one to never allow.
+- **Good faith violation** — buying with unsettled sale proceeds is fine; the violation happens only if the newly bought position is sold before the funds used to buy it have settled. Most brokers restrict the account to settled cash for 90 days after three or four in 12 months.
+- **Cash liquidation violation** — buying without enough cash to cover the purchase, then selling something else *after* the purchase date to raise it. Brokers typically restrict the account after three in 12 months.
 
 ### The horizon map
 
@@ -181,21 +206,53 @@ Read support and resistance from the `pivots` block. Note any notable trend chan
 
 **The user wants to place an order**
 
+A plan's trade list (portfolio-plan's `trades`, approved by the person) enters the protocol directly: each row already names its account, side and units, so skip the steps under "Before the protocol", run the gate and the preview once per row, and list every row in one confirmation block.
+
+Before the protocol:
+
+1. Pick the account. If exactly one account has `supports_trading` true, use it without asking. Ask the user to pick only when several accounts can trade.
+2. If the user names an account where `supports_trading` is false, explain that the connection is read-only and list the accounts that can accept trades. Stop.
+3. If `account_type` says `cash` and the user says the account is margin, point them to the `BROKER_ACCOUNT_TYPES` line (the connect skill documents it). Do not proceed on their word.
+4. For a dollar-amount request ("buy $500 of AAPL"), run `quote.py <symbol>` for the price (web search if `quote.py` is unavailable) and work out the quantity:
+
+   | Account `broker` | Quantity |
+   |---|---|
+   | `etrade` (connected directly) | dollar_amount / price rounded down to 3 decimals, within E*Trade's fractional rules in the trading skill; or floor(dollar_amount / price) |
+   | `snaptrade` | floor(dollar_amount / price). Whole shares only. |
+
+5. If the request has more than one leg, apply the cash-account case below first.
+
+Then the protocol.
+
 NEVER place an order without, in this exact order:
 1. Only when the trade-journal skill is installed (it is an optional extra): running the trading skill's `gate.py <symbol> <BUY|SELL> <qty> [--limit X]` and showing its `decision` and `reasons`. A SKIP decision (the journal is not installed) is not shown. The gate never blocks and never replaces the steps below.
    - On NO_GO or REVIEW, state the reason in one sentence and ask whether to proceed anyway or journal the plan first (trade-journal skill); the user's answer in their own message decides.
 2. Running the trading skill's `preview-order.py <account_id> <symbol> <BUY|SELL> <qty> [--type ... --limit ... --stop ... --term ...]`.
 3. Showing the preview output (trade id, price, units, estimated cost, estimated commission, remaining cash, and any warnings) to the user. End that reply with the confirmation block in Reply format.
-4. Receiving explicit confirmation of that specific order in the user's own message.
+4. Receiving explicit confirmation in the user's own message: `confirm` for every order in the confirmation block, or `yes SYMBOL` for one of them.
 5. Only then running `place-order.py` with the exact same arguments plus `--confirm`. Without `--confirm` the script prints the preview and exits 3 — that is the gate, not a bug to work around. `place-order.py` re-runs the preview itself before placing, so the trade id you saw may differ; that is expected.
 
 If the preview carries `flags` with `UNSETTLED_CASH`, say so before asking for confirmation.
+
+On `confirm`, place the block's orders in the order it lists them, sells first. Stop at the first non-zero exit, and say which orders were placed and which were not.
 
 When `gate.py` runs:
 
 - Show `decision` and `reasons` verbatim.
 - Never describe a GO as approval of the trade.
 - When the entry has a thesis-based `invalidation`, read the invalidation back to the user in their words.
+
+**The order has several legs, or settlement affects the answer**
+
+1. Read the account's `account_type`. State which account type you are applying whenever settlement affects the answer, so a stale declaration is visible rather than silent.
+2. If it is `margin`, sequence trades normally and say nothing more about settlement.
+3. If it is `cash`, apply these four rules:
+   1. Buying with proceeds from a sale made the same day or earlier is fine. The new position then must not be sold until the sale proceeds that paid for it settle (T+1 after that sale) — say this when the user may want to trade out quickly. If they want to keep that freedom, sell first and let the proceeds settle (T+1) before buying.
+   2. Do not place a buy that only a *later* sale would pay for — sell first, then buy.
+   3. Never fund a purchase by selling the security you just bought.
+   4. Buying power reported by the broker may include unsettled proceeds. Do not treat it as settled cash; the balance script's `cash` figure is the number to check, and a preview carrying the `UNSETTLED_CASH` flag is the broker saying the same thing.
+4. If a requested sequence would risk a violation, say so plainly, name which violation and its consequence, and offer the compliant alternative. Do not refuse the trade — the user may have context you lack, and a margin account may simply be undeclared.
+5. Run the gate and the preview once per leg, and list every leg in one confirmation block.
 
 **The user wants to see orders or transactions**
 
@@ -236,15 +293,16 @@ The page carries the chart, the returns, the full signals table and the pivots. 
 ```markdown
 ---
 ### ⚠️ ACTION NEEDED: reply to confirm
-**Nothing has been placed yet.** Reply with the line for each order you want placed:
+**Nothing has been placed yet.** Reply `confirm` to place every order below, in this order:
 - `yes GL`: BUY 10.867 GL, market, about $1,811.31
 - `yes CI`: BUY 6.452 CI, market, about $1,811.53
-Reply `no` to place nothing.
+Or reply `yes SYMBOL` for just one of them, or `no` to place nothing.
 ```
 
-- One line per order, each with its own reply text, so every yes names one specific order.
+- One line per order, so `confirm` covers exactly what the block lists.
+- A REVIEW warning says `confirm` also means going ahead without a written plan. A NO_GO order takes its own `yes SYMBOL`: its line says so, and `confirm` leaves it out.
 - Warnings (`UNSETTLED_CASH`, a cash shortfall, a NO_GO or REVIEW gate reason) go above the block, never after it.
-- For a cancellation, the line reads `` `yes cancel ORDER_ID` ``: cancel the open order and what it was.
+- For a cancellation, the line reads `` `yes cancel ORDER_ID` ``: cancel the open order and what it was. `confirm` never covers a cancellation.
 
 **In every reply:**
 
@@ -266,7 +324,7 @@ Reply `no` to place nothing.
 
 Safety rules:
 1. Never run a script with `--confirm` until the preview output has been shown in the chat and the user has explicitly said yes in their own message.
-2. One order per confirmation. Never chain a sell into a buy on a single yes.
+2. A confirmation covers only the orders in the block it answers: `confirm` places all of them, `yes SYMBOL` one. A new or changed order needs its own preview and block.
 3. Check the account's `supports_trading` flag from `accounts.py` before previewing.
 4. If the account is cash or unknown, warn when the order size exceeds the balance script's `cash` figure, and never infer margin from buying power.
 5. Do not place an order when `place-order.py` returned exit 3, 4, 5, or 6. Show the error and stop.

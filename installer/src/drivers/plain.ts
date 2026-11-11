@@ -2,7 +2,7 @@
  * Line-oriented driver: used with --json, --plain, or when stdin/stdout is not a terminal.
  * Never prompts. Confirmations need --yes; missing secrets are named errors.
  */
-import { buildPlan, createContext, execute, initialExtras, initialSelection, initialValues, preflight, requirePython, type Context, type InstallEvent } from "../engine/installer.js";
+import { buildPlan, createContext, execute, initialExtras, initialSelection, initialValues, preflight, priorSwitches, requirePython, type Context, type InstallEvent } from "../engine/installer.js";
 import { InstallError, UsageError } from "../engine/errors.js";
 import { loadCatalog, loadExtras } from "../engine/catalog.js";
 import { planUninstall, uninstall } from "../engine/link.js";
@@ -34,8 +34,8 @@ export async function runPlain(root: string, options: Options, environ: Environ,
     const python = requirePython(pre);
     const catalog = loadCatalog(ctx.root);
     const extraDefs = loadExtras(ctx.root);
-    const sel = initialSelection(catalog, options, pre.previous, ctx.configure);
-    const ex = initialExtras(options, extraDefs, catalog, sel.names, pre.previous);
+    const sel = initialSelection(catalog, options, pre.previous, ctx.configure, priorSwitches(pre)?.extras ?? null);
+    const ex = initialExtras(options, extraDefs, catalog, sel.names, priorSwitches(pre));
     for (const n of [...sel.notes, ...ex.notes]) human(n);
     const plan = buildPlan(ctx, pre, python, ex.selected, initialValues(ctx), undefined, ex.nonSkill);
     const on = extraDefs.filter((e) => plan.extrasState[e.key]).map((e) => e.key);
@@ -56,8 +56,8 @@ export async function runPlain(root: string, options: Options, environ: Environ,
       const warnings = [...plan.warnings, ...plan.missing.map((k) => `${k} is not set; a real run will need it`)];
       if (!ctx.configure) human(`would install ${diffLine("").trimStart()}`);
       human(extrasLine);
-      if (ctx.configure) human(`would write .env and installed.json to ${ctx.data}; venv at ${path.join(ctx.data, "venv")}; nothing copied or linked`);
-      else human(`would write ${ctx.target} and link ${ctx.link}; .env, installed.json and venv in ${ctx.data}`);
+      if (ctx.configure) human(`would write .env, installed.json and settings.json to ${ctx.data}; venv at ${path.join(ctx.data, "venv")}; nothing copied or linked`);
+      else human(`would write ${ctx.target} and link ${ctx.link}; .env, installed.json, settings.json and venv in ${ctx.data}`);
       if (plan.leftovers.length) human(`would remove the old finance-analyst copy (with --yes): ${plan.leftovers.join(", ")}`);
       if (ctx.legacyData) human(`would move ${ctx.legacyData} to ${ctx.data}`);
       if (options.json) {

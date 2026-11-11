@@ -1,8 +1,6 @@
 {
   "skills": [
-    {"name": "onboarding", "family": "Getting started", "requires": [], "depends_on": []},
     {"name": "connect", "family": "Accounts and holdings", "requires": ["brokerage"], "depends_on": []},
-    {"name": "portfolio-snapshot", "family": "Accounts and holdings", "requires": ["brokerage"], "depends_on": []},
     {"name": "portfolio-analysis", "family": "Accounts and holdings", "requires": ["brokerage"], "depends_on": []},
     {"name": "dividend-income", "family": "Accounts and holdings", "requires": ["brokerage"], "depends_on": []},
     {"name": "watchlist", "family": "Accounts and holdings", "requires": [], "depends_on": []},
@@ -12,12 +10,10 @@
     {"name": "trade-journal", "family": "History and decisions", "requires": [], "depends_on": ["trade-review"], "extra": true, "default": true, "label": "Trade plan and pre-buy check", "blurb": "Write down why you are buying, your target and your exit; before each order Claude checks it against that plan.", "friction": "Adds a confirmation step to every buy."},
     {"name": "tax-aware", "family": "History and decisions", "requires": [], "depends_on": []},
     {"name": "spending", "family": "History and decisions", "requires": [], "depends_on": []},
-    {"name": "rebalancing", "family": "Planning", "requires": ["brokerage"], "depends_on": []},
-    {"name": "core-satellite", "family": "Planning", "requires": ["brokerage"], "depends_on": ["rebalancing"]},
+    {"name": "portfolio-plan", "family": "Planning", "requires": ["brokerage"], "depends_on": []},
     {"name": "retirement", "family": "Planning", "requires": ["brokerage"], "depends_on": []},
     {"name": "real-estate", "family": "Planning", "requires": [], "depends_on": []},
     {"name": "personal-finance", "family": "Planning", "requires": [], "depends_on": []},
-    {"name": "debt-tracker", "family": "Planning", "requires": [], "depends_on": []},
     {"name": "valuation", "family": "Research and markets", "requires": [], "depends_on": []},
     {"name": "fundamental-research", "family": "Research and markets", "requires": ["edgar"], "depends_on": []},
     {"name": "stock-screener", "family": "Research and markets", "requires": ["edgar"], "depends_on": []},

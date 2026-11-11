@@ -14,7 +14,11 @@ Two files under the plugin data directory (see ``config.data_dir``):
     the phase-2 observer hook. Reserved here so paths live in one place.
 
 Every value written to ``fields`` passes ``validate_value`` (closed
-vocabularies) and carries its provenance. There is no ``inferred`` source: an
+vocabularies) and carries its provenance. ``account_roles`` is the exception: it is
+validated here but stored in ``settings.json`` as ``accounts.<id>.role`` (settings is
+the source of truth for roles; an ``account_roles`` field left in an older profile.json
+is ignored when reading); unsetting it clears every ``accounts.<id>.role`` to null (the
+account-type heuristic decides again). There is no ``inferred`` source: an
 inference is a proposal until the user confirms it. Stdlib only, so the
 session-start hook can run this before the virtualenv exists.
 """
@@ -25,7 +29,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from second_opinion import config
+from second_opinion import config, settings
 from second_opinion.errors import ApiError, InvalidInput
 
 PROFILE_FILE = "profile.json"
@@ -203,6 +207,12 @@ def set_field(
         raise InvalidInput("a confirmed field needs the proposal id it came from")
     value = validate_value(field, raw)
     day = _today(today)
+    if field == "account_roles":
+        when = date.fromisoformat(day)
+        for account, role in value.items():
+            settings.set_value(f"accounts.{account}.role", role, today=when)
+        profile["updated"] = day
+        return profile
     entry: dict[str, Any] = {"value": value, "source": source, "at": day}
     if from_proposal:
         entry["from_proposal"] = from_proposal
@@ -219,6 +229,18 @@ def set_field(
 def unset_field(profile: dict[str, Any], field: str, *, today: date | None = None) -> dict[str, Any]:
     if field not in FIELDS:
         raise InvalidInput(f"unknown field {field!r}; fields are {', '.join(FIELDS)}")
+    if field == "account_roles":
+        # roles live in settings: clear each one (null means the account-type heuristic decides),
+        # and drop a stale copy an older profile.json may still hold
+        day = _today(today)
+        roles = saved_role_map()
+        for account in roles:
+            settings.set_value(f"accounts.{account}.role", None, today=date.fromisoformat(day))
+        stale = profile["fields"].pop(field, None)
+        if not roles and stale is None:
+            raise InvalidInput(f"{field} is not set")
+        profile["updated"] = day
+        return profile
     if field not in profile["fields"]:
         raise InvalidInput(f"{field} is not set")
     del profile["fields"][field]
@@ -230,7 +252,7 @@ def unset_field(profile: dict[str, Any], field: str, *, today: date | None = Non
 
 NO_PROFILE_LINE = (
     "No Second Opinion profile exists. Before completing the user's first finance request, "
-    "run the onboarding skill's questions (or record 'skip for now'), then finish the request."
+    "run the get-started skill's questions (or record 'skip for now'), then finish the request."
 )
 SKIPPED_LINE = (
     "Second Opinion profile: onboarding was skipped. Say 'get started with Second Opinion' "
@@ -269,6 +291,21 @@ def _truncate_goals(goals: list[str]) -> str:
     return result
 
 
+def saved_role_map() -> dict[str, str]:
+    """Account id to role, for every account with a role saved in settings."""
+    accounts = settings.load()["accounts"]
+    return {str(k): v["role"] for k, v in accounts.items() if isinstance(v, dict) and v.get("role")}
+
+
+def _saved_roles() -> list[str]:
+    """The roles saved in settings, in account order; none when settings cannot be read."""
+    try:
+        accounts = settings.load()["accounts"]
+    except (ApiError, InvalidInput):
+        return []
+    return [entry["role"] for entry in accounts.values() if isinstance(entry, dict) and entry.get("role")]
+
+
 def summary(profile: dict[str, Any]) -> str:
     """One paragraph of the declared and confirmed fields, for session context."""
     fields = profile.get("fields") or {}
@@ -281,10 +318,10 @@ def summary(profile: dict[str, Any]) -> str:
             parts.append(f"goals {_truncate_goals(goals)}")
         else:
             parts.append(f"{_LABELS[k]} {_fmt(fields[k]['value'])}")
-    roles = fields.get("account_roles", {}).get("value") if "account_roles" in fields else None
+    roles = _saved_roles()
     if roles:
         counts: dict[str, int] = {}
-        for role in roles.values():
+        for role in roles:
             counts[role] = counts.get(role, 0) + 1
         parts.append("accounts " + ", ".join(f"{n} {role}" for role, n in counts.items()))
     body = "; ".join(parts) if parts else "no fields set"
@@ -316,12 +353,12 @@ _LEARNING_ONLY_WORDS = ("learn", "education", "understand", "study")
 
 # (condition key, required skill, needs connected accounts, question)
 _QUESTIONS: tuple[tuple[str, str, bool, str], ...] = (
-    ("accounts", "portfolio-snapshot", True, "How is my portfolio doing today?"),
+    ("accounts", "portfolio-analysis", True, "How is my portfolio doing today?"),
     ("approach:value", "valuation", False, "Does KO pass Graham's defensive-investor tests, and what are its owner earnings?"),
     ("approach:growth", "valuation", False, "What's a fair price for NVDA, and what growth is the market pricing in?"),
     ("approach:dividend", "dividend-income", True, "How much dividend income will I earn this year, and in which months?"),
     ("approach:technical", "trading", False, "Chart AMD's trend. Where are support and resistance?"),
-    ("approach:index", "rebalancing", True, "I'm targeting 60/40. How far off am I?"),
+    ("approach:index", "portfolio-plan", True, "I'm targeting 60/40. How far off am I?"),
     ("approach:unsure", "financial-education", False, "Quiz me to find my level, then teach me one concept."),
     ("goal:retire", "retirement", False, "Am I on track to retire at 60?"),
     ("goal:house", "real-estate", False, "Rent vs buy on a $750k home at 6.5%, against $3,200 rent."),

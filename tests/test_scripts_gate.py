@@ -7,13 +7,13 @@ import json
 import pytest
 
 from scripts_util import load_script, run_json
-from second_opinion import ledger, market
+from second_opinion import ledger, market, settings
 
 
 @pytest.fixture
 def data_dir(monkeypatch, tmp_path):
     monkeypatch.setenv("SECOND_OPINION_DATA", str(tmp_path))
-    (tmp_path / "installed.json").write_text('{"skills": [], "extras": {"trade-journal": true}}')  # the extra is opt-in
+    settings.set_value("guardrails.pre_buy_check", True)
     monkeypatch.setattr(market, "quote", lambda symbols, hub=None: [{"symbol": s.upper(), "price": 100.0, "source": "yahoo", "realtime": False} for s in symbols])
     return tmp_path
 
@@ -226,29 +226,36 @@ def test_without_the_trade_journal_skill_bad_arguments_still_fail(data_dir, caps
     assert rc == 2 and "BUY or SELL" in out["error"]
 
 
-@pytest.mark.parametrize(
-    "record, expected",
-    [
-        (None, "REVIEW"),
-        ("not json", "REVIEW"),
-        ('{"skills": [], "extras": {"trade-journal": false}}', "SKIP"),
-        ('{"skills": ["trading"], "extras": {"follow_ups": true}}', "SKIP"),
-    ],
-)
-def test_the_gate_follows_the_record_and_defaults_on_without_one(data_dir, capsys, monkeypatch, record, expected) -> None:
-    """A recorded choice stands. With no readable record, the extra's default applies, which is on."""
-    from second_opinion import config
-
-    monkeypatch.setattr(config, "PLUGIN_ROOT", data_dir / "no-root")
-    if record is None:
-        (data_dir / "installed.json").unlink()
+@pytest.mark.parametrize("setting, expected", [(None, "REVIEW"), (True, "REVIEW"), (False, "SKIP")])
+def test_the_gate_follows_the_pre_buy_setting_and_defaults_on(data_dir, capsys, setting, expected) -> None:
+    """The guardrails.pre_buy_check setting decides; with nothing saved its default is on."""
+    if setting is None:
+        (data_dir / "settings.json").unlink()
     else:
-        (data_dir / "installed.json").write_text(record)
+        settings.set_value("guardrails.pre_buy_check", setting)
     rc, out = _gate(["AAPL", "BUY", "5"], capsys)
     assert rc == 0 and out["decision"] == expected
 
 
-def test_a_copy_install_record_listing_the_skill_turns_the_gate_on(data_dir, capsys) -> None:
-    (data_dir / "installed.json").write_text('{"skills": ["trading", "trade-journal"], "extras": {"follow_ups": false}}')
+@pytest.mark.parametrize("record, expected", [
+    ('{"skills": ["trading", "trade-journal"], "extras": {"follow_ups": false}}', "REVIEW"),
+    ('{"skills": ["trading"], "extras": {"trade-journal": false}}', "SKIP"),
+])
+def test_an_old_installed_record_is_migrated_and_read(data_dir, capsys, record, expected) -> None:
+    (data_dir / "settings.json").unlink()
+    (data_dir / "installed.json").write_text(record)
     rc, out = _gate(["AAPL", "BUY", "5"], capsys)
-    assert rc == 0 and out["decision"] == "REVIEW"  # no written plan yet
+    assert rc == 0 and out["decision"] == expected
+    assert (data_dir / "settings.json").is_file()
+
+
+def test_corrupt_settings_keep_the_check_on_and_say_so(data_dir, capsys) -> None:
+    _journal(capsys)
+    (data_dir / "settings.json").write_text("{bad")
+    rc, out = _gate(["AAPL", "BUY", "5"], capsys)
+    assert rc == 0 and out["decision"] == "REVIEW"  # the check ran (journaled plan found) and flags the broken file
+    flag = next(c for c in out["checks"] if c["rule"] == "settings_readable")
+    assert flag["status"] == "review" and flag["code"] == "SETTINGS_CORRUPT"
+    assert "settings.json" in flag["detail"] and "stays on" in flag["detail"]
+    assert flag["detail"] in out["reasons"]
+    assert any(c["rule"] == "written_plan" and c["status"] == "pass" for c in out["checks"])

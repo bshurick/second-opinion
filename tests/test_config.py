@@ -131,50 +131,59 @@ def test_env_precedence_process_then_data_dir_then_plugin_root(monkeypatch, tmp_
     assert s.etrade is not None and s.etrade.consumer_key == "rootkey"  # an empty value never shadows a later file
 
 
-@pytest.mark.parametrize(
-    ("data_rec", "root_rec", "on"),
-    [
-        (None, None, False),  # no record: extras are opt-in
-        ('{"extras": {"follow_ups": true}}', None, True),
-        ('{"extras": {"follow_ups": false}}', '{"extras": {"follow_ups": true}}', False),  # the data dir wins
-        (None, '{"extras": {"follow_ups": true}}', True),  # an older copy install
-        ('{"skills": []}', None, False),  # a record from before extras: off
-        ("not json", None, False),
-    ],
-)
-def test_extra_enabled_follows_the_record(monkeypatch, tmp_path: Path, data_rec, root_rec, on) -> None:
-    monkeypatch.setenv("SECOND_OPINION_DATA", str(tmp_path / "data"))
-    (tmp_path / "data").mkdir()
-    (tmp_path / "root").mkdir()
-    monkeypatch.setattr(config, "PLUGIN_ROOT", tmp_path / "root")
-    if data_rec is not None:
-        (tmp_path / "data" / "installed.json").write_text(data_rec)
-    if root_rec is not None:
-        (tmp_path / "root" / "installed.json").write_text(root_rec)
-    assert config.extra_enabled("follow_ups") is on
+@pytest.fixture
+def tmp_data(monkeypatch, tmp_path: Path) -> Path:
+    monkeypatch.setenv("SECOND_OPINION_DATA", str(tmp_path))
+    monkeypatch.setattr(config, "PLUGIN_ROOT", tmp_path / "no-root")
+    return tmp_path
 
 
-def test_skill_extras_fall_back_to_the_skills_list() -> None:
-    assert config.extra_enabled("trade-journal", {"skills": ["trade-journal"], "extras": {"follow_ups": False}}) is True
-    assert config.extra_enabled("trade-journal", {"skills": ["trade-journal"], "extras": {"trade-journal": False}}) is False
-    assert config.extra_enabled("trade-journal", {"skills": [], "extras": {}}) is False
-
-
-def test_with_no_record_an_extra_takes_its_default(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(config, "installed_record", lambda: None)
+def test_extra_enabled_defaults_without_any_record(tmp_data) -> None:
     assert config.extra_enabled("trade-journal") is True
-    assert config.extra_enabled("financial-education") is False
     assert config.extra_enabled("follow_ups") is False
+    assert config.extra_enabled("financial-education") is False
 
 
-def test_a_recorded_off_beats_the_default() -> None:
-    assert config.extra_enabled("trade-journal", {"skills": [], "extras": {"trade-journal": False}}) is False
+@pytest.mark.parametrize(("extra", "key"), [("follow_ups", "replies.follow_ups"), ("trade-journal", "guardrails.pre_buy_check"),
+                                            ("financial-education", "lessons")])
+def test_extra_enabled_reads_settings(tmp_data, extra, key) -> None:
+    from second_opinion import settings
+
+    settings.set_value(key, True)
+    assert config.extra_enabled(extra) is True
+    settings.set_value(key, False)
+    assert config.extra_enabled(extra) is False
 
 
-def test_extras_on_by_default_match_the_catalog() -> None:
+def test_extra_enabled_reads_a_migrated_installed_record(tmp_data) -> None:
+    (tmp_data / "installed.json").write_text('{"skills": ["financial-education"], "extras": {"follow_ups": true, "trade-journal": false}}')
+    assert config.extra_enabled("follow_ups") is True
+    assert config.extra_enabled("trade-journal") is False
+    assert config.extra_enabled("financial-education") is True
+    assert (tmp_data / "settings.json").is_file()
+
+
+def test_extra_enabled_rejects_an_unknown_extra(tmp_data) -> None:
+    with pytest.raises(InvalidInput):
+        config.extra_enabled("nonsense")
+
+
+def test_extra_enabled_raises_on_corrupt_settings(tmp_data) -> None:
+    from second_opinion.errors import ApiError
+
+    (tmp_data / "settings.json").write_text("{bad")
+    with pytest.raises(ApiError) as exc:
+        config.extra_enabled("trade-journal")
+    assert exc.value.code == "SETTINGS_CORRUPT"
+
+
+def test_extras_defaults_match_the_catalog() -> None:
+    from second_opinion import settings
+
     catalog = json.loads((Path(__file__).parent.parent / "skills.json").read_text())
     declared = {s["name"] for s in catalog["skills"] if s.get("extra") and s.get("default")} | {e["key"] for e in catalog["extras"] if e.get("default")}
-    assert config.EXTRAS_ON_BY_DEFAULT == declared
+    on = {extra for extra, key in config.EXTRA_SETTINGS.items() if settings.KEYS[key].default is True}
+    assert on == declared
 
 
 def test_parse_account_types() -> None:
@@ -203,3 +212,9 @@ def test_env_value_reads_the_data_dir_env_when_the_process_env_lacks_it(tmp_path
     assert config.env_value("EDGAR_USER_AGENT") == "my-app me@example.com"
     monkeypatch.setenv("EDGAR_USER_AGENT", "env-wins you@example.com")
     assert config.env_value("EDGAR_USER_AGENT") == "env-wins you@example.com"
+
+
+def test_missing_key_hints_name_the_terminal_key_entry() -> None:
+    for hint in (config.SETUP_HINT, config.ETRADE_SETUP_HINT, config.NO_BROKER_HINT):
+        assert "configure.py keys" in hint, hint
+    assert "--broker etrade" in config.ETRADE_SETUP_HINT

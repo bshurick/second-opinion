@@ -22,7 +22,7 @@ Keeps the user's pre-trade journal and reviews it against what happened. The ent
 - **Conviction.** Conviction predicts results when the judgment behind it is sound. If 5s do no better than 2s, sizing by conviction adds risk without return.
 - **Overstayed entries.** Overstayed and stale-open entries are the disposition effect in plan form: the loser that was going to be sold at the stop and was not.
 - **Other skills.** Placing the order is portfolio-analysis's protocol. The trade-review skill supplies the round trips (with dividends) and the news context; this skill supplies the intent. Together they answer "was this a good decision at the time?"
-- **Optional extra.** This skill, and the pre-buy check that comes with it, is an optional extra, on by default. The setup skill turns it off with `--extras trade-journal=off`. The journal file stays in the data directory, so turning it back on restores the entries.
+- **Optional extra.** This skill, and the pre-buy check that comes with it, is an optional extra, on by default. The get-started skill turns it off with `--extras trade-journal=off`. The journal file stays in the data directory, so turning it back on restores the entries.
 
 ## Scripts
 
@@ -52,7 +52,7 @@ All commands print JSON.
 |---|---|---|
 | 2 | Missing thesis, inconsistent levels, unknown id, or empty journal | `error` |
 | 5 | Corrupt journal or ledger | `hint` |
-| 6 | Python dependencies missing | the error, and say the setup skill repairs it |
+| 6 | Python dependencies missing | the error, and say the get-started skill repairs it |
 
 ## Steps
 
@@ -101,7 +101,7 @@ If the ledger is imported, `review` matches the trade anyway.
 
 - The first time in a session that the pre-buy check shows a REVIEW or NO_GO, or that a journal entry is recorded, add one line: "(The trade plan and pre-buy check is an optional extra; say 'turn off the trade plan check' to disable it.)"
 - Say it once per session, and never during an order preview or confirmation.
-- If the user asks to turn it off, use the setup skill (`--extras trade-journal=off`).
+- If the user asks to turn it off, use the get-started skill (`--extras trade-journal=off`).
 
 ## Reply format
 

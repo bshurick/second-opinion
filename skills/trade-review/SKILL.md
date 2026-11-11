@@ -68,13 +68,13 @@ Run with the Bash tool.
 |---|---|---|
 | 2 | Empty ledger, bad filter, bad dates or bad `--research-top`. For `render.py`: the input is not a review result. | `error` |
 | 5 | Corrupt ledger | `hint` |
-| 6 | Python dependencies missing | the error, and say the setup skill repairs it |
+| 6 | Python dependencies missing | the error, and say the get-started skill repairs it |
 
 ## Steps
 
 **The user asks for a review of their trades**
 
-When one question names a single big decision, end the reply with one line: a deep review is available and sends about ten research subagents.
+When one question names a single big decision, in standard depth, end the reply with one line: a deep review is available and sends about ten research subagents.
 
 1. Run `run-review.py --save` once, writing the output to a file: `> DIR/trade-review.json`. DIR is the session scratchpad. Add `--account` or `--symbol` only when the user scopes the question.
 2. If it exits 2 with an empty-ledger message, the user has not imported history yet. Hand off to statement-import: `sync-broker.py` for the last two years, `import-csv.py` for older statements. Come back when `ledger.py --summary` shows BUY and SELL rows.
@@ -92,7 +92,7 @@ When one question names a single big decision, end the reply with one line: a de
 
 **The user asks for a deep review of their decisions, or skill against luck**
 
-Run this only when the person asks for a deep review or for depth.
+Run this when the person asks for a deep review or for depth, or when the session's depth rule makes the deep review the default.
 
 1. Make `DIR/deep-trades/` and its `baseline/`, `research/` and `threads/` folders, where DIR is the session scratchpad. Write `run-review.py --save` to `baseline/review.json`. If the ledger is empty, hand off to statement-import, as above. A run with `PRICES_UNAVAILABLE` has no results to compare, so say so and stop.
 2. Run `decisions.py --pick 8 < baseline/review.json`, and write it to `picks.json`. Use a smaller number if the person scopes it, and name the share of money covered from `amount_covered`.

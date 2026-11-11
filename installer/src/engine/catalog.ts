@@ -17,7 +17,7 @@ export interface Skill {
 
 /**
  * An optional feature the installer offers in plain words. A skill extra is a skill
- * installed or left out; a non-skill extra is a switch recorded in installed.json.
+ * installed or left out (and a switch in settings.json); a non-skill extra is a switch in settings.json.
  */
 export interface Extra {
   key: string;
@@ -28,7 +28,18 @@ export interface Extra {
   skill: boolean;
 }
 
-export const ALWAYS_SKILLS = ["setup"] as const;
+export const ALWAYS_SKILLS = ["get-started"] as const;
+
+/** Retired skill names -> the skill that replaced them (an older installed.json or a typed flag may still name them). */
+export const RENAMED_SKILLS: Record<string, string> = {
+  rebalancing: "portfolio-plan", "core-satellite": "portfolio-plan", setup: "get-started", onboarding: "get-started",
+  "portfolio-snapshot": "portfolio-analysis", "debt-tracker": "personal-finance",
+};
+
+/** Names with retired skills mapped onto their replacement, first occurrence kept, order otherwise unchanged. */
+export function canonicalSkills(names: Iterable<string>): string[] {
+  return [...new Set([...names].map((n) => RENAMED_SKILLS[n] ?? n))];
+}
 export const KNOWN_REQUIREMENTS: Requirement[] = ["brokerage", "edgar"];
 
 /** First sentence of the SKILL.md frontmatter description; '' if absent. */

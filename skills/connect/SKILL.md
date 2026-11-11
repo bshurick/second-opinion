@@ -92,6 +92,7 @@ This case applies when the `direct` row's `status` is `expired` or `none`, when 
 3. Tell the user to sign in at E*Trade and read the 5-character verifier code.
 4. Ask them to paste the code.
 5. Run `etrade-login.py --verifier CODE`.
+   - If E*Trade rejects the code (exit 5), that link is spent: run `etrade-login.py` with no arguments, show the new `url`, and ask for the code again.
 6. Rerun the command that failed, once.
 7. If the user declines the login, rerun that command once with the `--partial` flag the output names.
 

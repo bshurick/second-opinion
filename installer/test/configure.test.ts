@@ -5,6 +5,8 @@ import { runPlain } from "../src/drivers/plain.js";
 import { legacyLeftovers } from "../src/engine/legacy.js";
 import { cacheOnly, dataDir, isManagedRoot, migrateLegacyData } from "../src/engine/paths.js";
 import { findPython } from "../src/engine/python.js";
+import { loadCatalog } from "../src/engine/catalog.js";
+import { initialSelection } from "../src/engine/installer.js";
 import { Capture, extrasRoot, FakeRunner, miniRoot, opts, tmpDir, write } from "./helpers.js";
 
 const KEYS = ["--snaptrade-client-id", "id", "--snaptrade-consumer-key", "secret-key-1234"];
@@ -18,6 +20,66 @@ function home() {
 function cachedRoot(h: string): string {
   return extrasRoot(path.join(h, ".claude", "plugins", "cache", "second-opinion", "second-opinion", "1.0.0"));
 }
+
+/** A cached root whose catalog has the real skill-extra shape: trade-journal (default on) and financial-education (default off). */
+function realExtrasRoot(h: string): string {
+  const root = cachedRoot(h);
+  const extra = { family: "x", requires: [], depends_on: [], extra: true, label: "L", blurb: "B", friction: "F" };
+  write(
+    path.join(root, "skills.json"),
+    JSON.stringify({
+      skills: [
+        { name: "a", family: "Fam one", requires: [], depends_on: [] },
+        { name: "trade-journal", ...extra, default: true },
+        { name: "financial-education", ...extra, default: false },
+      ],
+      extras: [{ key: "follow_ups", label: "Tips", blurb: "t", default: false }],
+    }),
+  );
+  for (const n of ["trade-journal", "financial-education"]) write(path.join(root, "skills", n, "SKILL.md"), "x");
+  return root;
+}
+const SEEDED = { schema: 1, guardrails: { pre_buy_check: false }, lessons: true, replies: { follow_ups: true } };
+
+describe("skill-extra switches in configure mode", () => {
+  it("survive a configure run with no --extras", async () => {
+    const { home: h, environ, data } = home();
+    const root = realExtrasRoot(h);
+    write(path.join(data, "settings.json"), JSON.stringify(SEEDED));
+    expect(await runPlain(root, opts(["--json", "--yes", ...KEYS]), environ, new FakeRunner(), new Capture())).toBe(0);
+    const s = settings(data);
+    expect(s.guardrails.pre_buy_check).toBe(false);
+    expect(s.lessons).toBe(true);
+    expect(s.replies.follow_ups).toBe(true);
+  });
+  it("--extras decides over the saved value", async () => {
+    const { home: h, environ, data } = home();
+    const root = realExtrasRoot(h);
+    write(path.join(data, "settings.json"), JSON.stringify(SEEDED));
+    expect(await runPlain(root, opts(["--json", "--yes", "--extras", "trade-journal=on", ...KEYS]), environ, new FakeRunner(), new Capture())).toBe(0);
+    const s = settings(data);
+    expect(s.guardrails.pre_buy_check).toBe(true);
+    expect(s.lessons).toBe(true);
+  });
+  it("with nothing saved the catalog defaults apply", async () => {
+    const { home: h, environ, data } = home();
+    const root = realExtrasRoot(h);
+    expect(await runPlain(root, opts(["--json", "--yes", ...KEYS]), environ, new FakeRunner(), new Capture())).toBe(0);
+    expect(settings(data).guardrails.pre_buy_check).toBe(true);
+    expect(settings(data).lessons).toBe(false);
+  });
+});
+
+describe("guided selection seeded from saved switches", () => {
+  it("a saved pre_buy_check false leaves trade-journal unselected; lessons true selects financial-education", () => {
+    const { home: h } = home();
+    const cat = loadCatalog(realExtrasRoot(h));
+    const names = initialSelection(cat, opts([]), null, false, { "trade-journal": false, "financial-education": true }).names;
+    expect(names).not.toContain("trade-journal");
+    expect(names).toContain("financial-education");
+    expect(initialSelection(cat, opts([]), null, false, null).names).toContain("trade-journal");
+  });
+});
 
 describe("paths", () => {
   it("detects a Claude Code plugin cache or marketplace checkout", () => {
@@ -120,6 +182,8 @@ describe("upgrading from finance-analyst", () => {
   });
 });
 
+const settings = (data: string) => JSON.parse(fs.readFileSync(path.join(data, "settings.json"), "utf8"));
+
 describe("configure mode (a /plugin marketplace install)", () => {
   it("is automatic inside the plugin cache: writes only the data dir, records every extra, never copies or links", async () => {
     const { home: h, environ, data } = home();
@@ -127,26 +191,40 @@ describe("configure mode (a /plugin marketplace install)", () => {
     const io = new Capture();
     expect(await runPlain(root, opts(["--json", "--yes", ...KEYS]), environ, new FakeRunner(), io)).toBe(0);
     const summary = JSON.parse(io.out);
-    expect(summary).toMatchObject({ mode: "configure", target: root, link: null, data, extras: { c: false, tips: false } });
+    expect(summary).toMatchObject({ mode: "configure", target: root, link: null, data, extras: { c: false, follow_ups: false } });
     expect(fs.existsSync(path.join(h, ".claude", "plugins", "second-opinion"))).toBe(false);
     expect(fs.existsSync(path.join(h, ".claude", "skills"))).toBe(false);
     expect(fs.existsSync(path.join(root, ".env"))).toBe(false);
     expect(fs.readFileSync(path.join(data, ".env"), "utf8")).toContain("SNAPTRADE_CONSUMER_KEY=secret-key-1234");
     const rec = JSON.parse(fs.readFileSync(path.join(data, "installed.json"), "utf8"));
-    expect(rec).toMatchObject({ skills: ["a", "b"], extras: { c: false, tips: false }, mode: "configure" });
+    expect(rec).toMatchObject({ skills: ["a", "b"], mode: "configure" });
+    expect(rec.extras).toBeUndefined();
+    expect(settings(data).replies.follow_ups).toBe(false);
     expect(io.err).toContain("/reload-plugins");
+  });
+
+  it("keeps settings.json switches when the data dir has no installed.json", async () => {
+    const { home: h, environ, data } = home();
+    const root = cachedRoot(h);
+    write(path.join(data, "settings.json"), JSON.stringify({ schema: 1, replies: { follow_ups: true, pages: true }, guardrails: { pre_buy_check: false }, lessons: true }));
+    expect(fs.existsSync(path.join(data, "installed.json"))).toBe(false);
+    expect(await runPlain(root, opts(["--json", "--yes", ...KEYS]), environ, new FakeRunner(), new Capture())).toBe(0);
+    const s = settings(data);
+    expect(s.replies).toEqual({ follow_ups: true, pages: true });
+    expect(s.guardrails.pre_buy_check).toBe(false);
+    expect(s.lessons).toBe(true);
   });
 
   it("turns extras on and off and keeps them across runs", async () => {
     const { home: h, environ, data } = home();
     const root = cachedRoot(h);
-    expect(await runPlain(root, opts(["--json", "--yes", "--extras", "c=on,tips=on", ...KEYS]), environ, new FakeRunner(), new Capture())).toBe(0);
-    let rec = JSON.parse(fs.readFileSync(path.join(data, "installed.json"), "utf8"));
-    expect(rec.extras).toEqual({ c: true, tips: true });
+    expect(await runPlain(root, opts(["--json", "--yes", "--extras", "c=on,follow_ups=on", ...KEYS]), environ, new FakeRunner(), new Capture())).toBe(0);
+    expect(settings(data).replies.follow_ups).toBe(true);
+    expect(JSON.parse(fs.readFileSync(path.join(data, "installed.json"), "utf8")).skills).toContain("c");
     const io = new Capture();
-    expect(await runPlain(root, opts(["--json", "--yes", "--extras", "tips=off"]), environ, new FakeRunner(), io)).toBe(0);
-    rec = JSON.parse(fs.readFileSync(path.join(data, "installed.json"), "utf8"));
-    expect(rec.extras).toEqual({ c: true, tips: false });
+    expect(await runPlain(root, opts(["--json", "--yes", "--extras", "follow_ups=off"]), environ, new FakeRunner(), io)).toBe(0);
+    expect(settings(data).replies.follow_ups).toBe(false);
+    expect(JSON.parse(fs.readFileSync(path.join(data, "installed.json"), "utf8")).skills).toContain("c");
     expect(fs.readFileSync(path.join(data, ".env"), "utf8")).toContain("SNAPTRADE_CONSUMER_KEY=secret-key-1234"); // kept
   });
 

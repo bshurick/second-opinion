@@ -155,15 +155,15 @@ def test_summary_with_no_fields() -> None:
 
 def test_context_line_states() -> None:
     assert profile.context_line(None) == profile.NO_PROFILE_LINE
-    assert "first finance request" in profile.NO_PROFILE_LINE and "onboarding" in profile.NO_PROFILE_LINE
+    assert "first finance request" in profile.NO_PROFILE_LINE and "get-started" in profile.NO_PROFILE_LINE
     assert profile.context_line(profile.new_profile("skipped", today=TODAY)) == profile.SKIPPED_LINE
     assert "get started with Second Opinion" in profile.SKIPPED_LINE
     assert profile.context_line(_full_profile()) == profile.summary(_full_profile())
 
 
 ALL_SKILLS = {
-    "connect", "portfolio-snapshot", "portfolio-analysis", "dividend-income", "watchlist", "risk-analysis",
-    "statement-import", "trade-review", "trade-journal", "tax-aware", "rebalancing", "retirement", "real-estate",
+    "connect", "portfolio-analysis", "portfolio-analysis", "dividend-income", "watchlist", "risk-analysis",
+    "statement-import", "trade-review", "trade-journal", "tax-aware", "portfolio-plan", "retirement", "real-estate",
     "personal-finance", "valuation", "fundamental-research", "options", "trading", "market-analysis",
     "financial-education", "onboarding",
 }
@@ -279,3 +279,43 @@ def test_context_line_complete_profile_with_no_fields_returns_no_fields_summary(
     # Should return the "no fields set" summary, not the skipped line
     assert "no fields set" in line
     assert "onboarding was skipped" not in line
+
+
+def test_set_account_roles_writes_settings_not_the_profile(data_dir) -> None:
+    from second_opinion import settings
+
+    p = profile.new_profile("complete", today=TODAY)
+    profile.set_field(p, "account_roles", "a1=trading,a2=Savings", today=TODAY)
+    assert "account_roles" not in p["fields"]
+    assert settings.get("accounts.a1.role") == "trading" and settings.get("accounts.a2.role") == "savings"
+    assert [h["key"] for h in settings.load()["history"]] == ["accounts.a1.role", "accounts.a2.role"]
+    assert settings.load()["history"][0]["date"] == "2026-09-10"
+    with pytest.raises(InvalidInput):
+        profile.set_field(p, "account_roles", {"a1": "gambling"}, today=TODAY)
+
+
+def test_summary_reads_roles_from_settings_and_ignores_the_profile_field(data_dir) -> None:
+    from second_opinion import settings
+
+    settings.set_value("accounts.a1.role", "savings")
+    settings.set_value("accounts.a2.margin", True)  # an account with no role is not counted
+    p = profile.new_profile("complete", today=TODAY)
+    p["fields"]["account_roles"] = {"value": {"a1": "trading", "a9": "trading"}, "source": "declared", "at": "2026-09-01"}
+    text = profile.summary(p)
+    assert "accounts 1 savings" in text and "trading" not in text
+    assert "accounts 1 savings" in profile.context_line(p)
+
+
+def test_summary_reads_roles_migrated_from_an_old_profile(data_dir) -> None:
+    p = profile.new_profile("complete", today=TODAY)
+    p["fields"]["account_roles"] = {"value": {"a1": "trading", "a2": "retirement"}, "source": "declared", "at": "2026-09-01"}
+    profile.save(p)
+    assert "accounts 1 trading, 1 retirement" in profile.summary(profile.load())
+    assert (data_dir / "settings.json").is_file()
+
+
+def test_summary_survives_corrupt_settings(data_dir) -> None:
+    (data_dir / "settings.json").write_text("{bad")
+    p = profile.new_profile("complete", today=TODAY)
+    profile.set_field(p, "horizon", "years", today=TODAY)
+    assert "horizon years" in profile.summary(p) and "accounts" not in profile.summary(p)

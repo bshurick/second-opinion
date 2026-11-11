@@ -1,14 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { Options } from "../cli.js";
-import { loadCatalog, loadExtras, requirementsFor, type Extra, type Requirement, type Skill } from "./catalog.js";
+import { canonicalSkills, loadCatalog, loadExtras, requirementsFor, type Extra, type Requirement, type Skill } from "./catalog.js";
 import { ensureDependencies } from "./deps.js";
 import { brokersFrom, envDefaults, preservedEnvLines, renderEnv, type BrokerChoice, type EnvValues } from "./env.js";
 import { InstallError, UsageError } from "./errors.js";
 import { applyExtras, extrasState, nonSkillDefaults, parseExtrasFlag, type ExtrasState } from "./extras.js";
 import { legacyLeftovers, removeLeftovers } from "./legacy.js";
 import { inspectLink, linkPlugin, type LinkState } from "./link.js";
-import { INSTALLER_VERSION, makeRecord, materialize, planDiff, readRecord, sourceCommit, writeConfig, type InstalledRecord, type SkillDiff } from "./materialize.js";
+import { INSTALLER_VERSION, makeRecord, materialize, planDiff, readRecord, readSettingsSwitches, sourceCommit, writeConfig, writeSwitches, type InstalledRecord, type SkillDiff } from "./materialize.js";
 import { dataDir, defaultLink, defaultTarget, expandUser, isManagedRoot, legacyDataDir, legacyTarget, migrateLegacyData, tildify, type Environ } from "./paths.js";
 import { findPython, pythonHint, type PythonInfo, type PythonProbe } from "./python.js";
 import type { Runner } from "./runner.js";
@@ -68,12 +68,19 @@ export interface Preflight {
   node: string;
   python: PythonProbe;
   previous: InstalledRecord | null;
+  /** Switches from settings.json (present even with no installed.json, as after a marketplace install). */
+  switches?: Record<string, boolean> | null;
   commit: string | null;
+}
+
+/** What earlier choices say about the switches: the record (settings already overlaid), else settings.json alone. */
+export function priorSwitches(pre: Pick<Preflight, "previous" | "switches">): Pick<InstalledRecord, "extras"> | null {
+  return pre.previous ?? (pre.switches ? { extras: pre.switches } : null);
 }
 
 export async function preflight(ctx: Context): Promise<Preflight> {
   const [python, commit] = await Promise.all([findPython(ctx.runner, ctx.environ), sourceCommit(ctx.root, ctx.runner)]);
-  return { node: process.versions.node, python, previous: readRecord(recordDirs(ctx)), commit };
+  return { node: process.versions.node, python, previous: readRecord(recordDirs(ctx)), switches: readSettingsSwitches(recordDirs(ctx)), commit };
 }
 
 export function requirePython(pre: Preflight): PythonInfo {
@@ -84,39 +91,57 @@ export function requirePython(pre: Preflight): PythonInfo {
 }
 
 /** Skills chosen before any interaction: flags, then the previous install, then every skill that is on by default. */
-export function initialSelection(catalog: Skill[], options: Options, previous: InstalledRecord | null, configure = false): { names: string[]; notes: string[]; explicit: boolean } {
+export function initialSelection(
+  catalog: Skill[],
+  options: Options,
+  previous: InstalledRecord | null,
+  configure = false,
+  /** Saved switches (settings.json, else legacy extras); a saved skill-extra switch seeds that skill's on/off. */
+  saved: Record<string, boolean> | null = previous?.extras ?? null,
+): { names: string[]; notes: string[]; explicit: boolean } {
   const all = catalog.map((s) => s.name);
   const known = new Set(all);
+  const seed = (names: string[]): string[] => {
+    const out = new Set(names);
+    for (const s of catalog) {
+      const flag = saved?.[s.name];
+      if (!s.extra || typeof flag !== "boolean") continue;
+      if (flag) out.add(s.name);
+      else out.delete(s.name);
+    }
+    return [...out];
+  };
   if (configure) {
     // Claude Code ships every skill; the selection only says which skill extras are on.
     if (options.all || options.skills !== undefined || options.without !== undefined) {
       throw new UsageError("--all, --skills and --without do not apply to a /plugin install, which ships every skill; use --extras to turn extras on or off");
     }
-    // A skill extra is on when the record says so (extras[key], else its skills list); no record: its default.
+    // A skill extra is on when a saved switch says so (settings.json, else legacy extras), else its skills list; nothing saved: its default.
     const on = (s: Skill) => {
-      if (!previous) return s.defaultOn;
-      const flag = previous.extras?.[s.name];
-      return typeof flag === "boolean" ? flag : previous.skills.includes(s.name);
+      const flag = saved?.[s.name];
+      if (typeof flag === "boolean") return flag;
+      return previous ? canonicalSkills(previous.skills).includes(s.name) : s.defaultOn;
     };
     const names = catalog.filter((s) => !s.extra || on(s)).map((s) => s.name);
     return { ...resolveSelection(catalog, names), explicit: true };
   }
   if (options.all) return { ...resolveSelection(catalog, all), explicit: true };
   if (options.skills !== undefined) {
-    const chosen = parseList(options.skills);
+    const chosen = canonicalSkills(parseList(options.skills));
     for (const n of chosen) if (!known.has(n)) throw new UsageError(`unknown skill: ${n}`);
     return { ...resolveSelection(catalog, chosen), explicit: true };
   }
   if (options.without !== undefined) {
-    const drop = new Set(parseList(options.without));
+    const drop = new Set(canonicalSkills(parseList(options.without)));
     for (const d of drop) if (!known.has(d)) throw new UsageError(`unknown skill: ${d}`);
     return { ...resolveSelection(catalog, all.filter((n) => !drop.has(n)), { dropDependents: true }), explicit: true };
   }
   if (previous?.skills.length) {
-    const kept = previous.skills.filter((n) => known.has(n));
+    const kept = canonicalSkills(previous.skills).filter((n) => known.has(n));
+    // An existing install keeps its skills; a switch flipped in settings.json never uninstalls one.
     return { ...resolveSelection(catalog, kept), explicit: false };
   }
-  return { ...resolveSelection(catalog, catalog.filter((s) => s.defaultOn).map((s) => s.name)), explicit: false };
+  return { ...resolveSelection(catalog, seed(catalog.filter((s) => s.defaultOn).map((s) => s.name))), explicit: false };
 }
 
 /**
@@ -128,7 +153,7 @@ export function initialExtras(
   extras: Extra[],
   catalog: Skill[],
   selected: string[],
-  previous: InstalledRecord | null,
+  previous: Pick<InstalledRecord, "extras"> | null,
 ): { selected: string[]; nonSkill: Record<string, boolean>; notes: string[] } {
   const nonSkill = nonSkillDefaults(extras, previous);
   if (options.extras === undefined) return { selected, nonSkill, notes: [] };
@@ -169,7 +194,7 @@ export interface Plan {
   missing: string[];
   warnings: string[];
   brokers: Set<BrokerChoice>;
-  /** Non-skill extras to record in installed.json. */
+  /** Non-skill extras to record in settings.json. */
   extras: Record<string, boolean>;
   /** Every extra on or off, for review and summaries. */
   extrasState: ExtrasState;
@@ -197,7 +222,7 @@ export function buildPlan(
 ): Plan {
   const catalog = loadCatalog(ctx.root);
   const extraDefs = loadExtras(ctx.root);
-  const extras = nonSkill ?? nonSkillDefaults(extraDefs, pre.previous);
+  const extras = nonSkill ?? nonSkillDefaults(extraDefs, priorSwitches(pre));
   const needs = requirementsFor(catalog, selected);
   const missing: string[] = [];
   const warnings: string[] = [];
@@ -315,16 +340,28 @@ export async function execute(ctx: Context, plan: Plan, hooks: ExecuteHooks): Pr
   emit({ type: "step:done", step: "deps", detail: deps.installed ? (deps.createdVenv ? "virtualenv created, packages installed" : "packages installed") : "already up to date" });
 
   const recordExtras = { ...plan.extras, ...plan.extrasState };
+  if (!ctx.configure && plan.previous?.skills.length) {
+    // With an install in place the skill and its switch are independent: the switch is --extras if given, else the saved value, else the selection.
+    const flagged = new Set(ctx.options.extras === undefined ? [] : Object.keys(parseExtrasFlag(ctx.options.extras, loadExtras(ctx.root))));
+    for (const key of Object.keys(recordExtras)) {
+      const saved = plan.previous.extras?.[key];
+      const isSkill = loadCatalog(ctx.root).some((sk) => sk.name === key && sk.extra);
+      const touched = plan.selected.includes(key) !== plan.previous.skills.includes(key);
+      if (isSkill && typeof saved === "boolean" && !flagged.has(key) && !touched) recordExtras[key] = saved;
+    }
+  }
   emit({ type: "step:start", step: "copy", label: ctx.configure ? "Settings" : "Plugin files" });
   let diff: SkillDiff;
   try {
     if (ctx.configure) {
       diff = planDiff(plan.previous?.skills, plan.selected);
-      writeConfig(ctx.data, envText, makeRecord(ctx.root, plan.selected, { commit: plan.commit, extras: recordExtras, mode: "configure" }));
+      writeConfig(ctx.data, envText, makeRecord(ctx.root, plan.selected, { commit: plan.commit, mode: "configure" }));
     } else {
-      materialize(ctx.root, ctx.target, plan.selected, envText, { commit: plan.commit, extras: recordExtras, configDir: ctx.data });
+      materialize(ctx.root, ctx.target, plan.selected, envText, { commit: plan.commit, configDir: ctx.data });
       diff = plan.diff; // against the record found in preflight, wherever it lived
     }
+    // Through the plugin's Python settings CLI, so the first write migrates the older files too.
+    await writeSwitches(ctx.runner, plan.python.command, ctx.target, ctx.data, recordExtras);
   } catch (err) {
     const e = err instanceof InstallError ? err : new InstallError(String((err as Error).message ?? err), "check the path is writable and the checkout is complete");
     emit({ type: "step:fail", step: "copy", error: e });

@@ -73,26 +73,51 @@ so_python_override() {
   return 1
 }
 
-# Sets SO_RECORD to the installer's record: <data dir>/installed.json, else the plugin root's copy.
-so_record() {
-  SO_RECORD=""
-  local rec
-  for rec in "$DATA_DIR/installed.json" "$PLUGIN_ROOT/installed.json"; do
-    if [ -f "$rec" ]; then
-      SO_RECORD="$rec"
-      return 0
-    fi
-  done
-  return 1
+# Sets PY to the interpreter, in session-start.sh's order: explicit override, the managed venv,
+# then PATH. PY is empty when none is usable. Needs DATA_DIR (so_resolve_data_dir first).
+so_resolve_python() {
+  local venv_py
+  case "$(uname -s 2>/dev/null)" in
+    MINGW*|MSYS*|CYGWIN*) venv_py="$DATA_DIR/venv/Scripts/python.exe" ;;
+    *) venv_py="$DATA_DIR/venv/bin/python" ;;
+  esac
+  PY=""
+  if so_python_override && [ -x "$SO_PYTHON" ]; then
+    PY="$SO_PYTHON"
+  elif [ -x "$venv_py" ]; then
+    PY="$venv_py"
+  else
+    PY="$(command -v python3 || true)"
+  fi
+  return 0
 }
 
-# For extras that default to off: on only when the record says "<key>": true. No record, a record
-# from before extras, or anything unreadable means off.
-so_extra_on() {
-  so_record || return 1
-  local text
-  text="$(<"$SO_RECORD")" 2>/dev/null || return 1
-  [[ "$text" =~ \"$1\"[[:space:]]*:[[:space:]]*true ]]
+# True when a boolean setting is on, read through settings.py (which also migrates the old files
+# on first use). Callers run so_resolve_python first. With no usable python, or any failure, the
+# key's default: replies.pages on, everything else off.
+so_setting_on() {
+  local default=off value
+  [ "$1" = "replies.pages" ] && default=on
+  value=""
+  if [ -n "${PY:-}" ] && [ -f "$PLUGIN_ROOT/skills/get-started/scripts/settings.py" ]; then
+    value="$("$PY" "$PLUGIN_ROOT/skills/get-started/scripts/settings.py" get "$1" --plain 2>/dev/null)" || value=""
+  fi
+  case "$value" in
+    on|off) ;;
+    *) value="$default" ;;
+  esac
+  [ "$value" = on ]
+}
+
+# Echoes a setting's plain value (settings.py get KEY --plain), or $2 when python, the script or
+# the read is missing (corrupt settings included). Always returns 0.
+so_setting_value() {
+  local value=""
+  if [ -n "${PY:-}" ] && [ -f "$PLUGIN_ROOT/skills/get-started/scripts/settings.py" ]; then
+    value="$("$PY" "$PLUGIN_ROOT/skills/get-started/scripts/settings.py" get "$1" --plain 2>/dev/null)" || value=""
+  fi
+  printf '%s\n' "${value:-$2}"
+  return 0
 }
 
 # True when an E*Trade key is configured: the process env, the data dir's .env, or the plugin root's.

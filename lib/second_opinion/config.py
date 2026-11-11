@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -23,19 +24,21 @@ SNAPTRADE_KEYS = ("SNAPTRADE_CLIENT_ID", "SNAPTRADE_CONSUMER_KEY")
 ETRADE_KEYS = ("ETRADE_CONSUMER_KEY", "ETRADE_CONSUMER_SECRET")
 ALL_KEYS = (*SNAPTRADE_KEYS, *ETRADE_KEYS, "ETRADE_SANDBOX", "BROKER_ACCOUNT_TYPES", "SNAPTRADE_ACCOUNT_TYPES")
 REQUIRED = SNAPTRADE_KEYS  # kept for older imports
+_KEYS_CMD = f"python3 {shlex.quote(str(PLUGIN_ROOT / 'skills' / 'get-started' / 'scripts' / 'configure.py'))} keys"
 SETUP_HINT = (
-    "run node install.js (or ask Claude to run the setup skill) to enter SNAPTRADE_CLIENT_ID / "
+    f"run {_KEYS_CMD} in your own terminal (or node install.js from a checkout) to enter SNAPTRADE_CLIENT_ID / "
     "SNAPTRADE_CONSUMER_KEY, a Personal API key from https://dashboard.snaptrade.com/api-key; they are "
     "kept in ~/.claude/plugins/data/second-opinion/.env"
 )
 ETRADE_SETUP_HINT = (
-    "fill ETRADE_CONSUMER_KEY / ETRADE_CONSUMER_SECRET in ~/.claude/plugins/data/second-opinion/.env with the key from "
-    "https://developer.etrade.com (set ETRADE_SANDBOX=1 for the sandbox), or re-run node install.js"
+    f"run {_KEYS_CMD} --broker etrade in your own terminal to enter ETRADE_CONSUMER_KEY / ETRADE_CONSUMER_SECRET, "
+    "the key from https://developer.etrade.com (set ETRADE_SANDBOX=1 in ~/.claude/plugins/data/second-opinion/.env "
+    "for the sandbox)"
 )
 NO_BROKER_HINT = (
-    "no brokerage credentials: set SNAPTRADE_CLIENT_ID / SNAPTRADE_CONSUMER_KEY "
-    "(https://dashboard.snaptrade.com/api-key) or ETRADE_CONSUMER_KEY / ETRADE_CONSUMER_SECRET "
-    "(https://developer.etrade.com) in ~/.claude/plugins/data/second-opinion/.env, or re-run node install.js"
+    f"no brokerage credentials: run {_KEYS_CMD} in your own terminal for a SnapTrade key "
+    "(https://dashboard.snaptrade.com/api-key), or add --broker etrade for an E*Trade key "
+    "(https://developer.etrade.com); keys are kept in ~/.claude/plugins/data/second-opinion/.env"
 )
 VALID_ACCOUNT_TYPES = {"cash", "margin"}
 _TRUE = {"1", "true", "yes", "on"}
@@ -126,24 +129,25 @@ def installed_record() -> dict | None:
     return None
 
 
-# Extras on when nothing has been recorded. Keep in step with "default" in skills.json, which is not installed.
-EXTRAS_ON_BY_DEFAULT = frozenset({"trade-journal"})
+# The old installer extras and the settings that now hold them (second_opinion.settings).
+EXTRA_SETTINGS = {
+    "follow_ups": "replies.follow_ups",
+    "trade-journal": "guardrails.pre_buy_check",
+    "financial-education": "lessons",
+}
 
 
-def extra_enabled(key: str, record: dict | None = None) -> bool:
-    """Whether an optional extra is on. With no record, its default applies: see EXTRAS_ON_BY_DEFAULT.
+def extra_enabled(key: str) -> bool:
+    """Whether an optional extra is on, read from its setting in ``settings.json`` (see EXTRA_SETTINGS).
 
-    ``extras[key]`` decides when it is a boolean; otherwise a skill extra is on when the record's
-    ``skills`` list names it (records written before skill extras were recorded in ``extras``).
+    Nothing saved means the setting's default. Unreadable settings raise the store's ApiError
+    (SETTINGS_CORRUPT); the caller decides its fail-safe.
     """
-    rec = installed_record() if record is None else record
-    if not rec:
-        return key in EXTRAS_ON_BY_DEFAULT
-    extras = rec.get("extras")
-    if isinstance(extras, dict) and isinstance(extras.get(key), bool):
-        return extras[key]
-    skills = rec.get("skills")
-    return isinstance(skills, list) and key in skills
+    from second_opinion import settings  # imported here: settings imports this module
+
+    if key not in EXTRA_SETTINGS:
+        raise InvalidInput(f"unknown extra {key!r}; extras are {', '.join(EXTRA_SETTINGS)}")
+    return bool(settings.get(EXTRA_SETTINGS[key]))
 
 
 def parse_env_file(path: Path) -> dict[str, str]:

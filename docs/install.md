@@ -1,11 +1,11 @@
 # Installing Second Opinion
 
-Requirements: [Claude Code](https://claude.com/claude-code), Python 3.10+ on your PATH (`python3 --version`), and Node.js 20+ to run the installer. A brokerage key is optional; see [Connecting brokerages](connecting-brokerages.md).
+Requirements: [Claude Code](https://claude.com/claude-code) and Python 3.10+ on your PATH (`python3 --version`). Node.js 20+ is needed only for the guided installer in a checkout. A brokerage key is optional; see [Connecting brokerages](connecting-brokerages.md).
 
 ## Contents
 
 - [Plugin marketplace](#plugin-marketplace)
-- [Guided installer](#guided-installer)
+- [From a checkout](#from-a-checkout)
 - [Optional extras](#optional-extras)
 - [Scripted and CI installs](#scripted-and-ci-installs)
 - [Manual install](#manual-install)
@@ -18,17 +18,26 @@ Requirements: [Claude Code](https://claude.com/claude-code), Python 3.10+ on you
 /plugin install second-opinion@second-opinion
 ```
 
-Claude Code keeps the plugin files under `~/.claude/plugins/` and replaces them on every update. Every skill is present, including the extra skills; the skill picker does not apply to this route, and the extras' behavior (the pre-buy check, suggested follow-up questions) stays off until you turn it on. The session-start hook builds the Python virtualenv in the data directory on first use (log: `install.log` there). Changes apply after `/reload-plugins` or in a new session.
+Claude Code keeps the plugin files under `~/.claude/plugins/` and replaces them on every update. Every skill is present, including the extra skills, and the extras' behavior (the pre-buy check, suggested follow-up questions) stays off until you turn it on. The session-start hook builds the Python virtualenv in the data directory on first use (log: `install.log` there). Changes apply after `/reload-plugins` or in a new session.
 
-Keys and extras are set with the installer in configure mode, which it picks automatically when run from the marketplace copy:
+To update, run `claude plugin marketplace update second-opinion`, then `claude plugin update second-opinion@second-opinion`, then restart Claude Code. The next session prints "Second Opinion updated to X".
+
+Say "get started with Second Opinion" in Claude for the first run. Keys are never typed into the chat; run the key entry in your own terminal (hidden input, `.env` at mode 0600, no Node needed):
+
+```bash
+python3 ~/.claude/plugins/marketplaces/second-opinion/skills/get-started/scripts/configure.py keys                  # SnapTrade
+python3 ~/.claude/plugins/marketplaces/second-opinion/skills/get-started/scripts/configure.py keys --broker etrade   # E*Trade
+```
+
+The installer in configure mode, which it picks automatically when run from the marketplace copy, also works (it needs Node):
 
 ```bash
 node ~/.claude/plugins/marketplaces/second-opinion/install.js
 ```
 
-It writes only `.env`, `installed.json`, and the virtualenv in the data directory, and never copies or links files. A missing brokerage key is a warning there, not an error. You can also say "set up Second Opinion" in Claude: the `setup` skill runs the installer for extras and dependencies, and for keys it tells you which command to run in your own terminal. Keys are never typed into the chat.
+It writes only `.env`, `installed.json`, `settings.json`, and the virtualenv in the data directory, and never copies or links files. A missing brokerage key is a warning there, not an error.
 
-## Guided installer
+## From a checkout
 
 ```bash
 git clone https://github.com/bshurick/second-opinion
@@ -36,7 +45,7 @@ cd second-opinion
 node install.js
 ```
 
-The steps: check Node and Python, choose the core skills (all preselected), choose optional extras (the trade plan on, the others off), choose how brokerages connect (SnapTrade, E*Trade direct, or both) and enter only the keys your selection needs, review the plan, then install. The installer writes to exactly three places:
+The steps: check Node and Python, choose optional extras (the trade plan on, the others off), choose how brokerages connect (SnapTrade, E*Trade direct, or both) and enter only the keys your selection needs, review the plan, then install. The installer writes to exactly three places:
 
 | | Path |
 |---|---|
@@ -46,7 +55,7 @@ The steps: check Node and Python, choose the core skills (all preselected), choo
 
 It builds the target in a sibling directory and swaps it in, so a failed install leaves the previous one intact. Then it builds the virtualenv with the dependencies in `requirements.txt` and runs a smoke test (imports, a DCF calculation, connection status).
 
-Re-run `node install.js` from your checkout to add or remove skills, change extras, pick up a newer checkout (`git pull` first), or uninstall. In Claude, "set up Second Opinion" does the same through the `setup` skill, which finds your checkout from `source_path` in `installed.json`.
+Every skill is installed; to leave some out, use `--without` or `--skills` (below). To update, run `cd <checkout> && git pull && node install.js`. Re-run `node install.js` to change extras or uninstall. In Claude, "set up Second Opinion" does the same through the `get-started` skill, which finds your checkout from `source_path` in `installed.json`.
 
 ## Optional extras
 
@@ -58,7 +67,7 @@ Re-run `node install.js` from your checkout to add or remove skills, change extr
 | `trade-journal` | Trade plan and pre-buy check | Write down why you are buying, your target and your exit; before each order Claude checks it against that plan. Adds a confirmation step to every buy. Needs trade-review. |
 | `financial-education` | Lessons and quizzes | Explains investing concepts one at a time with worked numbers and sources, and quizzes you. |
 
-Toggle them by re-running the installer, with `--extras`, or by asking Claude ("turn off suggested questions"). In the guided installer, press `c` on the extras step to choose every skill individually.
+Toggle them with `settings.py set` (`replies.follow_ups`, `guardrails.pre_buy_check`, `lessons`), by asking Claude ("turn off suggested questions"), by re-running the installer, or with `--extras`. A change applies from the next session.
 
 ## Scripted and CI installs
 
@@ -68,7 +77,7 @@ node install.js --all --yes --json
 
 | Flag | Effect |
 |---|---|
-| `--all`, `--skills a,b`, `--without x,y` | Choose skills; dependencies follow automatically. Default: the core skills, or the previous selection. |
+| `--all`, `--skills a,b`, `--without x,y` | Choose skills; dependencies follow automatically. Default: every core skill, or the previous selection. |
 | `--extras follow_ups=on,trade-journal=off,financial-education=off` | Switch optional extras. |
 | `--snaptrade-client-id ID --snaptrade-consumer-key KEY` | SnapTrade key. The `SNAPTRADE_*` environment variables also work. |
 | `--etrade-consumer-key KEY --etrade-consumer-secret SECRET [--etrade-sandbox]` | E*Trade direct key. |

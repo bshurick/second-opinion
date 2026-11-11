@@ -1,12 +1,12 @@
 import { Box, Static, Text, useApp } from "ink";
 import path from "node:path";
 import { useRef, useState } from "react";
-import { coreSkills, loadCatalog, loadExtras, type Extra, type Skill } from "../engine/catalog.js";
+import { loadCatalog, loadExtras, type Extra, type Skill } from "../engine/catalog.js";
 import { brokersFrom, type BrokerChoice, type EnvValues } from "../engine/env.js";
 import { InstallError } from "../engine/errors.js";
 import { resolveSelection } from "../engine/selection.js";
 import { applyExtras, extrasState, nonSkillDefaults, type ExtrasState } from "../engine/extras.js";
-import { buildPlan, initialExtras, initialSelection, initialValues, INSTALLER_VERSION, type Context, type Plan, type Preflight, type Summary } from "../engine/installer.js";
+import { buildPlan, initialExtras, initialSelection, initialValues, INSTALLER_VERSION, priorSwitches, type Context, type Plan, type Preflight, type Summary } from "../engine/installer.js";
 import type { UninstallResult } from "../engine/link.js";
 import { tildify } from "../engine/paths.js";
 import { Header } from "./components/Header.js";
@@ -19,7 +19,6 @@ import { ModeScreen, type Mode } from "./screens/ModeScreen.js";
 import { PreflightScreen } from "./screens/PreflightScreen.js";
 import { ProgressScreen } from "./screens/ProgressScreen.js";
 import { ReviewScreen, type ReviewChoice } from "./screens/ReviewScreen.js";
-import { SkillPickerScreen } from "./screens/SkillPickerScreen.js";
 import { UninstallScreen } from "./screens/UninstallScreen.js";
 import { color, glyph } from "./theme.js";
 
@@ -27,7 +26,6 @@ type Phase =
   | { name: "preflight" }
   | { name: "mode"; pre: Preflight }
   /** scope "core": the wizard's first step (extras hidden); "all": every skill, extras included. */
-  | { name: "pick"; pre: Preflight; initial: string[]; scope: "core" | "all"; nonSkill: Record<string, boolean> }
   /** base: the skill selection the extras are applied to. */
   | { name: "extras"; pre: Preflight; base: string[]; nonSkill: Record<string, boolean>; state: ExtrasState; back: () => void }
   | { name: "credentials"; pre: Preflight; selected: string[]; nonSkill: Record<string, boolean> }
@@ -59,8 +57,6 @@ export function App({ ctx: initialCtx, commit, onExit }: Props) {
   const [history, setHistory] = useState<Done[]>([]);
   const [catalog] = useState<Skill[]>(() => loadCatalog(initialCtx.root));
   const [extras] = useState<Extra[]>(() => loadExtras(initialCtx.root));
-  const core = coreSkills(catalog);
-  const coreNames = new Set(core.map((s) => s.name));
   const nextId = useRef(0);
 
   const finish = (code: number) => {
@@ -79,7 +75,7 @@ export function App({ ctx: initialCtx, commit, onExit }: Props) {
     if (ctx.options.uninstall && ctx.configure) return fail("this copy is managed by Claude Code", "remove it with /plugin uninstall second-opinion@second-opinion");
     if (ctx.options.uninstall) return setPhase({ name: "uninstall" });
     if (ctx.configure) return startConfigure(pre);
-    const sel = initialSelection(catalog, ctx.options, pre.previous);
+    const sel = initialSelection(catalog, ctx.options, pre.previous, false, priorSwitches(pre)?.extras ?? null);
     if (pre.previous) {
       record(`Existing install ${glyph.dot} ${pre.previous.skills.length} skills`, color.dim);
       if (sel.explicit || ctx.options.extras !== undefined) return startExplicit(pre, sel.names);
@@ -87,25 +83,33 @@ export function App({ ctx: initialCtx, commit, onExit }: Props) {
     }
     record("Fresh install", color.dim);
     if (sel.explicit || ctx.options.extras !== undefined) return startExplicit(pre, sel.names);
-    setPhase({ name: "pick", pre, initial: sel.names, scope: "core", nonSkill: nonSkillDefaults(extras, null) });
+    startEverySkill(pre, sel.names, nonSkillDefaults(extras, priorSwitches(pre)));
+  };
+
+  /** A fresh guided install takes every skill: the extras screen (when the catalog has extras), then keys. */
+  const startEverySkill = (pre: Preflight, names: string[], nonSkill: Record<string, boolean>) => {
+    const kept = resolveSelection(catalog, names, { dropDependents: true }).names;
+    if (extras.length) return openExtras(pre, kept, nonSkill, () => finish(0));
+    record(`Skills ${glyph.dot} ${kept.length} of ${catalog.length} selected`);
+    startCredentials(pre, kept, nonSkill);
   };
 
   /** A /plugin install ships every skill: extras (unless --extras chose them), then keys. */
   const startConfigure = (pre: Preflight) => {
     let sel;
     try {
-      sel = initialSelection(catalog, ctx.options, pre.previous, true);
+      sel = initialSelection(catalog, ctx.options, pre.previous, true, priorSwitches(pre)?.extras ?? null);
     } catch (err) {
       return fail((err as Error).message, "run node install.js --extras KEY=on|off instead");
     }
     record(pre.previous ? "Configuring your plugin install" : "Configuring a new plugin install", color.dim);
     if (ctx.options.extras !== undefined) return startExplicit(pre, sel.names);
-    openExtras(pre, sel.names, nonSkillDefaults(extras, pre.previous), () => finish(0));
+    openExtras(pre, sel.names, nonSkillDefaults(extras, priorSwitches(pre)), () => finish(0));
   };
 
   /** Flags chose the selection: apply --extras on top and go straight to credentials. */
   const startExplicit = (pre: Preflight, names: string[]) => {
-    const ex = initialExtras(ctx.options, extras, catalog, names, pre.previous);
+    const ex = initialExtras(ctx.options, extras, catalog, names, priorSwitches(pre));
     for (const n of ex.notes) record(n, color.dim);
     startCredentials(pre, ex.selected, ex.nonSkill);
   };
@@ -113,18 +117,24 @@ export function App({ ctx: initialCtx, commit, onExit }: Props) {
   const onMode = (pre: Preflight, mode: Mode) => {
     if (mode === "quit") return finish(0);
     if (mode === "uninstall") return setPhase({ name: "uninstall" });
-    const sel = initialSelection(catalog, ctx.options, pre.previous);
-    const nonSkill = nonSkillDefaults(extras, pre.previous);
+    const sel = initialSelection(catalog, ctx.options, pre.previous, false, priorSwitches(pre)?.extras ?? null);
+    const nonSkill = nonSkillDefaults(extras, priorSwitches(pre));
     if (mode === "update") {
       record(`Skills ${glyph.dot} keeping ${sel.names.length}`);
       return startCredentials(pre, sel.names, nonSkill);
     }
-    if (mode === "extras") return openExtras(pre, sel.names, nonSkill, () => setPhase({ name: "mode", pre }));
-    setPhase({ name: "pick", pre, initial: sel.names, scope: "all", nonSkill });
+    return openExtras(pre, sel.names, nonSkill, () => setPhase({ name: "mode", pre }));
   };
 
   const openExtras = (pre: Preflight, base: string[], nonSkill: Record<string, boolean>, back: () => void) =>
     setPhase({ name: "extras", pre, base, nonSkill, state: extrasState(extras, base, nonSkill), back });
+
+  /** Back from the keys or the review: the extras screen when the catalog has extras, else where the run started. */
+  const goBack = (pre: Preflight, selected: string[], nonSkill: Record<string, boolean>) => {
+    const start = () => (pre.previous && !ctx.configure ? setPhase({ name: "mode", pre }) : finish(0));
+    if (extras.length) return openExtras(pre, selected, nonSkill, start);
+    start();
+  };
 
   const startCredentials = (pre: Preflight, selected: string[], nonSkill: Record<string, boolean>) => setPhase({ name: "credentials", pre, selected, nonSkill });
 
@@ -133,27 +143,12 @@ export function App({ ctx: initialCtx, commit, onExit }: Props) {
     record(`Extras ${glyph.dot} ${on.length ? on.join(", ") : "all off"}`);
   };
 
-  const onPicked = (pre: Preflight, selected: string[], scope: "core" | "all", nonSkill: Record<string, boolean>) => {
-    if (scope === "core" && extras.length) {
-      // The core step keeps skill extras that are on by default or already chosen (after Back from review), unless it just dropped a skill they need.
-      const kept = resolveSelection(catalog, selected, { dropDependents: true }).names;
-      return openExtras(pre, kept, nonSkill, () => setPhase({ name: "pick", pre, initial: kept, scope: "core", nonSkill }));
-    }
-    record(`Skills ${glyph.dot} ${selected.length} of ${catalog.length} selected`);
-    startCredentials(pre, selected, nonSkill);
-  };
-
   const onExtras = (pre: Preflight, base: string[], nonSkill: Record<string, boolean>, state: ExtrasState) => {
     const r = applyExtras(catalog, extras, base, nonSkill, state);
     recordExtras(extrasState(extras, r.selected, r.nonSkill));
     for (const n of r.notes) record(n, color.dim);
     if (!ctx.configure) record(`Skills ${glyph.dot} ${r.selected.length} of ${catalog.length} selected`);
     startCredentials(pre, r.selected, r.nonSkill);
-  };
-
-  const onCustomize = (pre: Preflight, base: string[], nonSkill: Record<string, boolean>, state: ExtrasState) => {
-    const r = applyExtras(catalog, extras, base, nonSkill, state);
-    setPhase({ name: "pick", pre, initial: r.selected, scope: "all", nonSkill: r.nonSkill });
   };
 
   const onCredentials = (pre: Preflight, selected: string[], nonSkill: Record<string, boolean>, values: EnvValues, brokers: Set<BrokerChoice>) => {
@@ -175,9 +170,7 @@ export function App({ ctx: initialCtx, commit, onExit }: Props) {
         return finish(0);
       case "back":
         setHistory((h) => h.filter((d) => !d.text.startsWith("Skills") && !d.text.startsWith("Credentials") && !d.text.startsWith("Extras")));
-        if (ctx.configure) return openExtras(pre, plan.selected, plan.extras, () => finish(0));
-        if (!plan.previous) return setPhase({ name: "pick", pre, initial: plan.selected, scope: "core", nonSkill: plan.extras });
-        return setPhase({ name: "pick", pre, initial: plan.selected, scope: "all", nonSkill: plan.extras });
+        return goBack(pre, plan.selected, plan.extras);
       case "install-no-link": {
         const next = { ...ctx, options: { ...ctx.options, noLink: true } };
         setCtx(next);
@@ -220,24 +213,11 @@ export function App({ ctx: initialCtx, commit, onExit }: Props) {
       <Box flexDirection="column" marginTop={history.length ? 1 : 0}>
         {phase.name === "preflight" ? <PreflightScreen ctx={ctx} onDone={afterPreflight} onFail={fail} /> : null}
         {phase.name === "mode" ? <ModeScreen previous={phase.pre.previous!} onSelect={(m) => onMode(phase.pre, m)} /> : null}
-        {phase.name === "pick" ? (
-          <SkillPickerScreen
-            key={phase.scope}
-            catalog={phase.scope === "core" ? core : catalog}
-            title={phase.scope === "core" ? "Choose the core skills" : undefined}
-            initial={phase.scope === "core" ? phase.initial.filter((n) => coreNames.has(n)) : phase.initial}
-            onDone={(s) =>
-              onPicked(phase.pre, phase.scope === "core" ? [...s, ...phase.initial.filter((n) => !coreNames.has(n))] : s, phase.scope, phase.nonSkill)
-            }
-            onCancel={phase.pre.previous ? () => setPhase({ name: "mode", pre: phase.pre }) : undefined}
-          />
-        ) : null}
         {phase.name === "extras" ? (
           <ExtrasScreen
             extras={extras}
             initial={phase.state}
             onDone={(state) => onExtras(phase.pre, phase.base, phase.nonSkill, state)}
-            onCustomize={ctx.configure ? undefined : (state) => onCustomize(phase.pre, phase.base, phase.nonSkill, state)}
             onCancel={phase.back}
           />
         ) : null}
@@ -249,11 +229,7 @@ export function App({ ctx: initialCtx, commit, onExit }: Props) {
             brokers={brokersFrom(initialValues(ctx))}
             acceptDefaults={ctx.options.yes}
             onDone={(values, brokers) => onCredentials(phase.pre, phase.selected, phase.nonSkill, values, brokers)}
-            onCancel={() =>
-              ctx.configure
-                ? openExtras(phase.pre, phase.selected, phase.nonSkill, () => finish(0))
-                : setPhase({ name: "pick", pre: phase.pre, initial: phase.selected, scope: phase.pre.previous ? "all" : "core", nonSkill: phase.nonSkill })
-            }
+            onCancel={() => goBack(phase.pre, phase.selected, phase.nonSkill)}
           />
         ) : null}
         {phase.name === "review" ? <ReviewScreen ctx={ctx} plan={phase.plan} onChoose={(c) => onReview(phase.pre, phase.plan, c)} /> : null}

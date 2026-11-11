@@ -139,3 +139,13 @@ def test_snaptrade_preview_refuses_fractions_before_any_call() -> None:
         brokerage.preview_order(sdk, OrderSpec("acc-1", "AAPL", "BUY", 1.5))
     assert e.value.code == "FRACTIONAL_NOT_SUPPORTED"
     assert not sdk.kwargs_for("get_order_impact")
+
+
+def test_fractional_refusal_records_whole_shares(monkeypatch, tmp_path) -> None:
+    from second_opinion import settings
+    monkeypatch.setenv("SECOND_OPINION_DATA", str(tmp_path))
+    with pytest.raises(InvalidInput) as e:
+        brokerage.preview_order(_sdk(), OrderSpec("acc-1", "AAPL", "BUY", 1.5))
+    assert e.value.code == "FRACTIONAL_NOT_SUPPORTED"
+    assert settings.get("accounts.acc-1.whole_shares") is True
+    assert settings.get("accounts.acc-2.whole_shares") is False

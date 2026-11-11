@@ -10,7 +10,7 @@ from second_opinion import proxies
 
 
 def test_proxy_and_cash_tables_match_the_snapshot_summary_script() -> None:
-    summary = load_script("portfolio-snapshot/scripts/summary.py")
+    summary = load_script("portfolio-analysis/scripts/summary.py")
     assert [(p.pattern, p.flags, proxy) for p, proxy in proxies.LOOKTHROUGH_PROXIES] == [
         (p.pattern, p.flags, proxy) for p, proxy in summary.LOOKTHROUGH_PROXIES
     ]

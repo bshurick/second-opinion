@@ -694,8 +694,8 @@ def _dom(data: dict, tmp_path) -> str:
     assert run.returncode == 0, run.stdout
     doc = tmp_path / "doc.html"
     doc.write_text(f'<!doctype html><html><head><meta charset="utf-8"></head><body>{out.read_text()}</body></html>')
-    return subprocess.run([page_dom.CHROME, "--headless=new", "--disable-gpu", "--virtual-time-budget=3000",
-                           "--dump-dom", doc.as_uri()], capture_output=True, text=True, timeout=90).stdout
+    return subprocess.run([*page_dom.chrome_cmd(tmp_path, budget_ms=3000), "--dump-dom", doc.as_uri()],
+                          capture_output=True, text=True, timeout=90).stdout
 
 
 def _lowest_first(data: dict) -> dict:

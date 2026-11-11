@@ -1,4 +1,4 @@
-"""On-disk statement store used by the debt-tracker skill.
+"""On-disk statement store used by the personal-finance skill.
 
 ``<plugin data dir>/statements.json`` holds ``{"accounts": {id: {...}}, "statements": [...],
 "imports": [...]}``. Snapshots are keyed on (account_id, period_end); ``put`` keeps the list

@@ -5,7 +5,7 @@ from datetime import date
 
 from second_opinion import headlines as H
 
-SKILL = "portfolio-snapshot"
+SKILL = "portfolio-analysis"
 WINDOW_DAYS = 7
 _TITLE = {"earnings": "{s} reports earnings on {d}", "ex_dividend": "{s} goes ex-dividend on {d}"}
 _ASK = {"earnings": "What is {s}'s expected move through earnings?", "ex_dividend": "What is {s}'s next dividend worth to me?"}

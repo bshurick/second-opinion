@@ -17,7 +17,7 @@ amount is account-view signed: spend negative. Rows are normalized (merchant, ca
 transfer) with the rules in ``spending-rules.json``, deduplicated against the store, and
 after the merge card payments are matched against checking debits across accounts
 (``transfer_pairs``). First use of an account needs --account; --name defaults to the
-debt-tracker register's name for that id, else the id; --kind defaults to the preset's (or
+personal-finance register's name for that id, else the id; --kind defaults to the preset's (or
 the OFX file's); --rows and --mapping have no kind of their own, so without --kind they take
 the stored kind of an existing account, else card. A kind that conflicts with rows already
 on file fails (checking and savings may mix).

@@ -18,7 +18,8 @@ new valuation over an existing pick keeps its ``added`` date and ``added_price``
 ``--added-price`` is given, so "since added" still measures from the original pick.
 ``save-light`` stores a funnel pick: the input file holds {"thesis", "preset", "fair_values":
 {"bear", "base", "bull"}, "added_price"?}; the script measures ``metrics_at_pick`` (TTM revenue
-growth and operating margin) from EDGAR. Saving again replaces the baseline and keeps the checks.
+growth and operating margin) from EDGAR. Saving again replaces the baseline and keeps the checks;
+``baseline_checks_from`` is the index of the first check against the current baseline.
 Both saves fetch the next earnings date (best effort).
 
 ``check`` gathers the actuals from SEC EDGAR company facts (through the fundamental-research
@@ -56,9 +57,16 @@ price. ``due`` adds the same crossing (PRICE_LEVEL) at live prices, and each rec
 its ``price_level``. It prints nothing when no pick is
 saved, and always exits 0.
 
+Depth: when the saved depth (settings.json ``depth``) is deep, ``save-light`` exits 2 (DEPTH_DEEP)
+and ``check`` on a light pick exits 2 (DEEP_VALUATION_NEEDED). ``list`` marks each light pick
+``needs_deep_valuation`` (output only; the store is unchanged), ``due`` moves light picks out of
+``due``/``not_due`` into ``needs_deep_valuation`` (always present, empty in standard depth) without
+reading EDGAR for them, and ``summary`` names them on one line. Unreadable settings exit 5, except in
+``summary``, which reads as standard depth. Switching back to standard restores the light behaviour.
+
 Output (JSON, except summary): save-* {"pick", "baseline_path"}; list {"picks"}; check {"symbol",
 "kind", "pick", "since_added", "actuals", "result", "recorded"}; due {"due": [{"symbol",
-"reasons"}], "not_due", "flags"}. Exit codes: 0, 2 (bad input, unknown pick, a page without
+"reasons"}], "not_due", "flags", "needs_deep_valuation"}. Exit codes: 0, 2 (bad input, unknown pick, a page without
 window.DATA), 4 (SKILL_MISSING: fundamental-research not installed), 5 (EDGAR or Yahoo), 6.
 """
 from __future__ import annotations
@@ -75,7 +83,7 @@ sys.path.insert(0, str(_HERE.parents[2] / "lib"))
 sys.path.insert(0, str(_HERE))
 
 import track_math  # noqa: E402
-from second_opinion import brokerage, edgar, ledger, market, output  # noqa: E402
+from second_opinion import brokerage, edgar, ledger, market, output, settings  # noqa: E402
 from second_opinion.errors import ApiError, ConfigError, InvalidInput  # noqa: E402
 
 PICKS_FILE = "picks.json"
@@ -185,7 +193,8 @@ def _upsert(symbol: str, kind: str, baseline: dict, as_of: str, fields: dict) ->
     if pick is None:
         pick = {"symbol": symbol, "checks": []}
         book["picks"].append(pick)
-    pick.update({"kind": kind, "baseline": rel, "baseline_as_of": as_of, **fields})
+    # Checks kept from here back were against a replaced baseline; an "outside" among them is answered.
+    pick.update({"kind": kind, "baseline": rel, "baseline_as_of": as_of, "baseline_checks_from": len(pick.get("checks") or []), **fields})
     try:
         pick["next_earnings"] = market.next_events(symbol).get("next_earnings")
     except Exception:  # noqa: BLE001 - the earnings date is a convenience for the hook
@@ -398,6 +407,8 @@ def _save_deep(ns: argparse.Namespace) -> dict:
 
 
 def _save_light(ns: argparse.Namespace) -> dict:
+    if settings.is_deep():
+        raise InvalidInput("depth is deep: light picks are not saved; run a deep valuation and save it with save-deep", code="DEPTH_DEEP")
     symbol = brokerage.validate_symbol(ns.symbol)
     spec = _read_json(ns.input, "light pick")
     fv = spec.get("fair_values") if isinstance(spec, dict) else None
@@ -495,6 +506,9 @@ def _check(ns: argparse.Namespace) -> dict:
     symbol = brokerage.validate_symbol(ns.symbol)
     book = load()
     pick = get(book, symbol)
+    if pick["kind"] != "deep" and settings.is_deep():
+        raise InvalidInput(f"{symbol} is a light pick and depth is deep: it needs a deep valuation, not a light re-check",
+                           code="DEEP_VALUATION_NEEDED")
     baseline = load_baseline(pick)
     today = date.today().isoformat()
     price = _price(symbol)
@@ -543,12 +557,16 @@ def _check(ns: argparse.Namespace) -> dict:
 def _due(ns: argparse.Namespace) -> dict:
     book = load()
     if not book["picks"]:
-        return {"due": [], "not_due": [], "flags": []}
+        return {"due": [], "not_due": [], "flags": [], "needs_deep_valuation": []}
+    deep = settings.is_deep()
+    needs = sorted(p["symbol"] for p in book["picks"] if deep and p.get("kind") != "deep")
     symbols = [p["symbol"] for p in book["picks"]]
     quotes = {r.get("symbol"): r.get("price") for r in market.quote(symbols)}
     due, not_due, flags = [], [], []
     refreshed = False
     for p in book["picks"]:
+        if p["symbol"] in needs:
+            continue
         last = (p.get("checks") or [None])[-1]
         since = last["date"] if last else p.get("added") or p.get("baseline_as_of")
         ref = last["price"] if last else p.get("added_price")
@@ -583,20 +601,19 @@ def _due(ns: argparse.Namespace) -> dict:
         (due if reasons else not_due).append({"symbol": p["symbol"], "kind": p["kind"], "since": since, "reasons": reasons})
     if refreshed:
         save(book)
-    return {"due": due, "not_due": not_due, "flags": flags}
+    return {"due": due, "not_due": not_due, "flags": flags, "needs_deep_valuation": needs}
 
 
-def summary_lines(today: date | None = None) -> list[str]:
-    """Plain-text lines for the SessionStart hook; no network."""
+def summary_data(today: date | None = None) -> dict | None:
+    """What the session hooks need, with no network: None with no pick store or no picks, else
+    {"n", "due": [{symbol, kind, why: [str], awaiting_filing}], "needs_deep_valuation": [SYM],
+    "next_earnings": (date, SYM) | None}. Raises ApiError when the store cannot be read."""
     path = picks_path()
     if not path.is_file():
-        return []
-    try:
-        book = load()
-    except ApiError:
-        return [f"Pick re-check: {path} could not be read."]
+        return None
+    book = load()
     if not book["picks"]:
-        return []
+        return None
     today_s = (today or date.today()).isoformat()
     prices = {}
     try:
@@ -604,8 +621,15 @@ def summary_lines(today: date | None = None) -> list[str]:
         prices = {w.get("symbol"): w.get("price") for w in last_check.get("watchlist") or []}
     except (OSError, ValueError, AttributeError):
         pass
-    lines = []
+    try:
+        deep = settings.is_deep()
+    except ApiError:  # unreadable settings: the hook reads as standard depth
+        deep = False
+    needs = sorted(p["symbol"] for p in book["picks"] if deep and p.get("kind") != "deep")
+    due = []
     for p in book["picks"]:
+        if p["symbol"] in needs:
+            continue
         last = (p.get("checks") or [None])[-1]
         since = last["date"] if last else p.get("added") or p.get("baseline_as_of") or ""
         ref = last["price"] if last else p.get("added_price")
@@ -628,13 +652,27 @@ def summary_lines(today: date | None = None) -> list[str]:
             if crossed:
                 why.append(crossed[1])
         if why:
-            lines.append(f"  {p['symbol']} ({p.get('kind')}): {'; '.join(why)}")
-    n = len(book["picks"])
+            due.append({"symbol": p["symbol"], "kind": p.get("kind"), "why": why, "awaiting_filing": bool(p.get("awaiting_filing"))})
+    nxt = sorted((p["next_earnings"], p["symbol"]) for p in book["picks"] if p.get("next_earnings") and p["next_earnings"] > today_s)
+    return {"n": len(book["picks"]), "due": due, "needs_deep_valuation": needs, "next_earnings": nxt[0] if nxt else None}
+
+
+def summary_lines(today: date | None = None) -> list[str]:
+    """Plain-text lines for "show my picks due" and older hooks; no network."""
+    try:
+        data = summary_data(today)
+    except ApiError:
+        return [f"Pick re-check: {picks_path()} could not be read."]
+    if data is None:
+        return []
+    n, needs = data["n"], data["needs_deep_valuation"]
+    lines = [f"  {d['symbol']} ({d['kind']}): {'; '.join(d['why'])}" for d in data["due"]]
+    light = [f"  Light picks needing a deep valuation: {', '.join(needs)}"] if needs else []
     if not lines:
-        nxt = sorted((p["next_earnings"], p["symbol"]) for p in book["picks"] if p.get("next_earnings") and p["next_earnings"] > today_s)
-        tail = f"; next earnings {nxt[0][1]} {nxt[0][0]}" if nxt else ""
-        return [f"Pick re-check: {n} picks tracked, none due{tail}."]
-    return [f"Pick re-check: {len(lines)} of {n} picks due (ask Claude to re-check my picks):", *lines]
+        nxt = data["next_earnings"]
+        tail = f"; next earnings {nxt[1]} {nxt[0]}" if nxt else ""
+        return [f"Pick re-check: {n} picks tracked, none due{tail}.", *light]
+    return [f"Pick re-check: {len(lines)} of {n} picks due (ask Claude to re-check my picks):", *lines, *light]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -683,7 +721,10 @@ def main(argv: list[str] | None = None) -> int:
         if ns.cmd == "save-light":
             return _save_light(ns)
         if ns.cmd == "list":
-            return {"picks": load()["picks"], "picks_path": str(picks_path())}
+            listed = load()["picks"]
+            if settings.is_deep():
+                listed = [{**x, "needs_deep_valuation": True} if x.get("kind") != "deep" else x for x in listed]
+            return {"picks": listed, "picks_path": str(picks_path())}
         if ns.cmd == "remove":
             book = load()
             sym = brokerage.validate_symbol(ns.symbol)

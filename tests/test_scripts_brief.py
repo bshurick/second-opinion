@@ -17,7 +17,7 @@ SNAP = {"as_of": "2026-09-14T13:05:00+00:00", "sources": {"holdings": "snaptrade
 @pytest.fixture
 def brief(monkeypatch, tmp_path):
     monkeypatch.setenv("SECOND_OPINION_DATA", str(tmp_path))
-    mod = load_script("portfolio-snapshot/scripts/brief.py")
+    mod = load_script("portfolio-analysis/scripts/brief.py")
     calls: list[list[str]] = []
 
     def build(args):
@@ -31,12 +31,12 @@ def brief(monkeypatch, tmp_path):
 
 
 def test_snapshot_build_is_a_module_function() -> None:
-    snap = load_script("portfolio-snapshot/scripts/snapshot.py")
+    snap = load_script("portfolio-analysis/scripts/snapshot.py")
     assert callable(snap.build)
 
 
 def test_single_stock_symbols_sorts_by_market_value_descending() -> None:
-    mod = load_script("portfolio-snapshot/scripts/brief.py")
+    mod = load_script("portfolio-analysis/scripts/brief.py")
     snap = {"positions": [{"symbol": "AAA", "market_value": 100.0}, {"symbol": "BBB", "market_value": 500.0},
                           {"symbol": "CCC", "market_value": 500.0}, {"symbol": "DDD"}, {"symbol": "ETF1"}],
             "profiles": {"AAA": {"quote_type": "EQUITY"}, "BBB": {"quote_type": "EQUITY"}, "CCC": {"quote_type": "EQUITY"},
@@ -107,16 +107,16 @@ def test_brief_records_risk_for_the_next_run(brief, monkeypatch, capsys) -> None
 
 def test_brief_keeps_a_failed_sources_memory_between_runs(brief, monkeypatch, capsys) -> None:
     (brief.tmp_path / "brief-last.json").write_text(json.dumps({
-        "as_of": "2026-09-13", "keys": ["risk-analysis:HIGH_BETA:-:", "debt-tracker:PAST_DUE:-:amex:2026-09-12"],
+        "as_of": "2026-09-13", "keys": ["risk-analysis:HIGH_BETA:-:", "personal-finance:PAST_DUE:-:amex:2026-09-12"],
         "risk": {"max_drawdown": -0.2},
     }))
 
     def run_all(ctx, **kw):
         return (
-            [{"key": "debt-tracker:PAST_DUE:-:amex:2026-09-14", "code": "PAST_DUE", "skill": "debt-tracker",
+            [{"key": "personal-finance:PAST_DUE:-:amex:2026-09-14", "code": "PAST_DUE", "skill": "personal-finance",
               "severity": "alert", "symbol": None, "title": "t", "detail": "", "as_of": "2026-09-14", "status": "new", "ask": "q"}],
             [{"skill": "risk-analysis", "script": "stress.py", "status": "failed", "reason": "timed out", "hint": "", "seconds": 90.0, "headlines": 0},
-             {"skill": "debt-tracker", "script": "debts.py", "status": "ok", "reason": "", "hint": "", "seconds": 0.5, "headlines": 1}],
+             {"skill": "personal-finance", "script": "debts.py", "status": "ok", "reason": "", "hint": "", "seconds": 0.5, "headlines": 1}],
         )
 
     monkeypatch.setattr(S, "run_all", run_all)
@@ -125,8 +125,8 @@ def test_brief_keeps_a_failed_sources_memory_between_runs(brief, monkeypatch, ca
     last = json.loads((brief.tmp_path / "brief-last.json").read_text())
     assert last["risk"] == {"max_drawdown": -0.2}
     assert "risk-analysis:HIGH_BETA:-:" in last["keys"]
-    assert "debt-tracker:PAST_DUE:-:amex:2026-09-12" not in last["keys"]
-    assert "debt-tracker:PAST_DUE:-:amex:2026-09-14" in last["keys"]
+    assert "personal-finance:PAST_DUE:-:amex:2026-09-12" not in last["keys"]
+    assert "personal-finance:PAST_DUE:-:amex:2026-09-14" in last["keys"]
 
 
 def test_no_headlines_skips_sources_and_writes_nothing(brief, monkeypatch, capsys) -> None:

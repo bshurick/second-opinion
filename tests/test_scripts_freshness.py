@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 import pytest
 from scripts_util import load_script
 
-FR = load_script("portfolio-snapshot/scripts/freshness.py")
+FR = load_script("portfolio-analysis/scripts/freshness.py")
 
 
 def _local(y, m, d, hh=12, mm=0) -> datetime:

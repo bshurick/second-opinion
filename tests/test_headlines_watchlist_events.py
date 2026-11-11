@@ -54,7 +54,7 @@ def test_events_within_seven_days_are_alerts() -> None:
         {"symbol": "OLD", "type": "earnings", "date": "2026-09-13"},
     ]}}
     hs = EV.extract({}, ctx)
-    assert [h["key"] for h in hs] == ["portfolio-snapshot:EARNINGS:KO:2026-09-20", "portfolio-snapshot:EX_DIVIDEND:PEP:2026-09-21"]
+    assert [h["key"] for h in hs] == ["portfolio-analysis:EARNINGS:KO:2026-09-20", "portfolio-analysis:EX_DIVIDEND:PEP:2026-09-21"]
     assert hs[0]["title"] == "KO reports earnings on 2026-09-20" and hs[0]["severity"] == "alert"
     assert hs[1]["title"] == "PEP goes ex-dividend on 2026-09-21"
     assert hs[0]["ask"] == "What is KO's expected move through earnings?"

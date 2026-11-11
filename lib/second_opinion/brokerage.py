@@ -354,8 +354,23 @@ def _order_body(sdk: Any, spec: OrderSpec) -> dict[str, Any]:
     return body
 
 
+def _remember_whole_shares(account_id: str) -> None:
+    """Save ``accounts.<id>.whole_shares`` after a fractional refusal; a settings failure never hides the refusal."""
+    from second_opinion import settings  # local: settings is not needed on any other order path
+    try:
+        if account_id and not settings.get(f"accounts.{account_id}.whole_shares"):
+            settings.set_value(f"accounts.{account_id}.whole_shares", True)
+    except Exception:  # noqa: BLE001 - the refusal is the answer; the record is a convenience
+        pass
+
+
 def preview_order(sdk: Any, spec: OrderSpec) -> dict[str, Any]:
-    spec = validate_order(spec)
+    try:
+        spec = validate_order(spec)
+    except InvalidInput as exc:
+        if exc.code == "FRACTIONAL_NOT_SUPPORTED":
+            _remember_whole_shares(spec.account_id)
+        raise
     require_trading(sdk, spec.account_id)
     impact = _call(sdk.trading.get_order_impact, body=_manual_trade_form(_order_body(sdk, spec)))
     trade = impact.get("trade") or {}

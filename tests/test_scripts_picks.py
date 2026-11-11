@@ -146,6 +146,7 @@ def test_saving_again_keeps_checks_and_list_remove(env, capsys, tmp_path) -> Non
     run(["save-deep", "ACME", "--case", str(case)], capsys)
     rc, out = run(["list"], capsys)
     assert rc == 0 and len(out["picks"]) == 1 and len(out["picks"][0]["checks"]) == 1
+    assert out["picks"][0]["baseline_checks_from"] == 1  # the kept check was against the replaced baseline
     rc, out = run(["remove", "ACME"], capsys)
     assert rc == 0 and out["count"] == 0
     rc, out = run(["check", "ACME"], capsys)
@@ -251,11 +252,9 @@ def test_summary_command_prints_text_and_exits_zero_on_a_corrupt_store(env, caps
     assert "could not be read" in capsys.readouterr().out
 
 
-def test_hook_is_registered() -> None:
-    hooks = json.loads((PLUGIN_ROOT / "hooks" / "hooks.json").read_text())
-    cmds = [a for h in hooks["hooks"]["SessionStart"][0]["hooks"] for a in h.get("args", [])]
-    assert any(c.endswith("hooks/picks-summary.sh") for c in cmds)
-    assert (PLUGIN_ROOT / "hooks" / "picks-summary.sh").is_file()
+def test_picks_reach_the_session_inbox() -> None:
+    text = (PLUGIN_ROOT / "skills" / "get-started" / "scripts" / "inbox.py").read_text()
+    assert "summary_data" in text and "stock-screener" in text
 
 
 def test_a_52_week_year_ending_in_january_is_kept_by_period_end(env, monkeypatch) -> None:
@@ -483,3 +482,73 @@ def test_saving_a_new_valuation_keeps_the_original_added_date_and_price(env, cap
     assert out["pick"]["baseline_as_of"] == "2026-10-22"
     rc, out = run(["save-deep", "ACME", "--case", str(case), "--added-price", "24", "--date", "2026-10-22"], capsys)
     assert out["pick"]["added"] == "2026-10-22" and out["pick"]["added_price"] == 24.0
+
+
+# --- depth (phase 2) -----------------------------------------------------------------------
+
+from second_opinion import settings  # noqa: E402
+
+LIGHT = {"thesis": "cheap compounder", "preset": "value", "fair_values": {"bear": 15, "base": 24, "bull": 30}}
+
+
+def _save_light(tmp_path, capsys, name: str = "light.json") -> None:
+    spec = tmp_path / name
+    spec.write_text(json.dumps(LIGHT))
+    rc, out = run(["save-light", "ACME", "--in", str(spec)], capsys)
+    assert rc == 0, out
+
+
+def test_save_light_refused_in_deep_mode(env, capsys, tmp_path) -> None:
+    settings.set_value("depth", "deep")
+    spec = tmp_path / "light.json"
+    spec.write_text(json.dumps(LIGHT))
+    rc, out = run(["save-light", "ACME", "--in", str(spec)], capsys)
+    assert rc == 2 and out["code"] == "DEPTH_DEEP" and "save-deep" in out["error"]
+    assert not (env["dir"] / "picks.json").exists()
+
+
+def test_light_pick_in_deep_mode_is_marked_not_rechecked(env, capsys, tmp_path) -> None:
+    _save_light(tmp_path, capsys)
+    settings.set_value("depth", "deep")
+    rc, out = run(["check", "ACME"], capsys)
+    assert rc == 2 and out["code"] == "DEEP_VALUATION_NEEDED"
+    assert run(["list"], capsys)[1]["picks"][0]["needs_deep_valuation"] is True
+    assert "needs_deep_valuation" not in json.loads((env["dir"] / "picks.json").read_text())["picks"][0]
+    due = run(["due"], capsys)[1]
+    assert due["needs_deep_valuation"] == ["ACME"] and due["due"] == due["not_due"] == []
+    lines = PICKS.summary_lines()
+    assert any("Light picks needing a deep valuation: ACME" in line for line in lines)
+    assert not any(line.strip().startswith("ACME (light)") for line in lines)
+
+
+def test_due_has_empty_needs_deep_valuation_in_standard_mode(env, capsys, tmp_path) -> None:
+    _save_light(tmp_path, capsys)
+    assert run(["due"], capsys)[1]["needs_deep_valuation"] == []
+
+
+def test_switching_back_to_standard_restores_light_checks(env, capsys, tmp_path) -> None:
+    _save_light(tmp_path, capsys)
+    settings.set_value("depth", "deep")
+    settings.set_value("depth", "standard")
+    rc, out = run(["check", "ACME"], capsys)
+    assert rc == 0 and out["kind"] == "light"
+    assert "needs_deep_valuation" not in run(["list"], capsys)[1]["picks"][0]
+
+
+def test_save_deep_over_light_pick_in_deep_mode(env, capsys, tmp_path) -> None:
+    _save_light(tmp_path, capsys)
+    assert run(["check", "ACME", "--record"], capsys)[0] == 0
+    settings.set_value("depth", "deep")
+    case, _ = case_folder(tmp_path)
+    rc, out = run(["save-deep", "ACME", "--case", str(case)], capsys)
+    assert rc == 0 and out["pick"]["kind"] == "deep" and len(out["pick"]["checks"]) == 1
+
+
+def test_corrupt_settings_save_light_exits_5_summary_still_prints(env, capsys, tmp_path) -> None:
+    _save_light(tmp_path, capsys)
+    settings.path().write_text("{bad")
+    spec = tmp_path / "l2.json"
+    spec.write_text(json.dumps(LIGHT))
+    rc, out = run(["save-light", "ACME", "--in", str(spec)], capsys)
+    assert rc == 5 and out["code"] == "SETTINGS_CORRUPT"
+    assert PICKS.summary_lines()

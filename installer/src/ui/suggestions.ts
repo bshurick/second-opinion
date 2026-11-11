@@ -6,7 +6,7 @@ export interface Suggestion {
 
 const BY_SKILL: [skill: string, needsKeys: boolean, suggestion: Suggestion][] = [
   ["connect", true, { prompt: "connect my brokerage", note: "SANDBOX is a safe read-only test broker" }],
-  ["portfolio-snapshot", true, { prompt: "how is my portfolio?" }],
+  ["portfolio-analysis", true, { prompt: "how is my portfolio?" }],
   ["valuation", false, { prompt: "what is AAPL worth?" }],
   ["market-analysis", false, { prompt: "how is the market today?" }],
   ["watchlist", false, { prompt: "watch NVDA and alert me if it drops 5%" }],

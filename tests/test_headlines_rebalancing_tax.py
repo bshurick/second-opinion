@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
+from second_opinion import settings
 from second_opinion.headlines import rebalancing as R
 from second_opinion.headlines import tax as T
 
@@ -18,7 +19,7 @@ def test_band_breach_is_an_alert_listing_breached_keys() -> None:
                                {"symbol": "BND", "side": "BUY", "units": 40.0, "price": 75.00, "value": 3000.00, "reason": "under target", "account": "brokerage"}]}}
     hs = R.extract(res, CTX)
     assert len(hs) == 1
-    assert hs[0]["key"] == "rebalancing:BAND_BREACH:-:bonds,us_equity" and hs[0]["severity"] == "alert"
+    assert hs[0]["key"] == "portfolio-plan:BAND_BREACH:-:bonds,us_equity" and hs[0]["severity"] == "alert"
     assert hs[0]["title"] == "Allocation outside its bands: bonds -13.0 pts, us_equity +11.0 pts"
     assert hs[0]["ask"] == "What trades bring me back inside my bands?"
     assert hs[0]["url"] == ""
@@ -91,3 +92,33 @@ def test_tax_wash_sale_fallback_without_realized_list() -> None:
 
 def test_tax_empty_result_is_empty() -> None:
     assert T.extract({"main": {"flags": [], "open_lots": [], "harvest_candidates": []}}, CTX) == []
+
+
+def _rebalancing_ready():
+    from second_opinion.headlines import sources as S
+
+    src = next(s for s in S.SOURCES if s.name == "rebalancing")
+    return src.ready
+
+
+def test_rebalancing_source_is_ready_only_with_saved_targets(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("SECOND_OPINION_DATA", str(tmp_path))
+    ready = _rebalancing_ready()
+    ctx = {"data_dir": tmp_path}
+    assert ready(ctx) == "no saved targets"
+    settings.set_value("plan.targets", {"VTI": 0.6, "BND": 0.4})
+    assert ready(ctx) is None
+
+
+def test_rebalancing_source_reads_an_old_targets_file(monkeypatch, tmp_path) -> None:
+    import json
+
+    monkeypatch.setenv("SECOND_OPINION_DATA", str(tmp_path))
+    (tmp_path / "targets.json").write_text(json.dumps({"targets": {"VTI": 1.0}}))
+    assert _rebalancing_ready()({"data_dir": tmp_path}) is None
+
+
+def test_rebalancing_source_skips_on_corrupt_settings(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("SECOND_OPINION_DATA", str(tmp_path))
+    (tmp_path / "settings.json").write_text("{bad")
+    assert _rebalancing_ready()({"data_dir": tmp_path}) == "settings.json is unreadable"

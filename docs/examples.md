@@ -4,14 +4,14 @@ Say these in plain language; Claude picks the skill. Grouped as in the README's 
 
 ## Getting started
 
-- **onboarding:** "Get started with Second Opinion." · "Show my profile." · "Update my profile: I hold for shorter now." · "What should I try next?"
+- **get-started:** "Get started with Second Opinion." · "Show my settings." · "Show my profile." · "Update my profile: I hold for shorter now." · "What should I try next?"
 - **setup:** "Set up Second Opinion." · "Turn on suggested follow-up questions." · "Reinstall the Python dependencies."
 
 ## Accounts and holdings
 
 - **connect:** "Connect my Fidelity account." · "Which accounts are connected?" · "Reconnect E*Trade."
-- **portfolio-snapshot:** "How is my portfolio doing today?" · "Give me the daily brief." · "What changed since last week's snapshot?"
-- **portfolio-analysis:** "What's my allocation across all my accounts? How concentrated am I?" · "How did my portfolio do against SPY this year?" · "Run a deep review of my portfolio: what single belief do I depend on most?" · "Re-check my deep review." · "Buy 10 shares of VTI in my E*Trade account."
+- **portfolio-analysis (the brief):** "How is my portfolio doing today?" · "Give me the daily brief." · "What changed since last week's snapshot?"
+- **portfolio-analysis:** "What's my allocation across all my accounts? How concentrated am I?" · "How did my portfolio do against SPY this year?" · "Run a deep review of my portfolio: what single belief do I depend on most?" · "Re-check my deep review."
 - **dividend-income:** "How much dividend income will I earn this year, and in which months?" · "Which of my holdings go ex-dividend soon?" · "Have any of my payers cut their dividend?"
 - **watchlist:** "Watch PLTR and alert me if it drops below 20 or moves 5% in a day." · "What on my watchlist moved?"
 - **risk-analysis:** "How risky is my portfolio?" · "What happens to my portfolio if 2008 repeats? What if NVDA drops 30%?"
@@ -26,12 +26,11 @@ Say these in plain language; Claude picks the skill. Grouped as in the README's 
 
 ## Planning
 
-- **rebalancing:** "I'm targeting 60/40. How far off am I?" · "Where does this $5,000 deposit go?"
-- **core-satellite:** "What's my ETF vs individual-stock mix?" · "Add $5k from cash to my picks, split by valuation." · "Rebalance my picks by valuation."
+- **portfolio-plan:** "I'm targeting 60/40. How far off am I?" · "Where does this $5,000 deposit go?" · "What's my ETF vs individual-stock mix?" · "Add $5k from cash to my picks, split by valuation." · "Get my picks to 20% by next June." · "Rebalance my picks by valuation."
 - **retirement:** "I'm 38 with $400k saved. Am I on track to retire at 60? What if I put $150k into a house first?" · "What withdrawal rate lasts 35 years?" · "Compare claiming Social Security at 62, 67 and 70."
 - **real-estate:** "Run a deep review of 12 Main Street as a rental. The inspection report is in ~/Documents/condo." · "I'm moving. Run the numbers on selling my condo versus renting it out: cap rate, cash flow, IRR over ten years." · "Rent vs buy on a $750k home at 6.5%, against $3,200 rent." · "Refinance from 6.5% to 5.75%? Where is the breakeven?" · "What are O's FFO and AFFO multiples?"
 - **personal-finance:** "Avalanche or snowball on my recorded debts, with $300 extra a month?" · "Build a monthly budget from my cash flow." · "What does $500 a month grow to in 20 years at 7%?"
-- **debt-tracker:** "Record this Chase statement: ~/Downloads/statement-aug.pdf." · "What do I owe across my cards and mortgage? What is the monthly interest run rate?"
+- **personal-finance (debts):** "Record this Chase statement: ~/Downloads/statement-aug.pdf." · "What do I owe across my cards and mortgage? What is the monthly interest run rate?"
 
 ## Research and markets
 
@@ -39,7 +38,7 @@ Say these in plain language; Claude picks the skill. Grouped as in the README's 
 - **fundamental-research:** "What does Nvidia's latest 10-K say about risk factors?" · "What did Berkshire buy last quarter?"
 - **stock-screener:** "Find me companies with strong growth that the market is underpricing." · "Run a value screen: cheap on cash flow, little debt, no dilution." · "Loosen the growth screen to include smaller companies." · "Run the magic formula, leaving out what I already own." · "Does Graham's defensive screen find anything today?" · "How did the quality screen's picks from three years ago do?" · "Find me the best opportunities right now: run the deep picker." · "How are my picks doing?" · "Re-check my picks."
 - **options:** "Show me the AAPL option chain for next month and the expected move." · "What's the payoff and breakeven on a 180/190 call spread?"
-- **trading:** "Chart AMD's trend. Where are support and resistance?" · "Is MSFT above its 200-day average?"
+- **trading:** "Chart AMD's trend. Where are support and resistance?" · "Is MSFT above its 200-day average?" · "Buy 10 shares of VTI in my E*Trade account."
 - **market-analysis:** "How are markets doing today? What is the yield curve saying?" · "How are asset managers positioned in S&P futures?" · "Which earnings are out this week?"
 - **fixed-income:** "What will BND earn me a year if I hold it five years, and is that better than cash?" · "What happens to my bond fund if rates go up 1%?" · "What short-rate path is priced into the curve, and how does it compare with the Fed's own projections?" · "Is a 4% T-bill really yielding 4%?"
 

@@ -2,7 +2,7 @@
 name: spending
 description: Tracks spending from card or bank exports (CSV, OFX, xlsx) or transcribed receipts, with category drill-down, merchants, recurring charges and cash flow. Use when the user asks "where did my money go", about subscriptions, or to import a card CSV.
 ---
-Keeps the user's spending history the way expense software does: imports card and bank rows, attaches itemized detail beneath a charge, and reports by month, category, merchant and recurring series. It stops at spending: statement PDFs as liabilities belong to debt-tracker and brokerage CSVs to statement-import.
+Keeps the user's spending history the way expense software does: imports card and bank rows, attaches itemized detail beneath a charge, and reports by month, category, merchant and recurring series. It stops at spending: statement PDFs as liabilities belong to personal-finance and brokerage CSVs to statement-import.
 
 ## Background
 
@@ -35,7 +35,7 @@ Keeps the user's spending history the way expense software does: imports card an
   | `UNCATEGORIZED_HIGH` | Over 10% of spend has no category. Offer rules. |
   | `SINGLE_ACCOUNT` | Transfers cannot be matched across accounts yet. |
 
-- **Other skills.** Payoff and budgeting math belongs to personal-finance. Balances, minimums and interest belong to debt-tracker. Statement PDFs as liabilities go to debt-tracker, though their transaction tables can still be transcribed here as rows. Brokerage CSVs go to statement-import.
+- **Other skills.** Payoff and budgeting math belongs to personal-finance. Balances, minimums and interest belong to personal-finance. Statement PDFs as liabilities go to personal-finance, though their transaction tables can still be transcribed here as rows. Brokerage CSVs go to statement-import.
 
 ## Scripts
 
@@ -103,7 +103,7 @@ Pick the case that matches the request.
 
 **The user has an export file (CSV, OFX, QFX, xlsx)**
 
-1. Choose the account id: the debt-tracker register's id when the card is recorded there, otherwise issuer-product-last4 in kebab case.
+1. Choose the account id: the personal-finance register's id when the card is recorded there, otherwise issuer-product-last4 in kebab case.
 2. Run `import-spending.py <file> --account ID --dry-run`.
 3. If the preset is wrong or `NO_HEADER` comes back, rerun with `--preset`, `--mapping` or `--sheet`.
 4. Run it again without `--dry-run`.
@@ -183,7 +183,7 @@ After a correction, report `changed` and `removed_rows`.
 **The request is out of scope**
 
 - Payoff or budgeting math: personal-finance.
-- Balances, minimums, interest, or a statement PDF as a liability: debt-tracker.
+- Balances, minimums, interest, or a statement PDF as a liability: personal-finance.
 - A brokerage CSV: statement-import.
 
 ## Reply format

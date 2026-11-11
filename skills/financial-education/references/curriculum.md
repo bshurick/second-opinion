@@ -25,7 +25,7 @@ them into learning paths. Nothing here is investment advice.
 2. Teach one concept per turn: definition, one worked number, one source
    link, one check question. Wait for the answer before moving on.
 3. Prefer the learner's own numbers (with their consent, via the
-   portfolio-snapshot or dividend-income skills) over invented examples.
+   portfolio-analysis or dividend-income skills) over invented examples.
 4. Every factual claim gets a source from this file; if the point needs a
    source not listed here, say so and name the source explicitly.
 5. End each session with a two-line recap and the next item on the path.
@@ -473,7 +473,7 @@ are a separate, unrelated requirement (see the retirement skill).
   to give on a repeat miss.
 - Concept lesson (10 minutes): definition, worked number, source, check
   question, recap.
-- Portfolio walk-through (with consent): run portfolio-snapshot or
+- Portfolio walk-through (with consent): run portfolio-analysis or
   dividend-income, then explain each figure on the page as a concept,
   without commenting on whether the holdings are good.
 - Paper reading (20 minutes): abstract, data, main table, what would

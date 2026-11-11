@@ -119,13 +119,13 @@ Quick mode runs a discounted-cash-flow range cross-checked against comparable mu
 - It prints `{"out", "title", "symbol", "methods", "flags"}`.
 - The only figure it derives is the discount to price for the DCF, comps and DDM values (1 − price / value), stated in its note.
 
-### Two modes
+### Depth
 
-| The person says | Mode |
-|---|---|
-| "what's X worth", "value check", "fair price", several tickers, the screener funnel's price check | Quick |
-| "deep dive", "in depth", "full valuation", "dig into X", "what could go wrong with X's plan" | Deep |
-| A single ticker, unclear which | Quick, ending with one line: a deep version is available and sends ten to fifteen research subagents |
+The saved depth decides the default; when it is deep, the session's depth rule says what changes. In standard depth:
+
+- Quick answers "what's X worth", "value check", "fair price", several tickers and the screener funnel's price check.
+- These words upgrade one request to Deep: "deep dive", "in depth", "full valuation", "dig into X", "what could go wrong with X's plan".
+- A single ticker with no such words gets Quick, ending with one line: a deep version is available and sends ten to fifteen research subagents.
 
 ### What `returns.py` adds
 
@@ -226,11 +226,11 @@ Run with the Bash tool. All print JSON on stdout.
 | 2 | Bad input. For `render.py`, no script result is present. For `render_deep.py`, a missing model, an unknown block, or an undated ledger claim. | `error` |
 | 4 | `intrinsic-inputs.py` only. `SKILL_MISSING`: the fundamental-research skill is not installed. `CONFIG_MISSING`: EDGAR is not configured. | `error` |
 | 5 | A data source (Yahoo, EDGAR) returned an error | `error` |
-| 6 | Python dependencies missing | `error`, and say the setup skill repairs it |
+| 6 | Python dependencies missing | `error`, and say the get-started skill repairs it |
 
 ## Steps
 
-**Quick (one company or several)**
+**Quick (standard depth; one company or several)**
 
 1. Identify the security. Run `fundamentals.py <symbol>` for current market data (price, market cap, shares outstanding) and the statements: at minimum 3-5 years of income statements, balance sheets and cash flow statements.
 2. Run `inputs.py <symbol>`. Read `business_type` and `flags`.
@@ -276,7 +276,7 @@ Run with the Bash tool. All print JSON on stdout.
 
 **Deep (one company)**
 
-1. Run `edgar.py SYMBOL` from the fundamental-research skill. If it exits 4, stop. Say deep mode needs SEC EDGAR, and offer quick mode.
+1. Run `edgar.py SYMBOL` from the fundamental-research skill. If it exits 4, stop. Say deep mode needs SEC EDGAR; in standard depth offer quick mode, and in deep depth say no fair value can be given without it.
 2. Make `DIR/deep-SYMBOL/` and its `baseline/`, `research/`, `threads/` and `custom/` folders. Write the output of `fundamentals.py`, `inputs.py`, `intrinsic-inputs.py` and `edgar.py` into `baseline/`.
 3. Tell the person deep mode has started and roughly how many research tasks it will run.
    - Write `budget.json` in the case folder: the web searches this run may spend (about 30 for one company: the role caps in `references/deep-roles.md`, plus 2 per thread), each role's cap, and the searches used so far.
@@ -333,7 +333,7 @@ Run with the Bash tool. All print JSON on stdout.
 
 ## Reply format
 
-**Quick mode, page published (the default):** these parts, in this order, then stop.
+**Quick mode, page published (standard depth; the default):** these parts, in this order, then stop.
 
 1. The artifact link on its own line.
 2. One line naming only the methods that ran: **Valuation: SYMBOL** price `price` · DCF `dcf.fair_value_per_share` (range from the sensitivity grid, bear / base / bull) · Graham number `intrinsic.graham.graham_number` · growth formula `intrinsic.graham.growth_formula.value` · mid-cycle DCF `dcf_mid_cycle.fair_value_per_share`.
@@ -343,7 +343,7 @@ Run with the Bash tool. All print JSON on stdout.
 
 The page carries the sensitivity grids, checklists, owner earnings, normalized block, comps and DDM tables, so do not repeat them in the reply. If the user asks for a number the page shows, read it from the scripts' JSON.
 
-**Quick mode, markdown fallback (only when the Artifact tool is unavailable):** these parts, then stop.
+**Quick mode, markdown fallback (standard depth; only when the Artifact tool is unavailable):** these parts, then stop.
 
 1. The fair-value range with the WACC × terminal-growth sensitivity table.
 2. Every key assumption.

@@ -33,14 +33,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from second_opinion import config
+from second_opinion import config, settings
 from second_opinion import headlines as H
+from second_opinion.errors import ApiError
 
 Runner = Callable[[list[str], float], tuple[int, str, str]]
 Ready = Callable[[dict], Optional[str]]
 Commands = Callable[[dict], list[tuple[str, str, list[str]]]]
 
-NOT_INSTALLED_HINT = "install it with the setup skill"
+NOT_INSTALLED_HINT = "install it with the get-started skill"
 
 
 @dataclass(frozen=True)
@@ -92,16 +93,24 @@ def _edgar_commands(ctx: dict) -> list[tuple[str, str, list[str]]]:
     return [(sym, "scripts/edgar.py", [sym]) for sym in symbols]
 
 
+def _has_saved_targets(ctx: dict) -> Optional[str]:
+    """Ready when settings.json holds rebalancing targets (``plan.targets``)."""
+    try:
+        return None if settings.get("plan.targets") else "no saved targets"
+    except ApiError:
+        return "settings.json is unreadable"
+
+
 SOURCES: list[Source] = [
     Source("watchlist", "watchlist", "watchlist", needs_entries("watchlist.json", "watchlist", "the watchlist is empty"),
            "add symbols with the watchlist skill", False, _single("scripts/watchlist.py", ["check", "--events"])),
     Source("market", "market-analysis", "market", _no_check, "", False,
            lambda ctx: [("indices", "scripts/indices.py", []), ("flows", "scripts/flows.py", ["--cot", "--cash"])]),
-    Source("events", "portfolio-snapshot", "events", _no_check, "", False, lambda ctx: []),
+    Source("events", "portfolio-analysis", "events", _no_check, "", False, lambda ctx: []),
     Source("edgar", "fundamental-research", "edgar", needs_env("EDGAR_USER_AGENT", "EDGAR_USER_AGENT is not set"),
            "set EDGAR_USER_AGENT in .env", False, _edgar_commands),
-    Source("rebalancing", "rebalancing", "rebalancing", needs_file("targets.json", "no targets.json"),
-           "save targets with the rebalancing skill", True, _single("scripts/plan.py", ["--only-if-breached"])),
+    Source("rebalancing", "portfolio-plan", "rebalancing", _has_saved_targets,
+           "save targets with the portfolio-plan skill", True, _single("scripts/global_plan.py", ["--only-if-breached"])),
     Source("tax", "tax-aware", "tax", needs_entries("ledger.json", "transactions", "the ledger is empty"),
            "import statements with the statement-import skill", False, _single("scripts/tax-report.py", [])),
     Source("dividends", "dividend-income", "dividends", _no_check, "", True, _single("scripts/dividends.py", ["--yield-context"])),
@@ -109,8 +118,8 @@ SOURCES: list[Source] = [
     Source("journal", "trade-journal", "journal", needs_entries("journal.json", "entries", "the journal is empty"),
            "journal a trade with the trade-journal skill", False,
            lambda ctx: [("review", "scripts/journal.py", ["review"]), ("open", "scripts/journal.py", ["list", "--status", "open"])]),
-    Source("debt", "debt-tracker", "debt", needs_file("statements.json", "no statements.json"),
-           "record a statement with the debt-tracker skill", False, _single("scripts/debts.py", [])),
+    Source("debt", "personal-finance", "debt", needs_file("statements.json", "no statements.json"),
+           "record a statement with the personal-finance skill", False, _single("scripts/debts.py", [])),
     Source("spending", "spending", "spending", needs_entries("spending.json", "transactions", "no spending imported"),
            "import a card export with the spending skill", False,
            lambda ctx: [("changes", "scripts/spend.py", ["changes"]), ("recurring", "scripts/spend.py", ["recurring"])]),
@@ -326,7 +335,7 @@ def enrich(headlines: list[dict], ctx: dict, *, runner: Optional[Runner] = None,
     for headline in headlines:
         try:
             skill, code = headline.get("skill"), headline.get("code")
-            if skill == "portfolio-snapshot" and code == "EX_DIVIDEND":
+            if skill == "portfolio-analysis" and code == "EX_DIVIDEND":
                 answer = _ex_dividend_answer(headline, ctx)
                 if answer:
                     headline["answer"] = answer
@@ -338,7 +347,7 @@ def enrich(headlines: list[dict], ctx: dict, *, runner: Optional[Runner] = None,
                 continue
             call_timeout = max(1.0, deadline - now)
             sym = headline.get("symbol")
-            if skill == "portfolio-snapshot" and code == "EARNINGS":
+            if skill == "portfolio-analysis" and code == "EARNINGS":
                 if not sym or not _skill_dir_exists(ctx, "options"):
                     continue
                 calls_made += 1

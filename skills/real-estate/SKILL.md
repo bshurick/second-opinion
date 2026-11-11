@@ -72,7 +72,7 @@ All these scripts print JSON.
 
 **The user asks a calculator question**
 
-When the question names one property, end the reply with one line: a deep review is available and sends about six research subagents.
+When the question names one property, in standard depth, end the reply with one line: a deep review is available and sends about six research subagents.
 
 1. Pick the calculator that matches the question.
 
@@ -97,7 +97,7 @@ When the question names one property, end the reply with one line: a deep review
 
 **The user asks for a deep review of a property or market**
 
-Run this only when the person asks for a deep review or for depth.
+Run this when the person asks for a deep review or for depth, or when the session's depth rule makes the deep review the default.
 
 1. Establish the subject: an address or a market, and whether it would be a home or a rental. Ask for what is missing, plus the loan terms and how long they would hold or stay. Ask once for the paths of any documents: listing, HOA papers, inspection report, disclosures. Go on without them if there are none, and say what that leaves out.
 2. Tell the person it has started: about 6 subagents and 35 web searches, one fewer for a market. The Documents role has nothing to read for a market, so it does not run.

@@ -31,7 +31,7 @@ export function miniRoot(dir = tmpDir("sf-root-")): string {
     ["a", "Skill A does things. Second sentence."],
     ["b", "Skill B needs A"],
     ["c", "Skill C reads EDGAR!"],
-    ["setup", "Setup skill."],
+    ["get-started", "Get-started skill."],
   ] as const) {
     write(path.join(dir, "skills", name, "SKILL.md"), `---\nname: ${name}\ndescription: ${desc}\n---\nbody\n`);
     write(path.join(dir, "skills", name, "scripts", "run.py"), "print('ok')\n", 0o755);
@@ -51,7 +51,7 @@ export function miniRoot(dir = tmpDir("sf-root-")): string {
 
 /**
  * miniRoot plus extras: c becomes a skill extra that needs a (brokerage), and a
- * non-skill extra "tips" is declared. All extras are off by default.
+ * non-skill extra "follow_ups" is declared. All extras are off by default.
  */
 export function extrasRoot(dir = tmpDir("sf-extras-")): string {
   miniRoot(dir);
@@ -61,7 +61,7 @@ export function extrasRoot(dir = tmpDir("sf-extras-")): string {
       { name: "b", family: "Fam one", requires: [], depends_on: ["a"] },
       { name: "c", family: "Fam two", requires: ["edgar"], depends_on: ["a"], extra: true, default: false, label: "Skill C extra", blurb: "Does C.", friction: "Adds a step." },
     ],
-    extras: [{ key: "tips", label: "Tips", blurb: "Shows tips.", default: false }],
+    extras: [{ key: "follow_ups", label: "Tips", blurb: "Shows follow_ups.", default: false }],
   };
   write(path.join(dir, "skills.json"), JSON.stringify(catalog));
   return dir;
@@ -98,6 +98,8 @@ export class FakeRunner implements Runner {
       return { code: 0, stdout: `${this.pythonVersion}\n${this.hasVenv ? "venv" : "novenv"}\n`, stderr: "" };
     }
     if (cmd[0] === "git") return { code: 0, stdout: "abc123\n", stderr: "" };
+    const cli = cmd.findIndex((c) => c.endsWith(path.join("get-started", "scripts", "settings.py")));
+    if (cli >= 0 && cmd[cli + 1] === "set") return fakeSettingsSet(cmd[cli + 2]!, cmd[cli + 3]!, opts.env?.SECOND_OPINION_DATA);
     if (cmd.some((c) => c.endsWith("dcf.py"))) return { code: 0, stdout: '{"fair_value_per_share": 12.3}', stderr: "" };
     return { code: 0, stdout: "", stderr: "" };
   }
@@ -105,6 +107,33 @@ export class FakeRunner implements Runner {
   commands(): string[] {
     return this.calls.map((c) => c.cmd.join(" "));
   }
+}
+
+/** Stands in for `settings.py set KEY on|off` (the real CLI is exercised in install_e2e.test.ts). */
+function fakeSettingsSet(key: string, value: string, dataDir: string | undefined): RunResult {
+  if (!dataDir) return { code: 4, stdout: '{"error": "no SECOND_OPINION_DATA"}', stderr: "" };
+  const file = path.join(dataDir, "settings.json");
+  let doc: Record<string, unknown> = { schema: 1 };
+  if (fs.existsSync(file)) {
+    try {
+      doc = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    } catch {
+      return { code: 5, stdout: JSON.stringify({ error: `settings at ${file} is not readable JSON`, code: "SETTINGS_CORRUPT", hint: "fix it by hand" }), stderr: "" };
+    }
+    if (typeof doc.schema === "number" && doc.schema > 1) {
+      return { code: 5, stdout: JSON.stringify({ error: "settings were written by a newer plugin", code: "SETTINGS_NEWER", hint: "update the Second Opinion plugin" }), stderr: "" };
+    }
+  }
+  const parts = key.split(".");
+  let cur = doc;
+  for (const p of parts.slice(0, -1)) {
+    if (typeof cur[p] !== "object" || cur[p] === null) cur[p] = {};
+    cur = cur[p] as Record<string, unknown>;
+  }
+  cur[parts[parts.length - 1]!] = value === "on";
+  fs.mkdirSync(dataDir, { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(doc, null, 1) + "\n");
+  return { code: 0, stdout: JSON.stringify({ key, value: value === "on" }), stderr: "" };
 }
 
 export function opts(argv: string[] = []): Options {

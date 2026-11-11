@@ -112,7 +112,7 @@ All scripts print JSON.
 | 2 from `render.py` | The input is not a holdings result | `error` |
 | 5 | EDGAR HTTP error | `hint` |
 | 5 with code `EDGAR_13F_TABLE` | The filing had no parseable information table | `error` |
-| 6 | Python dependencies missing | the error, and say the setup skill repairs it |
+| 6 | Python dependencies missing | the error, and say the get-started skill repairs it |
 
 ## Steps
 

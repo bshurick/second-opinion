@@ -21,7 +21,7 @@ Maintains the user's watchlist and checks their alert rules on demand. The rules
 
   `summary.newly_triggered_symbols` counts the `new` ones.
 - **Session start.** Once a watchlist exists, the plugin's session-start hook prints the last saved check when a session opens.
-- **Other skills.** Analysis of a symbol belongs to trading, valuation or fundamental-research. Orders belong to portfolio-analysis. Holdings belong to portfolio-snapshot.
+- **Other skills.** Analysis of a symbol belongs to trading, valuation or fundamental-research. Orders belong to portfolio-analysis. Holdings belong to portfolio-analysis.
 
 ## Scripts
 
@@ -57,7 +57,7 @@ All commands print JSON except `summary`.
 |---|---|---|
 | 2 | Bad flags, unknown symbol, or empty watchlist | `error` |
 | 5 | Corrupt watchlist file | `hint` |
-| 6 | Python dependencies missing | the error, and say the setup skill repairs it |
+| 6 | Python dependencies missing | the error, and say the get-started skill repairs it |
 
 ## Steps
 

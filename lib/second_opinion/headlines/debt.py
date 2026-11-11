@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from second_opinion import headlines as H
 
-SKILL = "debt-tracker"
+SKILL = "personal-finance"
 DUE_WINDOW_DAYS = 7
 WHY = {"PAST_DUE": "A payment past its due date accrues interest and can be reported late.",
        "DUE_SOON": "A statement payment falls due within a week.",

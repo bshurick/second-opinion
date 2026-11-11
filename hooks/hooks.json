@@ -7,25 +7,17 @@
           {
             "type": "command",
             "command": "bash",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh"],
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh"
+            ],
             "timeout": 300
           },
           {
             "type": "command",
             "command": "bash",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/watchlist-summary.sh"],
-            "timeout": 15
-          },
-          {
-            "type": "command",
-            "command": "bash",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/picks-summary.sh"],
-            "timeout": 15
-          },
-          {
-            "type": "command",
-            "command": "bash",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/core-satellite-summary.sh"],
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/inbox.sh"
+            ],
             "timeout": 15
           }
         ]
@@ -38,7 +30,9 @@
           {
             "type": "command",
             "command": "bash",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/portfolio-freshness.sh"],
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/portfolio-freshness.sh"
+            ],
             "timeout": 10
           }
         ]
@@ -51,7 +45,9 @@
           {
             "type": "command",
             "command": "bash",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/gate.sh"],
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/gate.sh"
+            ],
             "timeout": 5
           }
         ]

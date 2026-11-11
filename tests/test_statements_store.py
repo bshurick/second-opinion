@@ -1,4 +1,4 @@
-"""Statement store used by the debt-tracker skill."""
+"""Statement store used by the personal-finance skill."""
 from __future__ import annotations
 
 import pytest

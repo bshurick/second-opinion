@@ -24,8 +24,9 @@ colour), the DCF block with the WACC × terminal-growth sensitivity grid as a he
 the current price with the base case outlined, the Graham defensive checklist and Buffett tenets as
 pass/fail lists with the per-share figures, owner earnings by year, the normalized (mid-cycle) block,
 the comps table, the DDM table with its own sensitivity grid, the flags, and a closing note. Prints
-``{"out": path, "title": ..., "symbol": ..., "methods": [...], "flags": n}``. Exit 2 on a missing or
-malformed input.
+``{"out": path, "title": ..., "symbol": ..., "methods": [...], "flags": n, "depth": "standard"}``. Exit 2
+on a missing or malformed input. Every page says "Standard depth" under the title, whatever the saved
+depth, so a quick page can never pass as a deep one (render_deep.py builds those).
 
 The page is a fragment (no html/head/body tags): the Artifact host wraps it. Every figure comes from
 the scripts' JSON; the page formats and sorts. The one derived ratio is the discount to price for the
@@ -55,8 +56,10 @@ BODY = """
 .checks .st.pass{color:var(--ink);border-color:var(--ink2)}.checks .st.fail{color:var(--warn);border-color:var(--warn)}.checks .st.na{color:var(--muted)}
 .checks .t{color:var(--muted);font-size:12px}
 .legend .sw{width:14px;height:10px;border-radius:2px;display:inline-block}
+.depth{margin:-4px 0 6px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
 </style>
 <h1 id="h1">Valuation</h1>
+<p class="depth">Standard depth</p>
 <p class="sub" id="sub"></p>
 <div id="explain"></div>
 <div class="tiles" id="tiles"></div>
@@ -399,7 +402,7 @@ def build(data: dict) -> tuple[str, str, dict]:
     if isinstance(data.get("returns"), dict):
         methods.append("returns")
     flags = len((data.get("intrinsic") or {}).get("flags") or [])
-    return title, markup, {"title": title, "symbol": symbol or None, "methods": methods, "flags": flags}
+    return title, markup, {"title": title, "symbol": symbol or None, "methods": methods, "flags": flags, "depth": "standard"}
 
 
 def main(argv: list[str] | None = None) -> int:

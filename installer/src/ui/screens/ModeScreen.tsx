@@ -3,7 +3,7 @@ import type { InstalledRecord } from "../../engine/materialize.js";
 import { Select } from "../components/Select.js";
 import { color } from "../theme.js";
 
-export type Mode = "update" | "change" | "extras" | "uninstall" | "quit";
+export type Mode = "update" | "extras" | "uninstall" | "quit";
 
 interface Props {
   previous: InstalledRecord;
@@ -20,7 +20,6 @@ export function ModeScreen({ previous, onSelect }: Props) {
         <Select<Mode>
           options={[
             { value: "update", label: "Update", hint: `refresh the same ${n} skills from this checkout` },
-            { value: "change", label: "Change skills", hint: "add or remove skills, then update" },
             { value: "extras", label: "Change extras", hint: "turn optional extras on or off, keep everything else" },
             { value: "uninstall", label: "Uninstall", hint: "remove the plugin; your data stays unless you say otherwise", warn: true },
             { value: "quit", label: "Quit", hint: "leave everything as it is" },

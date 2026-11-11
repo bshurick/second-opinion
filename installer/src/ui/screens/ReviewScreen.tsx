@@ -90,7 +90,7 @@ export function ReviewScreen({ ctx, plan, onChoose }: Props) {
         )}
         <Line k="settings">
           <Text>{tildify(ctx.data, env)}</Text>
-          <Text color={color.dim}> (.env, installed.json; kept across updates)</Text>
+          <Text color={color.dim}> (.env, installed.json, settings.json; kept across updates)</Text>
         </Line>
         <Line k=".env">
           <Text>{envKeys.length ? envKeys.join(", ") : "no credentials needed"}</Text>

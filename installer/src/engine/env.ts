@@ -60,7 +60,7 @@ export function unmanagedEnvLines(text: string): string[] {
 
 export function renderEnv(values: EnvValues, needs: ReadonlySet<string>, extra: string[] = [], brokers: ReadonlySet<BrokerChoice> = brokersFrom(values)): string {
   const lines = [
-    "# Written by install.js — re-run it (or ask Claude to run the setup skill) to change these.",
+    "# Written by install.js — re-run it (or ask Claude to run the get-started skill) to change these.",
     "# Scripts read this file; the process environment takes precedence.",
   ];
   if (needs.has("brokerage") && brokers.size) {

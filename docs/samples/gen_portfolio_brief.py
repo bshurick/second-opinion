@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "lib"))
-spec = importlib.util.spec_from_file_location("summary", ROOT / "skills/portfolio-snapshot/scripts/summary.py")
+spec = importlib.util.spec_from_file_location("summary", ROOT / "skills/portfolio-analysis/scripts/summary.py")
 summary = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(summary)
 
@@ -207,7 +207,7 @@ headlines = [
      "ask": "What on my watchlist moved?", "url": "https://finance.yahoo.com/quote/MSFT",
      "answer": "Now 505.00; rule price_below at 510.0; -3.2% since added, 8.4% below the 52-week high",
      "why": "A price rule you set on your watchlist fired on today's quote."},
-    {"key": "portfolio-snapshot:EARNINGS:COST:2026-09-22", "code": "EARNINGS", "skill": "portfolio-snapshot", "severity": "alert", "symbol": "COST",
+    {"key": "portfolio-analysis:EARNINGS:COST:2026-09-22", "code": "EARNINGS", "skill": "portfolio-analysis", "severity": "alert", "symbol": "COST",
      "title": "COST reports earnings on 2026-09-22", "detail": "", "as_of": TODAY_S, "status": "new",
      "ask": "What is COST's expected move through earnings?", "url": "https://finance.yahoo.com/quote/COST",
      "answer": "Options price a ±$38.43 (±4.2%) move by 2026-09-25 (ATM IV 27%)",
@@ -220,7 +220,7 @@ headlines = [
     {"key": "market-analysis:DAY:-:2026-09-15", "code": "DAY", "skill": "market-analysis", "severity": "info", "symbol": None,
      "title": "S&P 500 +0.5% · Nasdaq +0.8% · 10y 4.12% · VIX 15.8", "detail": "", "as_of": TODAY_S, "status": "new",
      "ask": "How is the market positioned this week?", "url": "", "answer": "", "why": ""},
-    {"key": "portfolio-snapshot:EX_DIVIDEND:SCHD:2026-09-21", "code": "EX_DIVIDEND", "skill": "portfolio-snapshot", "severity": "alert", "symbol": "SCHD",
+    {"key": "portfolio-analysis:EX_DIVIDEND:SCHD:2026-09-21", "code": "EX_DIVIDEND", "skill": "portfolio-analysis", "severity": "alert", "symbol": "SCHD",
      "title": "SCHD goes ex-dividend on 2026-09-21", "detail": "", "as_of": TODAY_S, "status": "still",
      "ask": "What is SCHD's next dividend worth to me?", "url": "https://finance.yahoo.com/quote/SCHD",
      "answer": "About $104.00 for your 400 shares (last $0.2600 per share)",
@@ -231,17 +231,17 @@ headlines = [
 coverage = [
     {"skill": "watchlist", "script": "scripts/watchlist.py", "status": "ok", "reason": "", "hint": "", "seconds": 3.1, "headlines": 1},
     {"skill": "market-analysis", "script": "scripts/indices.py", "status": "ok", "reason": "", "hint": "", "seconds": 11.4, "headlines": 2},
-    {"skill": "portfolio-snapshot", "script": "", "status": "ok", "reason": "", "hint": "", "seconds": 0.0, "headlines": 2},
+    {"skill": "portfolio-analysis", "script": "", "status": "ok", "reason": "", "hint": "", "seconds": 0.0, "headlines": 2},
     {"skill": "fundamental-research", "script": "scripts/edgar.py", "status": "ok", "reason": "", "hint": "", "seconds": 6.8, "headlines": 0},
-    {"skill": "rebalancing", "script": "scripts/plan.py", "status": "ok", "reason": "", "hint": "", "seconds": 4.2, "headlines": 1},
+    {"skill": "portfolio-plan", "script": "scripts/global_plan.py", "status": "ok", "reason": "", "hint": "", "seconds": 4.2, "headlines": 1},
     {"skill": "tax-aware", "script": "scripts/tax-report.py", "status": "skipped", "reason": "the ledger is empty",
      "hint": "import statements with the statement-import skill", "seconds": 0.0, "headlines": 0},
     {"skill": "dividend-income", "script": "scripts/dividends.py", "status": "ok", "reason": "", "hint": "", "seconds": 7.9, "headlines": 0},
     {"skill": "risk-analysis", "script": "scripts/stress.py", "status": "failed", "reason": "timed out after 90s", "hint": "", "seconds": 90.0, "headlines": 0},
     {"skill": "trade-journal", "script": "scripts/journal.py", "status": "skipped", "reason": "the journal is empty",
      "hint": "journal a trade with the trade-journal skill", "seconds": 0.0, "headlines": 0},
-    {"skill": "debt-tracker", "script": "scripts/debts.py", "status": "skipped", "reason": "no statements.json",
-     "hint": "record a statement with the debt-tracker skill", "seconds": 0.0, "headlines": 0},
+    {"skill": "personal-finance", "script": "scripts/debts.py", "status": "skipped", "reason": "no statements.json",
+     "hint": "record a statement with the personal-finance skill", "seconds": 0.0, "headlines": 0},
     {"skill": "spending", "script": "scripts/spend.py", "status": "ok", "reason": "", "hint": "", "seconds": 1.6, "headlines": 0},
     {"skill": "statement-import", "script": "scripts/ledger.py", "status": "skipped", "reason": "the ledger is empty",
      "hint": "import statements with the statement-import skill", "seconds": 0.0, "headlines": 0},

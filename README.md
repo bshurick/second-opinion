@@ -29,75 +29,38 @@ Then say **"get started with Second Opinion"**.
 
 ## Install
 
-**Requirements:** [Claude Code](https://claude.com/claude-code), Python 3.10+ on your PATH, and Node.js 20+ to run the installer (`node --version`). A brokerage key is optional: the research, planning, and learning skills need none. For your own accounts you need a free SnapTrade Personal API key, which means creating a SnapTrade account, or an E*Trade developer key ([how to get one](docs/connecting-brokerages.md)).
-
-### From the plugin marketplace
+**Requirements:** [Claude Code](https://claude.com/claude-code) and Python 3.10+ on your PATH. A brokerage key is optional: the research, planning, and learning skills need none. For your own accounts you need a free SnapTrade Personal API key, which means creating a SnapTrade account, or an E*Trade developer key ([how to get one](docs/connecting-brokerages.md)).
 
 In Claude Code:
 
 ```
 /plugin marketplace add bshurick/second-opinion
 /plugin install second-opinion@second-opinion
+/reload-plugins
 ```
 
-Every skill is installed, including the two extra skills; the pre-buy check and suggested follow-up questions stay off until you turn them on. The Python virtualenv is built by the plugin's session-start hook the first time a session starts. Changes apply after `/reload-plugins` or in a new session.
+Then say **"get started with Second Opinion"**. Every skill is installed. The session-start hook builds the Python virtualenv the first time a session starts.
 
-To add brokerage keys or change optional extras, run the installer from a terminal. It detects the marketplace install and only writes settings, never plugin files:
+**Keys.** Run this in your own terminal, not in the chat. It hides what you type and saves the keys in the data directory's `.env`; add `--broker etrade` for an E*Trade key. No Node is needed.
 
 ```bash
-node ~/.claude/plugins/marketplaces/second-opinion/install.js
+python3 ~/.claude/plugins/marketplaces/second-opinion/skills/get-started/scripts/configure.py keys
 ```
 
-Or say "set up Second Opinion" in Claude. The `setup` skill turns extras on or off for you, rebuilds dependencies, and reports what changed. It never takes a key in chat: when one is needed it gives you the exact installer command to run in your own terminal.
+**Update:** run `claude plugin marketplace update second-opinion`, then `claude plugin update second-opinion@second-opinion`, then restart Claude Code. The next session prints "Second Opinion updated to X". Say "is there an update" in Claude to see the installed and latest versions.
 
 Uninstall with `/plugin uninstall second-opinion@second-opinion`.
 
-### With the guided installer
-
-```bash
-git clone https://github.com/bshurick/second-opinion
-cd second-opinion
-node install.js
-```
-
-The installer checks Node and Python, lets you pick skills, offers the optional extras, asks only for the keys your selection needs, and shows what it will write. Then it copies the plugin to `~/.claude/plugins/second-opinion`, links it as `~/.claude/skills/second-opinion`, builds the Python virtualenv, and runs a smoke test. It is one file; there is no `npm install`.
-
-```
-╭─────────────────────────────────────────────────────────────────────────────╮
-│ ✻ Second Opinion  for Claude Code • installer 1.0.0                         │
-│ This installer writes to exactly three places:                              │
-│   plugin   ~/.claude/plugins/second-opinion                                 │
-│   data     ~/.claude/plugins/data/second-opinion                            │
-│   link     ~/.claude/skills/second-opinion                                  │
-╰─────────────────────────────────────────────────────────────────────────────╯
-Choose the core skills
-Fewer skills means a shorter skill list in every Claude session. key needs a
-brokerage connection (SnapTrade or E*Trade); edgar needs an SEC contact.
-
-Getting started  1/1
-  ◉ onboarding
-
-Accounts and holdings  6/6
-❯ ◉ connect key
-  ◉ portfolio-snapshot key
-  ◉ portfolio-analysis key
-  …
-
-23 of 23 selected • 9 need a brokerage key • EDGAR contact needed
-↑↓ move  •  space toggle  •  f family  •  a all  •  n none  •  enter continue
-```
-
-Run `node install.js` again to add or remove skills, change extras, update to a newer checkout, or uninstall. Flags for scripted and CI installs are in [docs/install.md](docs/install.md).
+Installing from a git checkout with the guided installer (`node install.js`), and scripted installs, are in [docs/install.md](docs/install.md#from-a-checkout).
 
 ### Settings and upgrades
 
-Both routes keep `.env` (your keys) and `installed.json` (your choices) in `~/.claude/plugins/data/second-opinion/`, or `$SECOND_OPINION_DATA` if set, so they survive plugin updates. Your profile, ledger, watchlist, and other records live there too. A setting in the process environment wins over the data directory's `.env`, which wins over a `.env` in the plugin root. See [docs/configuration.md](docs/configuration.md).
+Both routes keep `.env` (your keys), `installed.json` (the installed skills) and `settings.json` (every setting) in `~/.claude/plugins/data/second-opinion/`, or `$SECOND_OPINION_DATA` if set, so they survive plugin updates. `settings.json` has groups for depth, accounts and their roles, the portfolio plan, taxes, guardrails, replies and lessons. Say "show my settings" in Claude to see each one with its default marked, or "change a setting" to set one. Depth is standard by default: quick answers, with a deep run when you ask for one. Set it to deep ("change depth") and every valuation or stock pick is the researched kind, at minutes and 5 to 40 research subagents per run; see [docs/configuration.md](docs/configuration.md#depth). An older install is carried over on first use: `core-satellite.json` and `targets.json` are renamed to `.migrated` (nothing is deleted). Your profile, ledger, watchlist, and other records live there too. A setting in the process environment wins over the data directory's `.env`, which wins over a `.env` in the plugin root. See [docs/configuration.md](docs/configuration.md).
 
 ## Start here
 
-1. Say **"get started with Second Opinion."** Six short questions about how you invest: what the money is for, how long you hold, how you decide what to buy. Each answer is saved with its date. Claude then lists what to set up next and a few questions to try. Say "skip for now" to answer later.
-2. Say **"Connect my brokerage."** Claude opens SnapTrade's portal in your browser, or walks you through E*Trade's login. Your brokerage password never reaches Claude or this plugin.
-3. Ask **"How is my portfolio doing?"** for the daily brief, then anything in [docs/examples.md](docs/examples.md).
+1. Say **"get started with Second Opinion."** One conversation, a step at a time, each one skippable: it checks the install, tells you how to add keys, connects your brokerage (your password never reaches Claude or this plugin), confirms a role for each account, picks the research depth, records your plan (employer stock, the picks' share, a cash reserve, short-term gains) and asks three questions about how you invest. Stop at any step and say it again later to pick up there.
+2. Ask **"How is my portfolio doing?"** for the daily brief, or **"check in"** for the brief, your plan and what arrived since last time, then anything in [docs/examples.md](docs/examples.md).
 
 ## What it looks like
 
@@ -127,7 +90,7 @@ Skills that produce a report publish an interactive page, hosted as a private Ar
 </details>
 
 <details>
-<summary><b>Rebalancing plan</b> (rebalancing): drift against bands, contribution routing, tax-aware trade list</summary>
+<summary><b>Rebalancing plan</b> (portfolio-plan): drift against bands, contribution routing, tax-aware trade list</summary>
 
 ![Rebalancing plan for a sample household](docs/images/rebalancing.png)
 
@@ -149,15 +112,13 @@ Skills that produce a report publish an interactive page, hosted as a private Ar
 
 ## Skills
 
-27 skills. `setup` is always installed. `trade-journal` is an optional extra that is on by default and adds a confirmation step to every buy. `financial-education` and suggested follow-up questions are opt-in extras; the follow-up questions are not a skill but an instruction loaded at session start. **key** means a SnapTrade or E*Trade key; **EDGAR** means an SEC contact address in `EDGAR_USER_AGENT`.
+23 skills. `get-started` is always installed. `trade-journal` is an optional extra that is on by default and adds a confirmation step to every buy. `financial-education` and suggested follow-up questions are opt-in extras; the follow-up questions are not a skill but an instruction loaded at session start. **key** means a SnapTrade or E*Trade key; **EDGAR** means an SEC contact address in `EDGAR_USER_AGENT`.
 
 | Family | Skill | What it does | Needs |
 |---|---|---|---|
-| Getting started | onboarding | Six-question interview, a profile, next steps and starter questions | |
-| | setup | Install, reconfigure, or repair the plugin; extras on or off | |
+| Getting started | get-started | The first run (keys, accounts and their roles, depth, the plan, three profile questions), settings, extras and repairs | |
 | Accounts and holdings | connect | Link, relink, or inspect brokerage connections | key |
-| | portfolio-snapshot | Daily brief of every account, with headlines from the other skills | key |
-| | portfolio-analysis | Allocation, concentration, performance against a benchmark, a deep review of the beliefs your holdings share, order preview and placement | key |
+| | portfolio-analysis | The daily brief of every account with headlines from the other skills, "check in", allocation, concentration, performance against a benchmark, a deep review of the beliefs your holdings share | key |
 | | dividend-income | Projected income, yields, trailing 12 months, ex-dates, payer safety | key |
 | | watchlist | Alert rules checked when you ask or by a cron job, not pushed | |
 | | risk-analysis | Volatility, beta, correlation, drawdown, VaR, crash replays, what-if shocks | key |
@@ -166,17 +127,15 @@ Skills that produce a report publish an interactive page, hosted as a private Ar
 | | trade-journal (extra, on by default) | Thesis, target, and exit written down; checked before each buy | trade-review |
 | | tax-aware | Realized gains with wash sales, open lots, estimated tax, harvesting, lot choice, a deep comparison of multi-year plans | |
 | | spending | Card and bank exports or transcribed receipts; categories, recurring charges, cash flow | |
-| Planning | rebalancing | Drift, 5/25 bands, trade list, contribution and tax-aware sell routing | key |
-| | core-satellite | ETF vs individual-stock mix, a satellite ceiling, picks split equally, by market cap, by deep valuation or by size, new-pick sizing, step-up plans, rebalancing on request | key |
+| Planning | portfolio-plan | One plan with the picks as a sleeve: drift, 5/25 bands, deposits routed (picks first while below their target), withdrawals, tax-aware sells, picks split equally, by market cap, by deep valuation or by size, new picks, a target with a date | key |
 | | retirement | Monte Carlo projection, nest egg required, withdrawal rates | key |
 | | real-estate | Mortgage, refinance, rent vs buy, rental underwriting, affordability, REIT metrics, a deep review of one property or market | |
-| | personal-finance | Budgeting, debt payoff, cash-flow planning, reminders | |
-| | debt-tracker | Card and loan statements recorded from PDFs; balances, APRs, interest paid | |
+| | personal-finance | Budgeting, cash-flow planning, reminders, and debts: card and loan statements recorded from PDFs, balances, APRs, interest paid, payoff order | |
 | Research and markets | valuation | DCF, dividend discount, multiples, Graham and Buffett intrinsic value, and a [deep mode](#deep-research) that researches filings and values named scenarios | deep mode: EDGAR |
 | | fundamental-research | SEC EDGAR financials, quality checklist, 10-K/10-Q reader, 13F diffs | EDGAR |
 | | stock-screener | Every US-listed company's filings screened seven ways (growth, value, quality, GARP, magic formula, Graham, payout), a look-back check on past picks, a [deep picker](#deep-research), and re-checks of saved picks against their valuation | EDGAR |
 | | options | Chains, implied volatility, expected move, greeks, payoffs | |
-| | trading | Price action and technicals for one security, plus the order scripts | key |
+| | trading | Price action and technicals for one security, and every order: preview, confirmation, placement, cancellation | key |
 | | market-analysis | Indices, sectors, yields, earnings calendar, market flows | |
 | | fixed-income | What bonds earn held to your horizon, and the rate path the price implies | |
 | Learning | financial-education (extra) | One concept at a time with worked numbers, sources, and quizzes | |
@@ -230,7 +189,7 @@ Saved results can be checked later without rerunning the research. Each check sa
 **How trading works.** The `trading` and `portfolio-analysis` skills follow this protocol:
 
 1. No order is placed until its preview has been shown in the chat and you have said yes in your own message.
-2. One order per confirmation. A sell is never chained into a buy on a single yes.
+2. A confirmation covers only the orders in the preview it answers. `confirm` places all of them, sells first, and `yes SYMBOL` places one. If an order fails, the rest are not placed.
 3. The account's trading support is checked before any preview; read-only connections cannot trade.
 4. For a cash or unknown account, orders larger than the cash balance get a warning, and margin is never inferred from buying power.
 5. If the order script reports an error, the error is shown and nothing is placed.

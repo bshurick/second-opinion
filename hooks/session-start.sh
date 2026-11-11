@@ -24,19 +24,20 @@ export_line() {
 }
 
 # Print one line of profile context to stdout (Claude Code adds hook stdout
-# to the session). Silent when the onboarding skill is not installed or no
+# to the session). Silent when the get-started skill is not installed or no
 # usable python is found; never fails the session.
 profile_context() {
   local py="$1"
-  local script="$PLUGIN_ROOT/skills/onboarding/scripts/profile.py"
+  local script="$PLUGIN_ROOT/skills/get-started/scripts/profile.py"
   [ -f "$script" ] || return 0
   [ -n "$py" ] && [ -x "$py" ] || return 0
   "$py" "$script" context 2>/dev/null || true
 }
 
 # Print the standing rules (hooks/broker-login.md only when an E*Trade key is configured,
-# hooks/portfolio-check.md when a brokerage is connected, then hooks/follow-ups.md only when that
-# opt-in extra is on) on every exit path, after whatever
+# hooks/portfolio-check.md when a brokerage is connected, the update notice, hooks/depth-deep.md when
+# depth is deep, then hooks/follow-ups.md
+# only when that opt-in is on and hooks/pages-off.md when report pages are off) on every exit path, after whatever
 # profile context was printed. Editing those files changes the rule for all skills at once.
 standing_rules() {
   if so_etrade_configured && [ -f "$PLUGIN_ROOT/hooks/broker-login.md" ]; then
@@ -45,8 +46,18 @@ standing_rules() {
   if { [ -f "$DATA_DIR/brokers.json" ] || so_etrade_configured; } && [ -f "$PLUGIN_ROOT/hooks/portfolio-check.md" ]; then
     printf '%s\n' "$(<"$PLUGIN_ROOT/hooks/portfolio-check.md")"
   fi
-  if so_extra_on follow_ups && [ -f "$PLUGIN_ROOT/hooks/follow-ups.md" ]; then
+  so_resolve_python   # after the venv step: the trap runs on every exit path
+  if [ -n "$PY" ] && [ -f "$PLUGIN_ROOT/skills/get-started/scripts/settings.py" ]; then
+    "$PY" "$PLUGIN_ROOT/skills/get-started/scripts/settings.py" notice 2>/dev/null || true
+  fi
+  if [ "$(so_setting_value depth standard)" = deep ] && [ -f "$PLUGIN_ROOT/hooks/depth-deep.md" ]; then
+    printf '%s\n' "$(<"$PLUGIN_ROOT/hooks/depth-deep.md")"
+  fi
+  if so_setting_on replies.follow_ups && [ -f "$PLUGIN_ROOT/hooks/follow-ups.md" ]; then
     printf '%s\n' "$(<"$PLUGIN_ROOT/hooks/follow-ups.md")"
+  fi
+  if ! so_setting_on replies.pages && [ -f "$PLUGIN_ROOT/hooks/pages-off.md" ]; then
+    printf '%s\n' "$(<"$PLUGIN_ROOT/hooks/pages-off.md")"
   fi
   return 0
 }

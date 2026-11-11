@@ -26,12 +26,12 @@ def test_cap_keeps_alerts_first_then_notices() -> None:
 
 
 def test_order_puts_new_first_regardless_of_severity_then_severity_then_source_order() -> None:
-    a_still = {**H.make("debt-tracker", "PAST_DUE", "alert", "a"), "status": "still"}
+    a_still = {**H.make("personal-finance", "PAST_DUE", "alert", "a"), "status": "still"}
     a_new = H.make("watchlist", "TRIGGER", "alert", "b")
     n_market = {**H.make("market-analysis", "VIX", "notice", "c"), "status": "still"}
     n_watch = {**H.make("watchlist", "X", "notice", "d"), "status": "still"}
     i_new = H.make("market-analysis", "DAY", "info", "e")
-    out = H.order([i_new, n_watch, a_still, n_market, a_new], ["watchlist", "market-analysis", "debt-tracker"])
+    out = H.order([i_new, n_watch, a_still, n_market, a_new], ["watchlist", "market-analysis", "personal-finance"])
     # a new info headline outranks every still alert; within new and within still, severity then source order
     assert [h["key"] for h in out] == [a_new["key"], i_new["key"], a_still["key"], n_watch["key"], n_market["key"]]
 

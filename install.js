@@ -37049,7 +37049,18 @@ import path8 from "node:path";
 // src/engine/catalog.ts
 import fs3 from "node:fs";
 import path from "node:path";
-var ALWAYS_SKILLS = ["setup"];
+var ALWAYS_SKILLS = ["get-started"];
+var RENAMED_SKILLS = {
+  rebalancing: "portfolio-plan",
+  "core-satellite": "portfolio-plan",
+  setup: "get-started",
+  onboarding: "get-started",
+  "portfolio-snapshot": "portfolio-analysis",
+  "debt-tracker": "personal-finance"
+};
+function canonicalSkills(names) {
+  return [...new Set([...names].map((n) => RENAMED_SKILLS[n] ?? n))];
+}
 var KNOWN_REQUIREMENTS = ["brokerage", "edgar"];
 function skillDescription(root, name) {
   const file = path.join(root, "skills", name, "SKILL.md");
@@ -37127,14 +37138,6 @@ function loadExtras(root) {
       skill: false
     });
   });
-  return out;
-}
-function coreSkills(catalog) {
-  return catalog.filter((s) => !s.extra);
-}
-function families(catalog) {
-  const out = [];
-  for (const s of catalog) if (!out.includes(s.family)) out.push(s.family);
   return out;
 }
 function requirementsFor(catalog, names) {
@@ -37319,7 +37322,7 @@ function unmanagedEnvLines(text) {
 }
 function renderEnv(values, needs, extra = [], brokers = brokersFrom(values)) {
   const lines = [
-    "# Written by install.js \u2014 re-run it (or ask Claude to run the setup skill) to change these.",
+    "# Written by install.js \u2014 re-run it (or ask Claude to run the get-started skill) to change these.",
     "# Scripts read this file; the process environment takes precedence."
   ];
   if (needs.has("brokerage") && brokers.size) {
@@ -37685,9 +37688,85 @@ function readRecord(dirs) {
   for (const dir of dirs) {
     if (!dir) continue;
     const rec = readInstalled(dir);
-    if (rec) return rec;
+    if (!rec) continue;
+    const fromSettings = readSettingsSwitches(dirs);
+    return fromSettings ? { ...rec, extras: { ...rec.extras ?? {}, ...fromSettings } } : rec;
   }
   return null;
+}
+var SWITCH_KEYS = {
+  follow_ups: "replies.follow_ups",
+  "trade-journal": "guardrails.pre_buy_check",
+  "financial-education": "lessons"
+};
+var isObj = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+function loadSettingsFile(dir) {
+  const p = path6.join(dir, "settings.json");
+  let raw;
+  try {
+    raw = fs9.readFileSync(p, "utf8");
+  } catch {
+    return null;
+  }
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    throw new InstallError(`${p} is not valid JSON`, "fix or delete that file, then run the installer again");
+  }
+  if (!isObj(data)) throw new InstallError(`${p} is not a JSON object`, "fix or delete that file, then run the installer again");
+  if (typeof data.schema === "number" && data.schema > 2) {
+    throw new InstallError(`${p} was written by a newer Second Opinion (schema ${data.schema})`, "update this plugin, then run the installer again");
+  }
+  return data;
+}
+function readSettingsSwitches(dirs) {
+  for (const dir of dirs) {
+    if (!dir) continue;
+    let data;
+    try {
+      data = loadSettingsFile(dir);
+    } catch {
+      continue;
+    }
+    if (!data) continue;
+    const out = {};
+    for (const [key, dotted] of Object.entries(SWITCH_KEYS)) {
+      let cur = data;
+      for (const k of dotted.split(".")) cur = isObj(cur) ? cur[k] : void 0;
+      if (typeof cur === "boolean") out[key] = cur;
+    }
+    return out;
+  }
+  return null;
+}
+function checkSettings(dir) {
+  loadSettingsFile(dir);
+}
+async function writeSwitches(runner, python, pluginRoot2, dataDir2, extras) {
+  const script = path6.join(pluginRoot2, "skills", "get-started", "scripts", "settings.py");
+  for (const [key, dotted] of Object.entries(SWITCH_KEYS)) {
+    const want = extras[key];
+    if (typeof want !== "boolean") continue;
+    if (readSettingsSwitches([dataDir2])?.[key] === want) continue;
+    const r = await runner.run([...python, script, "set", dotted, want ? "on" : "off"], {
+      env: { ...process.env, SECOND_OPINION_DATA: dataDir2 },
+      timeoutMs: 6e4
+    });
+    if (r.code !== 0) throw settingsCliError(r, dotted, dataDir2);
+  }
+}
+function settingsCliError(r, dotted, dataDir2) {
+  let body = {};
+  try {
+    const parsed = JSON.parse(r.stdout);
+    if (isObj(parsed)) body = parsed;
+  } catch {
+  }
+  const file = path6.join(dataDir2, "settings.json");
+  const why = typeof body.error === "string" ? body.error : (r.stderr || r.stdout).trim().split(/\r?\n/).pop() || `exit ${r.code}`;
+  const hint = typeof body.hint === "string" && body.hint ? body.hint : r.code === 5 ? `${file} is corrupt or was written by a newer Second Opinion; fix or move it aside, then run the installer again` : "check the Python found by the installer works, then run the installer again";
+  return new InstallError(`could not save ${dotted} to settings.json: ${why}`, hint);
 }
 function readInstalled(target) {
   const p = path6.join(target, "installed.json");
@@ -37698,7 +37777,7 @@ function readInstalled(target) {
     const rawExtras = data.extras;
     const extras = typeof rawExtras === "object" && rawExtras !== null && !Array.isArray(rawExtras) ? Object.fromEntries(Object.entries(rawExtras).filter((kv) => typeof kv[1] === "boolean")) : void 0;
     return {
-      skills: Array.isArray(rec.skills) ? rec.skills.filter((s) => typeof s === "string") : [],
+      skills: Array.isArray(rec.skills) ? canonicalSkills(rec.skills.filter((s) => typeof s === "string")) : [],
       source_path: typeof rec.source_path === "string" ? rec.source_path : "",
       source_commit: typeof rec.source_commit === "string" ? rec.source_commit : null,
       installer_version: typeof rec.installer_version === "string" ? rec.installer_version : "",
@@ -37751,11 +37830,11 @@ function makeRecord(root, skills, opts = {}) {
     source_commit: opts.commit ?? null,
     installer_version: INSTALLER_VERSION,
     installed_at: (opts.now?.() ?? /* @__PURE__ */ new Date()).toISOString().replace(/\.\d{3}Z$/, "+00:00"),
-    extras: { ...opts.extras ?? {} },
     ...opts.mode ? { mode: opts.mode } : {}
   };
 }
 function writeConfig(dir, envText, record) {
+  checkSettings(dir);
   fs9.mkdirSync(dir, { recursive: true });
   const env3 = path6.join(dir, ".env");
   fs9.writeFileSync(`${env3}.tmp`, envText, { mode: 384 });
@@ -37765,7 +37844,7 @@ function writeConfig(dir, envText, record) {
   }
   fs9.renameSync(`${env3}.tmp`, env3);
   const rec = path6.join(dir, "installed.json");
-  fs9.writeFileSync(`${rec}.tmp`, JSON.stringify(record, null, 1) + "\n");
+  fs9.writeFileSync(`${rec}.tmp`, JSON.stringify({ ...record, extras: void 0 }, null, 1) + "\n");
   fs9.renameSync(`${rec}.tmp`, rec);
 }
 function materialize(root, target, skills, envText, opts = {}) {
@@ -37776,7 +37855,8 @@ function materialize(root, target, skills, envText, opts = {}) {
   const old = path6.join(parent, `${path6.basename(target)}.previous`);
   for (const stale of [building, old]) if (fs9.existsSync(stale)) fs9.rmSync(stale, { recursive: true, force: true });
   fs9.mkdirSync(parent, { recursive: true });
-  const record = makeRecord(root, skills, { commit: opts.commit, now: opts.now, extras: opts.extras, mode: "copy" });
+  const record = makeRecord(root, skills, { commit: opts.commit, now: opts.now, mode: "copy" });
+  if (opts.configDir) checkSettings(opts.configDir);
   try {
     buildTree(root, building, skills);
     if (!opts.configDir) writeConfig(building, envText, record);
@@ -37940,9 +38020,12 @@ function envFiles(ctx) {
   files.push(path8.join(ctx.data, ".env"));
   return files;
 }
+function priorSwitches(pre) {
+  return pre.previous ?? (pre.switches ? { extras: pre.switches } : null);
+}
 async function preflight(ctx) {
   const [python, commit] = await Promise.all([findPython(ctx.runner, ctx.environ), sourceCommit(ctx.root, ctx.runner)]);
-  return { node: process.versions.node, python, previous: readRecord(recordDirs(ctx)), commit };
+  return { node: process.versions.node, python, previous: readRecord(recordDirs(ctx)), switches: readSettingsSwitches(recordDirs(ctx)), commit };
 }
 function requirePython(pre) {
   if (pre.python.found) return pre.python.found;
@@ -37950,37 +38033,47 @@ function requirePython(pre) {
   const what = first && pre.python.rejected.length === 1 ? `${first.command}: ${first.reason}` : `no usable Python found (tried ${pre.python.rejected.map((r) => r.command).join(", ")})`;
   throw new InstallError(what, pythonHint(pre.python));
 }
-function initialSelection(catalog, options, previous, configure = false) {
+function initialSelection(catalog, options, previous, configure = false, saved = previous?.extras ?? null) {
   const all = catalog.map((s) => s.name);
   const known = new Set(all);
+  const seed = (names) => {
+    const out = new Set(names);
+    for (const s of catalog) {
+      const flag = saved?.[s.name];
+      if (!s.extra || typeof flag !== "boolean") continue;
+      if (flag) out.add(s.name);
+      else out.delete(s.name);
+    }
+    return [...out];
+  };
   if (configure) {
     if (options.all || options.skills !== void 0 || options.without !== void 0) {
       throw new UsageError("--all, --skills and --without do not apply to a /plugin install, which ships every skill; use --extras to turn extras on or off");
     }
     const on = (s) => {
-      if (!previous) return s.defaultOn;
-      const flag = previous.extras?.[s.name];
-      return typeof flag === "boolean" ? flag : previous.skills.includes(s.name);
+      const flag = saved?.[s.name];
+      if (typeof flag === "boolean") return flag;
+      return previous ? canonicalSkills(previous.skills).includes(s.name) : s.defaultOn;
     };
     const names = catalog.filter((s) => !s.extra || on(s)).map((s) => s.name);
     return { ...resolveSelection(catalog, names), explicit: true };
   }
   if (options.all) return { ...resolveSelection(catalog, all), explicit: true };
   if (options.skills !== void 0) {
-    const chosen = parseList(options.skills);
+    const chosen = canonicalSkills(parseList(options.skills));
     for (const n of chosen) if (!known.has(n)) throw new UsageError(`unknown skill: ${n}`);
     return { ...resolveSelection(catalog, chosen), explicit: true };
   }
   if (options.without !== void 0) {
-    const drop = new Set(parseList(options.without));
+    const drop = new Set(canonicalSkills(parseList(options.without)));
     for (const d of drop) if (!known.has(d)) throw new UsageError(`unknown skill: ${d}`);
     return { ...resolveSelection(catalog, all.filter((n) => !drop.has(n)), { dropDependents: true }), explicit: true };
   }
   if (previous?.skills.length) {
-    const kept = previous.skills.filter((n) => known.has(n));
+    const kept = canonicalSkills(previous.skills).filter((n) => known.has(n));
     return { ...resolveSelection(catalog, kept), explicit: false };
   }
-  return { ...resolveSelection(catalog, catalog.filter((s) => s.defaultOn).map((s) => s.name)), explicit: false };
+  return { ...resolveSelection(catalog, seed(catalog.filter((s) => s.defaultOn).map((s) => s.name))), explicit: false };
 }
 function initialExtras(options, extras, catalog, selected, previous) {
   const nonSkill = nonSkillDefaults(extras, previous);
@@ -38013,7 +38106,7 @@ function parseBrokers(raw) {
 function buildPlan(ctx, pre, python, selected, values, brokers, nonSkill) {
   const catalog = loadCatalog(ctx.root);
   const extraDefs = loadExtras(ctx.root);
-  const extras = nonSkill ?? nonSkillDefaults(extraDefs, pre.previous);
+  const extras = nonSkill ?? nonSkillDefaults(extraDefs, priorSwitches(pre));
   const needs = requirementsFor(catalog, selected);
   const missing = [];
   const warnings = [];
@@ -38089,16 +38182,26 @@ async function execute(ctx, plan, hooks) {
   }
   emit({ type: "step:done", step: "deps", detail: deps.installed ? deps.createdVenv ? "virtualenv created, packages installed" : "packages installed" : "already up to date" });
   const recordExtras = { ...plan.extras, ...plan.extrasState };
+  if (!ctx.configure && plan.previous?.skills.length) {
+    const flagged = new Set(ctx.options.extras === void 0 ? [] : Object.keys(parseExtrasFlag(ctx.options.extras, loadExtras(ctx.root))));
+    for (const key of Object.keys(recordExtras)) {
+      const saved = plan.previous.extras?.[key];
+      const isSkill = loadCatalog(ctx.root).some((sk) => sk.name === key && sk.extra);
+      const touched = plan.selected.includes(key) !== plan.previous.skills.includes(key);
+      if (isSkill && typeof saved === "boolean" && !flagged.has(key) && !touched) recordExtras[key] = saved;
+    }
+  }
   emit({ type: "step:start", step: "copy", label: ctx.configure ? "Settings" : "Plugin files" });
   let diff2;
   try {
     if (ctx.configure) {
       diff2 = planDiff(plan.previous?.skills, plan.selected);
-      writeConfig(ctx.data, envText, makeRecord(ctx.root, plan.selected, { commit: plan.commit, extras: recordExtras, mode: "configure" }));
+      writeConfig(ctx.data, envText, makeRecord(ctx.root, plan.selected, { commit: plan.commit, mode: "configure" }));
     } else {
-      materialize(ctx.root, ctx.target, plan.selected, envText, { commit: plan.commit, extras: recordExtras, configDir: ctx.data });
+      materialize(ctx.root, ctx.target, plan.selected, envText, { commit: plan.commit, configDir: ctx.data });
       diff2 = plan.diff;
     }
+    await writeSwitches(ctx.runner, plan.python.command, ctx.target, ctx.data, recordExtras);
   } catch (err) {
     const e = err instanceof InstallError ? err : new InstallError(String(err.message ?? err), "check the path is writable and the checkout is complete");
     emit({ type: "step:fail", step: "copy", error: e });
@@ -38191,8 +38294,8 @@ async function runPlain(root, options, environ, runner, io) {
     const python = requirePython(pre);
     const catalog = loadCatalog(ctx.root);
     const extraDefs = loadExtras(ctx.root);
-    const sel = initialSelection(catalog, options, pre.previous, ctx.configure);
-    const ex = initialExtras(options, extraDefs, catalog, sel.names, pre.previous);
+    const sel = initialSelection(catalog, options, pre.previous, ctx.configure, priorSwitches(pre)?.extras ?? null);
+    const ex = initialExtras(options, extraDefs, catalog, sel.names, priorSwitches(pre));
     for (const n of [...sel.notes, ...ex.notes]) human(n);
     const plan = buildPlan(ctx, pre, python, ex.selected, initialValues(ctx), void 0, ex.nonSkill);
     const on = extraDefs.filter((e) => plan.extrasState[e.key]).map((e) => e.key);
@@ -38218,8 +38321,8 @@ Nothing outside these two directories and that one symlink is written.
       const warnings = [...plan.warnings, ...plan.missing.map((k) => `${k} is not set; a real run will need it`)];
       if (!ctx.configure) human(`would install ${diffLine("").trimStart()}`);
       human(extrasLine);
-      if (ctx.configure) human(`would write .env and installed.json to ${ctx.data}; venv at ${path9.join(ctx.data, "venv")}; nothing copied or linked`);
-      else human(`would write ${ctx.target} and link ${ctx.link}; .env, installed.json and venv in ${ctx.data}`);
+      if (ctx.configure) human(`would write .env, installed.json and settings.json to ${ctx.data}; venv at ${path9.join(ctx.data, "venv")}; nothing copied or linked`);
+      else human(`would write ${ctx.target} and link ${ctx.link}; .env, installed.json, settings.json and venv in ${ctx.data}`);
       if (plan.leftovers.length) human(`would remove the old finance-analyst copy (with --yes): ${plan.leftovers.join(", ")}`);
       if (ctx.legacyData) human(`would move ${ctx.legacyData} to ${ctx.data}`);
       if (options.json) {
@@ -38387,7 +38490,7 @@ ${output}`);
 }
 
 // src/ui/App.tsx
-var import_react38 = __toESM(require_react(), 1);
+var import_react37 = __toESM(require_react(), 1);
 
 // src/ui/theme.ts
 var color = {
@@ -38860,7 +38963,7 @@ function Panel({ title, children, tint = color.accent, width }) {
 // src/ui/suggestions.ts
 var BY_SKILL = [
   ["connect", true, { prompt: "connect my brokerage", note: "SANDBOX is a safe read-only test broker" }],
-  ["portfolio-snapshot", true, { prompt: "how is my portfolio?" }],
+  ["portfolio-analysis", true, { prompt: "how is my portfolio?" }],
   ["valuation", false, { prompt: "what is AAPL worth?" }],
   ["market-analysis", false, { prompt: "how is the market today?" }],
   ["watchlist", false, { prompt: "watch NVDA and alert me if it drops 5%" }],
@@ -38974,7 +39077,7 @@ function ErrorScreen({ message, hint }) {
 // src/ui/screens/ExtrasScreen.tsx
 var import_react32 = __toESM(require_react(), 1);
 var import_jsx_runtime10 = __toESM(require_jsx_runtime(), 1);
-function ExtrasScreen({ extras, initial, onDone, onCustomize, onCancel }) {
+function ExtrasScreen({ extras, initial, onDone, onCancel }) {
   const [state, setState] = (0, import_react32.useState)(() => Object.fromEntries(extras.map((e) => [e.key, Boolean(initial[e.key])])));
   const [cursor, setCursor] = (0, import_react32.useState)(0);
   const latest = (0, import_react32.useRef)({ state, cursor });
@@ -38992,12 +39095,10 @@ function ExtrasScreen({ extras, initial, onDone, onCustomize, onCancel }) {
       latest.current.state = next;
       setState(next);
     } else if (key.return) onDone(state2);
-    else if (input === "c" && onCustomize) onCustomize(state2);
     else if (key.escape && onCancel) onCancel();
   });
   const on = extras.filter((e) => state[e.key]).length;
   const hints = [["\u2191\u2193", "move"], ["space", "toggle"], ["enter", "continue"]];
-  if (onCustomize) hints.push(["c", "customize every skill"]);
   if (onCancel) hints.push(["esc", "back"]);
   return /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(Box_default, { flexDirection: "column", children: [
     /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(Text, { bold: true, children: "Optional extras" }),
@@ -39044,7 +39145,6 @@ function ModeScreen({ previous, onSelect }) {
       {
         options: [
           { value: "update", label: "Update", hint: `refresh the same ${n} skills from this checkout` },
-          { value: "change", label: "Change skills", hint: "add or remove skills, then update" },
           { value: "extras", label: "Change extras", hint: "turn optional extras on or off, keep everything else" },
           { value: "uninstall", label: "Uninstall", hint: "remove the plugin; your data stays unless you say otherwise", warn: true },
           { value: "quit", label: "Quit", hint: "leave everything as it is" }
@@ -39285,7 +39385,7 @@ function ReviewScreen({ ctx, plan, onChoose }) {
       ctx.configure ? null : /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(KeyValue, { k: "files", children: /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(Text, { children: tildify(ctx.target, env3) }) }),
       /* @__PURE__ */ (0, import_jsx_runtime16.jsxs)(KeyValue, { k: "settings", children: [
         /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(Text, { children: tildify(ctx.data, env3) }),
-        /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(Text, { color: color.dim, children: " (.env, installed.json; kept across updates)" })
+        /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(Text, { color: color.dim, children: " (.env, installed.json, settings.json; kept across updates)" })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime16.jsxs)(KeyValue, { k: ".env", children: [
         /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(Text, { children: envKeys.length ? envKeys.join(", ") : "no credentials needed" }),
@@ -39315,187 +39415,17 @@ function ReviewScreen({ ctx, plan, onChoose }) {
   ] });
 }
 
-// src/ui/screens/SkillPickerScreen.tsx
+// src/ui/screens/UninstallScreen.tsx
 var import_react36 = __toESM(require_react(), 1);
 var import_jsx_runtime17 = __toESM(require_jsx_runtime(), 1);
-function buildRows(catalog) {
-  const rows = [];
-  for (const fam of families(catalog)) {
-    rows.push({ kind: "family", family: fam });
-    for (const s of catalog) if (s.family === fam) rows.push({ kind: "skill", skill: s });
-  }
-  return rows;
-}
-var BADGE = {
-  brokerage: { text: "key", tint: color.key },
-  edgar: { text: "edgar", tint: color.edgar }
-};
-function SkillPickerScreen({ catalog, initial, onDone, onCancel, title = "Choose the skills to install" }) {
-  const rows = (0, import_react36.useMemo)(() => buildRows(catalog), [catalog]);
-  const skillIndexes = (0, import_react36.useMemo)(() => rows.map((r, i) => r.kind === "skill" ? i : -1).filter((i) => i >= 0), [rows]);
-  const [selected, setSelected] = (0, import_react36.useState)(() => new Set(resolveSelection(catalog, initial).names));
-  const [cursor, setCursor] = (0, import_react36.useState)(skillIndexes[0] ?? 0);
-  const [note, setNote] = (0, import_react36.useState)(null);
-  const latest = (0, import_react36.useRef)({ selected, cursor });
-  const { stdout } = use_stdout_default();
-  const familyCount = families(catalog).length;
-  const rowsAvailable = Math.max(6, (stdout?.rows ?? 40) - 14 - Math.max(0, familyCount - 1));
-  const viewportStart = Math.min(Math.max(0, cursor - Math.floor(rowsAvailable / 2)), Math.max(0, rows.length - rowsAvailable));
-  const visible = rows.slice(viewportStart, viewportStart + rowsAvailable);
-  const move = (delta) => {
-    const pos = skillIndexes.indexOf(latest.current.cursor);
-    const next = skillIndexes[(pos + delta + skillIndexes.length) % skillIndexes.length];
-    latest.current.cursor = next;
-    setCursor(next);
-  };
-  const apply = (names, notes) => {
-    const next = new Set(names);
-    latest.current.selected = next;
-    setSelected(next);
-    setNote(notes.length ? notes.join("; ") : null);
-  };
-  use_input_default((input, key) => {
-    const { selected: selected2, cursor: cursor2 } = latest.current;
-    if (key.upArrow || input === "k") move(-1);
-    else if (key.downArrow || input === "j") move(1);
-    else if (input === " ") {
-      const row = rows[cursor2];
-      if (row?.kind === "skill") {
-        const r = toggleSkill(catalog, selected2, row.skill.name);
-        apply(r.names, r.notes);
-      }
-    } else if (input === "a") apply(catalog.map((s) => s.name), []);
-    else if (input === "n") apply([], []);
-    else if (input === "f") {
-      const row = rows[cursor2];
-      if (row?.kind === "skill") {
-        const members = catalog.filter((s) => s.family === row.skill.family).map((s) => s.name);
-        const allOn = members.every((m) => selected2.has(m));
-        let names = [...selected2];
-        let notes = [];
-        if (allOn) {
-          const r = resolveSelection(catalog, names.filter((n) => !members.includes(n)), { dropDependents: true });
-          names = r.names;
-          notes = r.notes;
-        } else {
-          const r = resolveSelection(catalog, [...names, ...members]);
-          names = r.names;
-          notes = r.notes;
-        }
-        apply(names, notes);
-      }
-    } else if (key.return) {
-      if (selected2.size === 0) setNote("select at least one skill (press a for all)");
-      else onDone(catalog.filter((s) => selected2.has(s.name)).map((s) => s.name));
-    } else if (key.escape && onCancel) onCancel();
-  });
-  const current = rows[cursor];
-  const needs = requirementsFor(catalog, selected);
-  const keyCount = catalog.filter((s) => selected.has(s.name) && s.requires.includes("brokerage")).length;
-  return /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Box_default, { flexDirection: "column", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(Text, { bold: true, children: title }),
-    /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Text, { color: color.dim, children: [
-      "Fewer skills means a shorter skill list in every Claude session. ",
-      /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(Text, { color: color.key, children: "key" }),
-      " needs a brokerage connection (SnapTrade or E*Trade); ",
-      /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(Text, { color: color.edgar, children: "edgar" }),
-      " needs an SEC contact."
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Box_default, { flexDirection: "column", marginTop: 1, children: [
-      viewportStart > 0 ? /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Text, { color: color.dim, children: [
-        "  \u2191 ",
-        viewportStart,
-        " more"
-      ] }) : null,
-      visible.map((row, i) => {
-        const index = viewportStart + i;
-        if (row.kind === "family") {
-          const members = catalog.filter((s2) => s2.family === row.family);
-          const on2 = members.filter((s2) => selected.has(s2.name)).length;
-          return /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Box_default, { marginTop: index === 0 ? 0 : 1, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(Text, { bold: true, color: color.accent, children: row.family }),
-            /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Text, { color: color.dim, children: [
-              "  ",
-              on2,
-              "/",
-              members.length
-            ] })
-          ] }, `f:${row.family}`);
-        }
-        const s = row.skill;
-        const active = index === cursor;
-        const on = selected.has(s.name);
-        return /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Box_default, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Text, { color: color.accent, children: [
-            active ? glyph.pointer : " ",
-            " "
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Text, { color: on ? color.ok : color.dim, children: [
-            on ? glyph.on : glyph.off,
-            " "
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(Text, { bold: active, color: active ? color.accent : on ? void 0 : color.dim, children: s.name }),
-          s.requires.map((r) => /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Text, { color: BADGE[r]?.tint, children: [
-            " ",
-            BADGE[r]?.text
-          ] }, r)),
-          s.dependsOn.length ? /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Text, { color: color.dim, children: [
-            " needs ",
-            s.dependsOn.join(", ")
-          ] }) : null
-        ] }, s.name);
-      }),
-      viewportStart + rowsAvailable < rows.length ? /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Text, { color: color.dim, children: [
-        "  \u2193 ",
-        rows.length - viewportStart - rowsAvailable,
-        " more"
-      ] }) : null
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(Box_default, { marginTop: 1, minHeight: 2, flexDirection: "column", children: current?.kind === "skill" ? /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(Text, { color: color.dim, wrap: "wrap", children: current.skill.description }) : null }),
-    /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(Box_default, { minHeight: 1, children: note ? /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Text, { color: color.warn, children: [
-      glyph.warn,
-      " ",
-      note
-    ] }) : null }),
-    /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Box_default, { marginTop: 1, flexDirection: "column", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Text, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(Text, { bold: true, children: selected.size }),
-        " of ",
-        catalog.length,
-        " selected",
-        keyCount ? /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Text, { color: color.dim, children: [
-          " ",
-          glyph.dot,
-          " ",
-          keyCount,
-          " need a brokerage key"
-        ] }) : /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Text, { color: color.dim, children: [
-          " ",
-          glyph.dot,
-          " no brokerage key needed"
-        ] }),
-        needs.has("edgar") ? /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Text, { color: color.dim, children: [
-          " ",
-          glyph.dot,
-          " EDGAR contact needed"
-        ] }) : null
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(KeyHints, { hints: [["\u2191\u2193", "move"], ["space", "toggle"], ["f", "family"], ["a", "all"], ["n", "none"], ["enter", "continue"]] })
-    ] })
-  ] });
-}
-
-// src/ui/screens/UninstallScreen.tsx
-var import_react37 = __toESM(require_react(), 1);
-var import_jsx_runtime18 = __toESM(require_jsx_runtime(), 1);
 function UninstallScreen({ ctx, onDone, onFail }) {
   const env3 = ctx.environ;
   const pretty = (p) => p.split(" -> ").map((part) => tildify(part, env3)).join(` ${glyph.arrow} `);
-  const [choice, setChoice] = (0, import_react37.useState)(ctx.options.yes ? ctx.options.purgeData ? "purge" : "keep" : null);
-  const [result, setResult] = (0, import_react37.useState)(null);
+  const [choice, setChoice] = (0, import_react36.useState)(ctx.options.yes ? ctx.options.purgeData ? "purge" : "keep" : null);
+  const [result, setResult] = (0, import_react36.useState)(null);
   const plan = planUninstall(ctx.target, ctx.link, ctx.data, false);
   const dataExists = plan.keep.some((k) => k.includes("--purge-data"));
-  (0, import_react37.useEffect)(() => {
+  (0, import_react36.useEffect)(() => {
     if (!choice || choice === "cancel") return;
     uninstall(ctx.target, ctx.link, ctx.data, choice === "purge", async () => true).then((r) => {
       setResult(r);
@@ -39503,41 +39433,41 @@ function UninstallScreen({ ctx, onDone, onFail }) {
     }).catch((err) => onFail(err instanceof InstallError ? err : new InstallError(String(err?.message ?? err))));
   }, [choice]);
   if (result) {
-    return /* @__PURE__ */ (0, import_jsx_runtime18.jsxs)(Panel, { tint: color.ok, title: `${glyph.check} Uninstalled`, children: [
-      result.removed.map((r) => /* @__PURE__ */ (0, import_jsx_runtime18.jsxs)(Text, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(Text, { color: color.dim, children: "removed  " }),
+    return /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Panel, { tint: color.ok, title: `${glyph.check} Uninstalled`, children: [
+      result.removed.map((r) => /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Text, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(Text, { color: color.dim, children: "removed  " }),
         tildify(r, env3)
       ] }, r)),
-      result.kept.map((k) => /* @__PURE__ */ (0, import_jsx_runtime18.jsxs)(Text, { color: color.dim, children: [
+      result.kept.map((k) => /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Text, { color: color.dim, children: [
         "kept     ",
         k
       ] }, k))
     ] });
   }
   if (choice && choice !== "cancel") {
-    return /* @__PURE__ */ (0, import_jsx_runtime18.jsxs)(Box_default, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(Spinner, {}),
-      /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(Text, { children: " Removing\u2026" })
+    return /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Box_default, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(Spinner, {}),
+      /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(Text, { children: " Removing\u2026" })
     ] });
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime18.jsxs)(Box_default, { flexDirection: "column", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(Text, { bold: true, children: "Uninstall" }),
-    /* @__PURE__ */ (0, import_jsx_runtime18.jsxs)(Box_default, { flexDirection: "column", marginTop: 1, borderStyle: "round", borderColor: color.dim, paddingX: 1, children: [
-      plan.remove.length ? plan.remove.map((r) => /* @__PURE__ */ (0, import_jsx_runtime18.jsxs)(Text, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(Text, { color: color.warn, children: "remove " }),
+  return /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Box_default, { flexDirection: "column", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(Text, { bold: true, children: "Uninstall" }),
+    /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Box_default, { flexDirection: "column", marginTop: 1, borderStyle: "round", borderColor: color.dim, paddingX: 1, children: [
+      plan.remove.length ? plan.remove.map((r) => /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Text, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(Text, { color: color.warn, children: "remove " }),
         pretty(r)
-      ] }, r)) : /* @__PURE__ */ (0, import_jsx_runtime18.jsxs)(Text, { color: color.dim, children: [
+      ] }, r)) : /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Text, { color: color.dim, children: [
         "nothing installed at ",
         tildify(ctx.target, env3)
       ] }),
-      dataExists ? /* @__PURE__ */ (0, import_jsx_runtime18.jsxs)(Text, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(Text, { color: color.dim, children: "data   " }),
+      dataExists ? /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(Text, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(Text, { color: color.dim, children: "data   " }),
         tildify(ctx.data, env3),
         " ",
-        /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(Text, { color: color.dim, children: "(venv, ledger, journal, snapshots, caches)" })
+        /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(Text, { color: color.dim, children: "(venv, ledger, journal, snapshots, caches)" })
       ] }) : null
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(Box_default, { marginTop: 1, children: /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(Box_default, { marginTop: 1, children: /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(
       Select,
       {
         options: [
@@ -39553,17 +39483,15 @@ function UninstallScreen({ ctx, onDone, onFail }) {
 }
 
 // src/ui/App.tsx
-var import_jsx_runtime19 = __toESM(require_jsx_runtime(), 1);
+var import_jsx_runtime18 = __toESM(require_jsx_runtime(), 1);
 function App2({ ctx: initialCtx, commit, onExit }) {
   const { exit } = use_app_default();
-  const [ctx, setCtx] = (0, import_react38.useState)(initialCtx);
-  const [phase, setPhase] = (0, import_react38.useState)({ name: "preflight" });
-  const [history, setHistory] = (0, import_react38.useState)([]);
-  const [catalog] = (0, import_react38.useState)(() => loadCatalog(initialCtx.root));
-  const [extras] = (0, import_react38.useState)(() => loadExtras(initialCtx.root));
-  const core = coreSkills(catalog);
-  const coreNames = new Set(core.map((s) => s.name));
-  const nextId = (0, import_react38.useRef)(0);
+  const [ctx, setCtx] = (0, import_react37.useState)(initialCtx);
+  const [phase, setPhase] = (0, import_react37.useState)({ name: "preflight" });
+  const [history, setHistory] = (0, import_react37.useState)([]);
+  const [catalog] = (0, import_react37.useState)(() => loadCatalog(initialCtx.root));
+  const [extras] = (0, import_react37.useState)(() => loadExtras(initialCtx.root));
+  const nextId = (0, import_react37.useRef)(0);
   const finish = (code) => {
     onExit(code);
     exit();
@@ -39579,7 +39507,7 @@ function App2({ ctx: initialCtx, commit, onExit }) {
     if (ctx.options.uninstall && ctx.configure) return fail("this copy is managed by Claude Code", "remove it with /plugin uninstall second-opinion@second-opinion");
     if (ctx.options.uninstall) return setPhase({ name: "uninstall" });
     if (ctx.configure) return startConfigure(pre);
-    const sel = initialSelection(catalog, ctx.options, pre.previous);
+    const sel = initialSelection(catalog, ctx.options, pre.previous, false, priorSwitches(pre)?.extras ?? null);
     if (pre.previous) {
       record(`Existing install ${glyph.dot} ${pre.previous.skills.length} skills`, color.dim);
       if (sel.explicit || ctx.options.extras !== void 0) return startExplicit(pre, sel.names);
@@ -39587,49 +39515,51 @@ function App2({ ctx: initialCtx, commit, onExit }) {
     }
     record("Fresh install", color.dim);
     if (sel.explicit || ctx.options.extras !== void 0) return startExplicit(pre, sel.names);
-    setPhase({ name: "pick", pre, initial: sel.names, scope: "core", nonSkill: nonSkillDefaults(extras, null) });
+    startEverySkill(pre, sel.names, nonSkillDefaults(extras, priorSwitches(pre)));
+  };
+  const startEverySkill = (pre, names, nonSkill) => {
+    const kept = resolveSelection(catalog, names, { dropDependents: true }).names;
+    if (extras.length) return openExtras(pre, kept, nonSkill, () => finish(0));
+    record(`Skills ${glyph.dot} ${kept.length} of ${catalog.length} selected`);
+    startCredentials(pre, kept, nonSkill);
   };
   const startConfigure = (pre) => {
     let sel;
     try {
-      sel = initialSelection(catalog, ctx.options, pre.previous, true);
+      sel = initialSelection(catalog, ctx.options, pre.previous, true, priorSwitches(pre)?.extras ?? null);
     } catch (err) {
       return fail(err.message, "run node install.js --extras KEY=on|off instead");
     }
     record(pre.previous ? "Configuring your plugin install" : "Configuring a new plugin install", color.dim);
     if (ctx.options.extras !== void 0) return startExplicit(pre, sel.names);
-    openExtras(pre, sel.names, nonSkillDefaults(extras, pre.previous), () => finish(0));
+    openExtras(pre, sel.names, nonSkillDefaults(extras, priorSwitches(pre)), () => finish(0));
   };
   const startExplicit = (pre, names) => {
-    const ex = initialExtras(ctx.options, extras, catalog, names, pre.previous);
+    const ex = initialExtras(ctx.options, extras, catalog, names, priorSwitches(pre));
     for (const n of ex.notes) record(n, color.dim);
     startCredentials(pre, ex.selected, ex.nonSkill);
   };
   const onMode = (pre, mode) => {
     if (mode === "quit") return finish(0);
     if (mode === "uninstall") return setPhase({ name: "uninstall" });
-    const sel = initialSelection(catalog, ctx.options, pre.previous);
-    const nonSkill = nonSkillDefaults(extras, pre.previous);
+    const sel = initialSelection(catalog, ctx.options, pre.previous, false, priorSwitches(pre)?.extras ?? null);
+    const nonSkill = nonSkillDefaults(extras, priorSwitches(pre));
     if (mode === "update") {
       record(`Skills ${glyph.dot} keeping ${sel.names.length}`);
       return startCredentials(pre, sel.names, nonSkill);
     }
-    if (mode === "extras") return openExtras(pre, sel.names, nonSkill, () => setPhase({ name: "mode", pre }));
-    setPhase({ name: "pick", pre, initial: sel.names, scope: "all", nonSkill });
+    return openExtras(pre, sel.names, nonSkill, () => setPhase({ name: "mode", pre }));
   };
   const openExtras = (pre, base, nonSkill, back) => setPhase({ name: "extras", pre, base, nonSkill, state: extrasState(extras, base, nonSkill), back });
+  const goBack = (pre, selected, nonSkill) => {
+    const start = () => pre.previous && !ctx.configure ? setPhase({ name: "mode", pre }) : finish(0);
+    if (extras.length) return openExtras(pre, selected, nonSkill, start);
+    start();
+  };
   const startCredentials = (pre, selected, nonSkill) => setPhase({ name: "credentials", pre, selected, nonSkill });
   const recordExtras = (state) => {
     const on = extras.filter((e) => state[e.key]).map((e) => e.label);
     record(`Extras ${glyph.dot} ${on.length ? on.join(", ") : "all off"}`);
-  };
-  const onPicked = (pre, selected, scope, nonSkill) => {
-    if (scope === "core" && extras.length) {
-      const kept = resolveSelection(catalog, selected, { dropDependents: true }).names;
-      return openExtras(pre, kept, nonSkill, () => setPhase({ name: "pick", pre, initial: kept, scope: "core", nonSkill }));
-    }
-    record(`Skills ${glyph.dot} ${selected.length} of ${catalog.length} selected`);
-    startCredentials(pre, selected, nonSkill);
   };
   const onExtras = (pre, base, nonSkill, state) => {
     const r = applyExtras(catalog, extras, base, nonSkill, state);
@@ -39637,10 +39567,6 @@ function App2({ ctx: initialCtx, commit, onExit }) {
     for (const n of r.notes) record(n, color.dim);
     if (!ctx.configure) record(`Skills ${glyph.dot} ${r.selected.length} of ${catalog.length} selected`);
     startCredentials(pre, r.selected, r.nonSkill);
-  };
-  const onCustomize = (pre, base, nonSkill, state) => {
-    const r = applyExtras(catalog, extras, base, nonSkill, state);
-    setPhase({ name: "pick", pre, initial: r.selected, scope: "all", nonSkill: r.nonSkill });
   };
   const onCredentials = (pre, selected, nonSkill, values, brokers) => {
     const plan = buildPlan(ctx, pre, pre.python.found, selected, values, brokers, nonSkill);
@@ -39660,9 +39586,7 @@ function App2({ ctx: initialCtx, commit, onExit }) {
         return finish(0);
       case "back":
         setHistory((h) => h.filter((d) => !d.text.startsWith("Skills") && !d.text.startsWith("Credentials") && !d.text.startsWith("Extras")));
-        if (ctx.configure) return openExtras(pre, plan.selected, plan.extras, () => finish(0));
-        if (!plan.previous) return setPhase({ name: "pick", pre, initial: plan.selected, scope: "core", nonSkill: plan.extras });
-        return setPhase({ name: "pick", pre, initial: plan.selected, scope: "all", nonSkill: plan.extras });
+        return goBack(pre, plan.selected, plan.extras);
       case "install-no-link": {
         const next = { ...ctx, options: { ...ctx.options, noLink: true } };
         setCtx(next);
@@ -39686,37 +39610,25 @@ function App2({ ctx: initialCtx, commit, onExit }) {
     setPhase({ name: "uninstalled", result });
     setTimeout(() => finish(0), 50);
   };
-  return /* @__PURE__ */ (0, import_jsx_runtime19.jsxs)(Box_default, { flexDirection: "column", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(Static, { items: [{ id: -1, text: "" }, ...history], children: (item) => item.id === -1 ? /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(Header, { version: INSTALLER_VERSION, commit, target: tildify(ctx.target, ctx.environ), data: tildify(ctx.data, ctx.environ), link: tildify(ctx.link, ctx.environ), configure: ctx.configure }, "header") : /* @__PURE__ */ (0, import_jsx_runtime19.jsxs)(Text, { color: item.tint, children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime18.jsxs)(Box_default, { flexDirection: "column", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(Static, { items: [{ id: -1, text: "" }, ...history], children: (item) => item.id === -1 ? /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(Header, { version: INSTALLER_VERSION, commit, target: tildify(ctx.target, ctx.environ), data: tildify(ctx.data, ctx.environ), link: tildify(ctx.link, ctx.environ), configure: ctx.configure }, "header") : /* @__PURE__ */ (0, import_jsx_runtime18.jsxs)(Text, { color: item.tint, children: [
       glyph.check,
       " ",
       item.text
     ] }, item.id) }),
-    /* @__PURE__ */ (0, import_jsx_runtime19.jsxs)(Box_default, { flexDirection: "column", marginTop: history.length ? 1 : 0, children: [
-      phase.name === "preflight" ? /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(PreflightScreen, { ctx, onDone: afterPreflight, onFail: fail }) : null,
-      phase.name === "mode" ? /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(ModeScreen, { previous: phase.pre.previous, onSelect: (m) => onMode(phase.pre, m) }) : null,
-      phase.name === "pick" ? /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(
-        SkillPickerScreen,
-        {
-          catalog: phase.scope === "core" ? core : catalog,
-          title: phase.scope === "core" ? "Choose the core skills" : void 0,
-          initial: phase.scope === "core" ? phase.initial.filter((n) => coreNames.has(n)) : phase.initial,
-          onDone: (s) => onPicked(phase.pre, phase.scope === "core" ? [...s, ...phase.initial.filter((n) => !coreNames.has(n))] : s, phase.scope, phase.nonSkill),
-          onCancel: phase.pre.previous ? () => setPhase({ name: "mode", pre: phase.pre }) : void 0
-        },
-        phase.scope
-      ) : null,
-      phase.name === "extras" ? /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime18.jsxs)(Box_default, { flexDirection: "column", marginTop: history.length ? 1 : 0, children: [
+      phase.name === "preflight" ? /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(PreflightScreen, { ctx, onDone: afterPreflight, onFail: fail }) : null,
+      phase.name === "mode" ? /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(ModeScreen, { previous: phase.pre.previous, onSelect: (m) => onMode(phase.pre, m) }) : null,
+      phase.name === "extras" ? /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(
         ExtrasScreen,
         {
           extras,
           initial: phase.state,
           onDone: (state) => onExtras(phase.pre, phase.base, phase.nonSkill, state),
-          onCustomize: ctx.configure ? void 0 : (state) => onCustomize(phase.pre, phase.base, phase.nonSkill, state),
           onCancel: phase.back
         }
       ) : null,
-      phase.name === "credentials" ? /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(
+      phase.name === "credentials" ? /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(
         CredentialsScreen,
         {
           needs: buildPlan(ctx, phase.pre, phase.pre.python.found, phase.selected, initialValues(ctx)).needs,
@@ -39724,22 +39636,22 @@ function App2({ ctx: initialCtx, commit, onExit }) {
           brokers: brokersFrom(initialValues(ctx)),
           acceptDefaults: ctx.options.yes,
           onDone: (values, brokers) => onCredentials(phase.pre, phase.selected, phase.nonSkill, values, brokers),
-          onCancel: () => ctx.configure ? openExtras(phase.pre, phase.selected, phase.nonSkill, () => finish(0)) : setPhase({ name: "pick", pre: phase.pre, initial: phase.selected, scope: phase.pre.previous ? "all" : "core", nonSkill: phase.nonSkill })
+          onCancel: () => goBack(phase.pre, phase.selected, phase.nonSkill)
         },
         phase.selected.join(",")
       ) : null,
-      phase.name === "review" ? /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(ReviewScreen, { ctx, plan: phase.plan, onChoose: (c) => onReview(phase.pre, phase.plan, c) }) : null,
-      phase.name === "progress" ? /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(ProgressScreen, { ctx, plan: phase.plan, replaceLink: phase.replaceLink, onDone: (s, steps) => onInstalled(phase.plan, s, steps), onFail: (e) => fail(e.message, e.hint) }) : null,
-      phase.name === "done" ? /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(DoneScreen, { ctx, summary: phase.summary, updated: phase.updated }) : null,
-      phase.name === "uninstall" ? /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(UninstallScreen, { ctx, onDone: onUninstalled, onFail: (e) => fail(e.message, e.hint) }) : null,
-      phase.name === "uninstalled" && phase.result === null ? /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(Text, { color: color.dim, children: "Nothing changed." }) : null,
-      phase.name === "error" ? /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(ErrorScreen, { message: phase.message, hint: phase.hint }) : null
+      phase.name === "review" ? /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(ReviewScreen, { ctx, plan: phase.plan, onChoose: (c) => onReview(phase.pre, phase.plan, c) }) : null,
+      phase.name === "progress" ? /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(ProgressScreen, { ctx, plan: phase.plan, replaceLink: phase.replaceLink, onDone: (s, steps) => onInstalled(phase.plan, s, steps), onFail: (e) => fail(e.message, e.hint) }) : null,
+      phase.name === "done" ? /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(DoneScreen, { ctx, summary: phase.summary, updated: phase.updated }) : null,
+      phase.name === "uninstall" ? /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(UninstallScreen, { ctx, onDone: onUninstalled, onFail: (e) => fail(e.message, e.hint) }) : null,
+      phase.name === "uninstalled" && phase.result === null ? /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(Text, { color: color.dim, children: "Nothing changed." }) : null,
+      phase.name === "error" ? /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(ErrorScreen, { message: phase.message, hint: phase.hint }) : null
     ] })
   ] });
 }
 
 // src/main.tsx
-var import_jsx_runtime20 = __toESM(require_jsx_runtime(), 1);
+var import_jsx_runtime19 = __toESM(require_jsx_runtime(), 1);
 function pluginRoot() {
   const here = path11.dirname(fileURLToPath(import.meta.url));
   return path11.basename(here) === "src" ? path11.resolve(here, "..", "..") : here;
@@ -39774,7 +39686,7 @@ ${USAGE}
   let code = 130;
   try {
     const commit = await sourceCommit(root, runner);
-    const app = render_default(/* @__PURE__ */ (0, import_jsx_runtime20.jsx)(App2, { ctx, commit, onExit: (c) => code = c }), { exitOnCtrlC: true });
+    const app = render_default(/* @__PURE__ */ (0, import_jsx_runtime19.jsx)(App2, { ctx, commit, onExit: (c) => code = c }), { exitOnCtrlC: true });
     await app.waitUntilExit();
   } catch (err) {
     return reportError2(err, { stdout: process.stdout, stderr: process.stderr });

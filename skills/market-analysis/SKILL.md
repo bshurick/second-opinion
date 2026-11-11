@@ -117,7 +117,7 @@ Run with the Bash tool. Every script prints JSON.
 |---|---|---|
 | 2 | Bad arguments. For `earnings.py`: no symbols, an invalid symbol, or more than 20. For `render.py`: an input is missing, malformed, or not the matching script's result, or the summary file breaks a rule. | `error` |
 | 5 | Upstream data source error | `error`, and answer what the other sources allow |
-| 6 | Python dependencies missing | `error`, and say the setup skill repairs it |
+| 6 | Python dependencies missing | `error`, and say the get-started skill repairs it |
 
 ## Steps
 
@@ -156,7 +156,7 @@ Use this case for "who is buying", "is money leaving equities", "are institution
 
 1. Run `indices.py` and write its output to `DIR/indices.json`. DIR is the session scratchpad.
 2. Run `flows.py --history` once and write its output to `DIR/flows.json`. Add `--short SYM` when the question names a stock.
-3. Read the accounts: run the portfolio-snapshot skill's `brief.py --no-headlines` (`"${CLAUDE_PLUGIN_ROOT}/skills/portfolio-snapshot/scripts/brief.py" --no-headlines > DIR/portfolio.json`, about 10 seconds). If it fails for any reason, including an expired E*Trade login or that skill not being installed, go on without `for_you`, and do not raise the login prompt for this section alone.
+3. Read the accounts: run the portfolio-analysis skill's `brief.py --no-headlines` (`"${CLAUDE_PLUGIN_ROOT}/skills/portfolio-analysis/scripts/brief.py" --no-headlines > DIR/portfolio.json`, about 10 seconds). If it fails for any reason, including an expired E*Trade login or that skill not being installed, go on without `for_you`, and do not raise the login prompt for this section alone.
 4. If an earlier Market Flows page exists, check it with `get_artifact`. Leave `for_you` out unless its read mode is `owner` or the page is new. An artifact keeps its link across republishes, and the fold only hides text that is still in the HTML. If the check fails, leave `for_you` out.
 5. Write the headline analysis to `DIR/summary.json`, following the section below. Include `for_you` only when steps 3 and 4 both allow it.
 6. Run `render.py --in DIR/flows.json --indices DIR/indices.json --out DIR/market.html --summary DIR/summary.json`. If the output holds `for_you_dropped`, the accounts read did not count as a full read today and the card went out without that section.

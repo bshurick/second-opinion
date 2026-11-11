@@ -16,7 +16,6 @@ import { TextInput } from "../src/ui/components/TextInput.js";
 import { CredentialsScreen } from "../src/ui/screens/CredentialsScreen.js";
 import { DoneScreen } from "../src/ui/screens/DoneScreen.js";
 import { ReviewScreen } from "../src/ui/screens/ReviewScreen.js";
-import { SkillPickerScreen } from "../src/ui/screens/SkillPickerScreen.js";
 import { UninstallScreen } from "../src/ui/screens/UninstallScreen.js";
 import { extrasRoot, FakeRunner, miniRoot, opts, tmpDir } from "./helpers.js";
 
@@ -77,67 +76,6 @@ describe("TextInput", () => {
     empty.stdin.write(ENTER);
     await tick();
     expect(empty.lastFrame()).toContain("a value is required");
-  });
-});
-
-describe("SkillPickerScreen", () => {
-  const catalog = loadCatalog(miniRoot());
-
-  it("toggles with space, explains dependency changes, and returns the selection on enter", async () => {
-    let result: string[] | null = null;
-    const { lastFrame, stdin } = render(<SkillPickerScreen catalog={catalog} initial={["a", "b", "c"]} onDone={(s) => (result = s)} />);
-    expect(lastFrame()).toContain("Fam one");
-    expect(lastFrame()).toContain("3 of 3 selected");
-    expect(lastFrame()).toContain("◉ a key");
-    stdin.write(" "); // deselect a → b follows
-    await tick();
-    expect(lastFrame()).toContain("○ a key");
-    expect(lastFrame()).toContain("○ b");
-    expect(lastFrame()).toContain("b needs a: also deselected b");
-    expect(lastFrame()).toContain("1 of 3 selected");
-    expect(lastFrame()).toContain("no brokerage key needed");
-    stdin.write(DOWN);
-    await tick();
-    stdin.write(" "); // select b → a comes back
-    await tick();
-    expect(lastFrame()).toContain("b needs a: added a");
-    expect(lastFrame()).toContain("3 of 3 selected");
-    stdin.write("n");
-    await tick();
-    stdin.write(ENTER);
-    await tick();
-    expect(lastFrame()).toContain("select at least one skill");
-    expect(result).toBeNull();
-    stdin.write("a");
-    await until(() => (lastFrame() ?? "").includes("3 of 3 selected"));
-    stdin.write(ENTER);
-    await until(() => result !== null);
-    expect(result, `screen at failure:\n${lastFrame()}`).toEqual(["a", "b", "c"]);
-  });
-
-  it("acts on keys that arrive before the screen has redrawn", async () => {
-    let result: string[] | null = null;
-    const { stdin } = render(<SkillPickerScreen catalog={catalog} initial={[]} onDone={(s) => (result = s)} />);
-    stdin.write("a");
-    stdin.write(ENTER);
-    await until(() => result !== null);
-    expect(result).toEqual(["a", "b", "c"]);
-  });
-
-  it("moves and toggles in order when the keys arrive together", async () => {
-    let result: string[] | null = null;
-    const { stdin } = render(<SkillPickerScreen catalog={catalog} initial={["a", "b", "c"]} onDone={(s) => (result = s)} />);
-    stdin.write(DOWN);
-    stdin.write(" "); // on b, not a: a stays selected
-    stdin.write(ENTER);
-    await until(() => result !== null);
-    expect(result).toEqual(["a", "c"]);
-  });
-
-  it("shows the highlighted skill's description and badges", () => {
-    const { lastFrame } = render(<SkillPickerScreen catalog={catalog} initial={[]} onDone={() => {}} />);
-    expect(lastFrame()).toContain("Skill A does things.");
-    expect(lastFrame()).toContain("edgar");
   });
 });
 
@@ -295,18 +233,18 @@ describe("suggestions", () => {
   it("only proposes prompts for installed skills and respects the key requirement", async () => {
     const { suggestions } = await import("../src/ui/suggestions.js");
     expect(suggestions(["valuation", "real-estate"], false).map((s) => s.prompt)).toEqual(["what is AAPL worth?", "should I rent or buy?"]);
-    expect(suggestions(["connect", "portfolio-snapshot", "valuation"], false).map((s) => s.prompt)).toEqual(["what is AAPL worth?"]);
-    expect(suggestions(["connect", "portfolio-snapshot", "valuation"], true).map((s) => s.prompt)).toEqual(["connect my brokerage", "how is my portfolio?"]);
+    expect(suggestions(["connect", "portfolio-analysis", "valuation"], false).map((s) => s.prompt)).toEqual(["what is AAPL worth?"]);
+    expect(suggestions(["connect", "portfolio-analysis", "valuation"], true).map((s) => s.prompt)).toEqual(["connect my brokerage", "how is my portfolio?"]);
     expect(suggestions(["tax-aware"], true)).toEqual([]);
   });
 
   it("puts a Connect E*Trade prompt first when told the token needs a fresh login", async () => {
     const { suggestions } = await import("../src/ui/suggestions.js");
-    const withLogin = suggestions(["connect", "portfolio-snapshot"], true, { etradeNeedsLogin: true });
+    const withLogin = suggestions(["connect", "portfolio-analysis"], true, { etradeNeedsLogin: true });
     expect(withLogin[0]!.prompt).toBe("Connect E*Trade");
     expect(withLogin[0]!.note).toBe("opens the E*Trade login; paste the 5-character code back in the chat");
     expect(withLogin.map((s) => s.prompt)).toEqual(["Connect E*Trade", "connect my brokerage", "how is my portfolio?"]);
-    expect(suggestions(["connect", "portfolio-snapshot"], true, { etradeNeedsLogin: false }).map((s) => s.prompt)).toEqual(["connect my brokerage", "how is my portfolio?"]);
+    expect(suggestions(["connect", "portfolio-analysis"], true, { etradeNeedsLogin: false }).map((s) => s.prompt)).toEqual(["connect my brokerage", "how is my portfolio?"]);
   });
 });
 
@@ -318,7 +256,7 @@ describe("DoneScreen", () => {
     return {
       target: ctx.target,
       link: ctx.link,
-      skills: { installed: ["connect", "portfolio-snapshot"], refreshed: [], removed: [] },
+      skills: { installed: ["connect", "portfolio-analysis"], refreshed: [], removed: [] },
       extras: {},
       mode: "copy",
       data: ctx.data,
@@ -351,55 +289,47 @@ describe("ExtrasScreen", () => {
 
   it("acts on keys that arrive before the screen has redrawn", async () => {
     let got: ExtrasState | null = null;
-    const { stdin } = render(<ExtrasScreen extras={extras} initial={{ c: false, tips: false }} onDone={(s) => (got = s)} />);
+    const { stdin } = render(<ExtrasScreen extras={extras} initial={{ c: false, follow_ups: false }} onDone={(s) => (got = s)} />);
     stdin.write(DOWN);
     stdin.write(" ");
     stdin.write(ENTER);
     await until(() => got !== null);
-    expect(got).toEqual({ c: false, tips: true });
+    expect(got).toEqual({ c: false, follow_ups: true });
   });
 
   it("lists every extra with its blurb and cost, toggles with space, and returns the state on enter", async () => {
     let got: ExtrasState | null = null;
-    const { lastFrame, stdin } = render(<ExtrasScreen extras={extras} initial={{ c: false, tips: false }} onDone={(s) => (got = s)} onCustomize={() => {}} />);
+    const { lastFrame, stdin } = render(<ExtrasScreen extras={extras} initial={{ c: false, follow_ups: false }} onDone={(s) => (got = s)} />);
     const frame = lastFrame()!;
     expect(frame).toContain("Optional extras");
     expect(frame).toContain("Skill C extra");
     expect(frame).toContain("Does C.");
     expect(frame).toContain("Adds a step.");
     expect(frame).toContain("Tips");
-    expect(frame).toContain("Shows tips.");
-    expect(frame).toContain("customize every skill");
+    expect(frame).toContain("Shows follow_ups.");
+    expect(frame).not.toContain("customize every skill");
     stdin.write(" ");
     await tick();
     stdin.write(DOWN);
     await tick();
     stdin.write(ENTER);
     await tick();
-    expect(got).toEqual({ c: true, tips: false });
+    expect(got).toEqual({ c: true, follow_ups: false });
   });
 
-  it("c opens the full picker and escape goes back", async () => {
-    let customized: ExtrasState | null = null;
-    let cancelled = 0;
-    const { stdin } = render(<ExtrasScreen extras={extras} initial={{ c: false, tips: false }} onDone={() => {}} onCustomize={(s) => (customized = s)} onCancel={() => cancelled++} />);
-    stdin.write(" ");
-    await tick();
-    stdin.write("c");
-    await tick();
-    stdin.write(ESCAPE);
-    await tick();
-    expect(customized).toEqual({ c: true, tips: false }); // the edits so far carry into the full picker
-    expect(cancelled).toBe(1);
+  it("offers no way into a skill picker", async () => {
+    const { lastFrame } = render(<ExtrasScreen extras={extras} initial={{ c: false, follow_ups: false }} onDone={() => {}} onCancel={() => {}} />);
+    expect(lastFrame()).not.toContain("customize every skill");
   });
 });
 
 describe("ModeScreen", () => {
-  it("offers Change extras beside Update and Change skills", async () => {
+  it("offers Change extras beside Update, and no skill picker", async () => {
     const chosen: string[] = [];
     const { lastFrame, stdin } = render(<ModeScreen previous={{ skills: ["a"], source_path: "", source_commit: null, installer_version: "", installed_at: "" }} onSelect={(m) => chosen.push(m)} />);
     expect(lastFrame()).toContain("Change extras");
-    stdin.write("3");
+    expect(lastFrame()).not.toContain("Change skills");
+    stdin.write("2");
     await tick();
     expect(chosen).toEqual(["extras"]);
   });
@@ -410,25 +340,22 @@ describe("ReviewScreen extras", () => {
     const root = extrasRoot();
     const ctx = createContext(root, opts([]), { HOME: tmpDir() }, new FakeRunner());
     const pre: Preflight = { node: "20", python: { found: { command: ["python3"], version: "3.12.0", hasVenv: true, source: "PATH" }, rejected: [] }, previous: null, commit: null };
-    const on = buildPlan(ctx, pre, pre.python.found!, ["a", "c"], {}, undefined, { tips: false });
+    const on = buildPlan(ctx, pre, pre.python.found!, ["a", "c"], {}, undefined, { follow_ups: false });
     expect(render(<ReviewScreen ctx={ctx} plan={on} onChoose={() => {}} />).lastFrame()).toMatch(/extras\s+on: Skill C extra/);
-    const off = buildPlan(ctx, pre, pre.python.found!, ["a"], {}, undefined, { tips: false });
+    const off = buildPlan(ctx, pre, pre.python.found!, ["a"], {}, undefined, { follow_ups: false });
     expect(render(<ReviewScreen ctx={ctx} plan={off} onChoose={() => {}} />).lastFrame()).toMatch(/extras\s+all off/);
   });
 });
 
 describe("App wizard", () => {
-  it("a fresh install picks core skills, then offers the extras off, then asks for credentials", async () => {
+  it("a fresh install opens on the extras with every skill, then asks for credentials", async () => {
     const root = extrasRoot();
     const home = tmpDir();
     const ctx = createContext(root, opts([]), { HOME: home, SECOND_OPINION_DATA: path.join(home, "data") }, new FakeRunner());
     const { lastFrame, stdin } = render(<App ctx={ctx} commit={null} onExit={() => {}} />);
-    for (let i = 0; i < 50 && !lastFrame()!.includes("Choose the core skills"); i++) await tick();
-    expect(lastFrame()).toContain("Choose the core skills");
-    expect(lastFrame()).not.toContain("Skill C extra");
-    stdin.write(ENTER);
-    await tick();
+    for (let i = 0; i < 50 && !lastFrame()!.includes("Optional extras"); i++) await tick();
     expect(lastFrame()).toContain("Optional extras");
+    expect(lastFrame()).not.toContain("Choose the core skills");
     stdin.write(" ");
     await tick();
     stdin.write(ENTER);
@@ -450,31 +377,11 @@ describe("App wizard", () => {
     const home = tmpDir();
     const ctx = createContext(defaultOnExtra(["a"]), opts([]), { HOME: home, SECOND_OPINION_DATA: path.join(home, "data") }, new FakeRunner());
     const { lastFrame, stdin } = render(<App ctx={ctx} commit={null} onExit={() => {}} />);
-    for (let i = 0; i < 50 && !lastFrame()!.includes("Choose the core skills"); i++) await tick();
-    stdin.write(ENTER);
-    await tick();
-    expect(lastFrame()).toContain("Optional extras");
+    for (let i = 0; i < 50 && !lastFrame()!.includes("Optional extras"); i++) await tick();
     stdin.write(ENTER);
     await tick();
     expect(lastFrame()).toContain("Skills • 3 of 3 selected");
     expect(lastFrame()).toContain("Extras • Skill C extra");
-  });
-
-  it("dropping the skill a default-on extra needs turns the extra off, not the skill back on", async () => {
-    const home = tmpDir();
-    const ctx = createContext(defaultOnExtra(["b"]), opts([]), { HOME: home, SECOND_OPINION_DATA: path.join(home, "data") }, new FakeRunner());
-    const { lastFrame, stdin } = render(<App ctx={ctx} commit={null} onExit={() => {}} />);
-    for (let i = 0; i < 50 && !lastFrame()!.includes("Choose the core skills"); i++) await tick();
-    stdin.write(DOWN);
-    stdin.write(" ");
-    await tick();
-    stdin.write(ENTER);
-    await tick();
-    expect(lastFrame()).toContain("Optional extras");
-    stdin.write(ENTER);
-    await tick();
-    expect(lastFrame()).toContain("Skills • 1 of 3 selected");
-    expect(lastFrame()).toContain("Extras • all off");
   });
 
   it("a catalog without extras skips the extras step", async () => {
@@ -482,9 +389,7 @@ describe("App wizard", () => {
     const home = tmpDir();
     const ctx = createContext(root, opts([]), { HOME: home, SECOND_OPINION_DATA: path.join(home, "data") }, new FakeRunner());
     const { lastFrame, stdin } = render(<App ctx={ctx} commit={null} onExit={() => {}} />);
-    for (let i = 0; i < 50 && !lastFrame()!.includes("Choose the core skills"); i++) await tick();
-    stdin.write(ENTER);
-    await tick();
+    for (let i = 0; i < 50 && !lastFrame()!.includes("Skills •"); i++) await tick();
     expect(lastFrame()).not.toContain("Optional extras");
     expect(lastFrame()).toContain("Skills • 3 of 3 selected");
   });
@@ -497,7 +402,7 @@ describe("App wizard", () => {
     fs.writeFileSync(path.join(ctx.target, "installed.json"), JSON.stringify({ skills: ["a", "b", "c"], source_path: "", source_commit: null, installer_version: "2.0.0", installed_at: "" }));
     const { lastFrame, stdin } = render(<App ctx={ctx} commit={null} onExit={() => {}} />);
     for (let i = 0; i < 50 && !lastFrame()!.includes("Change extras"); i++) await tick();
-    stdin.write("3");
+    stdin.write("2");
     await tick();
     const frame = lastFrame()!;
     expect(frame).toContain("Optional extras");

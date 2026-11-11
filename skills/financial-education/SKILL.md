@@ -17,8 +17,8 @@ Tutors the user in finance from the curated sources in `references/curriculum.md
   | `missed_history` | Quiz ids sorted by how often missed, most first |
   | `level` | The level the learner was placed at, or the latest session's level, or null with no sessions yet |
 
-- **Optional extra.** This skill is an optional extra. The setup skill turns it off (`--extras financial-education=off`); learning progress stays in the data directory.
-- **Other skills.** The learner's own numbers come from the portfolio-snapshot or dividend-income skill.
+- **Optional extra.** This skill is an optional extra. The get-started skill turns it off (`--extras financial-education=off`); learning progress stays in the data directory.
+- **Other skills.** The learner's own numbers come from the portfolio-analysis or dividend-income skill.
 
 ## Scripts
 
@@ -42,7 +42,7 @@ Run with the Bash tool.
 |---|---|---|
 | 2 | Bad flags or no matching session | `error` |
 | 5 | Corrupt learner state | `hint` |
-| 6 | Python dependencies missing | the error, and say the setup skill repairs it |
+| 6 | Python dependencies missing | the error, and say the get-started skill repairs it |
 
 ## Steps
 
@@ -53,14 +53,14 @@ Run with the Bash tool.
 5. Once placed, run `progress.py place --level L`.
 6. The first time in a session that a lesson starts, add one line: "(Lessons and quizzes are an optional extra; say 'turn off lessons' to disable them.)" Once per session.
 7. Teach one concept per turn: definition, one worked number, one source link from the curriculum, one check question. Do not stack concepts.
-8. If the learner consents to using their own numbers, run the portfolio-snapshot or dividend-income skill and explain each figure as a concept, without judging the holdings.
+8. If the learner consents to using their own numbers, run the portfolio-analysis or dividend-income skill and explain each figure as a concept, without judging the holdings.
 9. Use the WebSearch tool only to fetch a current figure (a rate, a contribution limit) or a paper that the curriculum names. Cite the URL.
 10. Close each session with a two-line recap and the next item on the path.
 11. Run `progress.py add --level L --concept ... [--missed ...]` for what this session covered.
 
 **The user says "turn off lessons"**
 
-1. Hand off to the setup skill (`--extras financial-education=off`).
+1. Hand off to the get-started skill (`--extras financial-education=off`).
 2. Say learning progress stays in the data directory.
 
 ## Reply format

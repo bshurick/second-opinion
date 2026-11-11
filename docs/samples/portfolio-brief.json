@@ -2990,9 +2990,9 @@
    "why": "A price rule you set on your watchlist fired on today's quote."
   },
   {
-   "key": "portfolio-snapshot:EARNINGS:COST:2026-09-22",
+   "key": "portfolio-analysis:EARNINGS:COST:2026-09-22",
    "code": "EARNINGS",
-   "skill": "portfolio-snapshot",
+   "skill": "portfolio-analysis",
    "severity": "alert",
    "symbol": "COST",
    "title": "COST reports earnings on 2026-09-22",
@@ -3035,9 +3035,9 @@
    "why": ""
   },
   {
-   "key": "portfolio-snapshot:EX_DIVIDEND:SCHD:2026-09-21",
+   "key": "portfolio-analysis:EX_DIVIDEND:SCHD:2026-09-21",
    "code": "EX_DIVIDEND",
-   "skill": "portfolio-snapshot",
+   "skill": "portfolio-analysis",
    "severity": "alert",
    "symbol": "SCHD",
    "title": "SCHD goes ex-dividend on 2026-09-21",
@@ -3050,9 +3050,9 @@
    "why": "You must hold the shares before the ex-dividend date to receive the next payment."
   },
   {
-   "key": "rebalancing:BAND_BREACH:-:US equities,bonds,international",
+   "key": "portfolio-plan:BAND_BREACH:-:US equities,bonds,international",
    "code": "BAND_BREACH",
-   "skill": "rebalancing",
+   "skill": "portfolio-plan",
    "severity": "alert",
    "symbol": null,
    "title": "Allocation outside its bands: US equities +12.8 pts, bonds -8.0 pts, international -5.1 pts",
@@ -3085,7 +3085,7 @@
    "headlines": 2
   },
   {
-   "skill": "portfolio-snapshot",
+   "skill": "portfolio-analysis",
    "script": "",
    "status": "ok",
    "reason": "",
@@ -3103,8 +3103,8 @@
    "headlines": 0
   },
   {
-   "skill": "rebalancing",
-   "script": "scripts/plan.py",
+   "skill": "portfolio-plan",
+   "script": "scripts/global_plan.py",
    "status": "ok",
    "reason": "",
    "hint": "",
@@ -3148,11 +3148,11 @@
    "headlines": 0
   },
   {
-   "skill": "debt-tracker",
+   "skill": "personal-finance",
    "script": "scripts/debts.py",
    "status": "skipped",
    "reason": "no statements.json",
-   "hint": "record a statement with the debt-tracker skill",
+   "hint": "record a statement with the personal-finance skill",
    "seconds": 0.0,
    "headlines": 0
   },

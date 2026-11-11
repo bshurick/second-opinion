@@ -80,6 +80,36 @@ def test_complete_exchanges_verifier_and_writes_token_0600(auth, data) -> None:
     assert ea.load_token().oauth_token == "at"
 
 
+def test_authorize_url_percent_encodes_the_token(data) -> None:
+    # Real request tokens are base64 and carry + / =; a raw + in a query string reads as a space.
+    log: list = []
+
+    class PlusSession(FakeSession):
+        def fetch_request_token(self, url):
+            return {"oauth_token": "6qZj+AK7/J9H=", "oauth_token_secret": "s"}
+
+    a = ea.ETradeAuth(SETTINGS, session_factory=lambda **kw: PlusSession(log, **kw))
+    assert a.start()["url"] == "https://us.etrade.com/e/t/etws/authorize?key=ck&token=6qZj%2BAK7%2FJ9H%3D"
+
+
+def test_failed_verifier_drops_the_pending_link_so_the_next_start_is_new(data) -> None:
+    # 2026-11-02: a rejected code left the pending file, and the next start handed back the same dead link.
+    log: list = []
+
+    class RejectSession(FakeSession):
+        def fetch_access_token(self, url):
+            raise ValueError("Response does not contain a token: {}")
+
+    a = ea.ETradeAuth(SETTINGS, session_factory=lambda **kw: RejectSession(log, **kw))
+    a.start()
+    with pytest.raises(ea.ApiError) as ei:
+        a.complete("x10JH7")
+    assert "new link" in str(ei.value)
+    assert not (data / "etrade-pending.json").exists()
+    a.start()
+    assert sum(1 for e in log if e[0] == "request_token") == 2
+
+
 def test_start_missing_package_propagates_as_import_error(monkeypatch, data) -> None:
     monkeypatch.setitem(sys.modules, "requests_oauthlib", None)
     auth = ea.ETradeAuth(SETTINGS)

@@ -3,7 +3,7 @@
 
     python exposure.py < bets.json
 
-Input: {"as_of", "book": <portfolio-snapshot snapshot.py output>, "risk": <risk-analysis stress.py
+Input: {"as_of", "book": <portfolio-analysis snapshot.py output>, "risk": <risk-analysis stress.py
 output, optional>, "income": [{"id", "name", "annual"}] (optional), "bets": [{"id", "name", "belief",
 "verdict": "holding"|"contested"|"weakening"|"open",
 "links": [{"symbol", "share": above 0 to 1, "shock": -1 to 1, "why", "source", "date"}],

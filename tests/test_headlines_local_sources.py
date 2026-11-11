@@ -61,8 +61,8 @@ def test_debt_past_due_due_soon_utilization_and_stale() -> None:
          "minimum_payment": 2900.0, "balance": 420000.0, "apr": 0.0475, "monthly_interest_run_rate": 1662.5, "period_end": "2026-07-05"},
         {"id": "auto", "name": "Auto loan", "due_date": "2026-09-30", "days_to_due": 16, "utilization": None, "statement_age_days": 5, "flags": []}]}}
     hs = DB.extract(res, CTX)
-    assert [h["key"] for h in hs] == ["debt-tracker:PAST_DUE:-:amex:2026-09-12", "debt-tracker:DUE_SOON:-:chase:2026-09-19",
-                                       "debt-tracker:HIGH_UTILIZATION:-:chase", "debt-tracker:STALE:-:mortgage"]
+    assert [h["key"] for h in hs] == ["personal-finance:PAST_DUE:-:amex:2026-09-12", "personal-finance:DUE_SOON:-:chase:2026-09-19",
+                                       "personal-finance:HIGH_UTILIZATION:-:chase", "personal-finance:STALE:-:mortgage"]
     assert hs[0]["severity"] == "alert" and hs[0]["title"] == "Amex Gold payment was due 2026-09-12 (2 days ago)"
     assert hs[1]["severity"] == "alert" and hs[1]["title"] == "Chase Sapphire payment is due 2026-09-19 (5 days)"
     assert hs[2]["severity"] == "notice" and hs[2]["title"] == "Chase Sapphire utilization is 42.0%"

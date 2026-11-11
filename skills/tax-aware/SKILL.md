@@ -73,13 +73,13 @@ Run with the Bash tool.
 |---|---|---|
 | 2 | Empty ledger or bad flags. For `render.py`: the input is not a tax result. | `error` |
 | 5 | Corrupt ledger | `hint` |
-| 6 | Python dependencies missing | the error, and say the setup skill repairs it |
+| 6 | Python dependencies missing | the error, and say the get-started skill repairs it |
 
 ## Steps
 
 **The user asks about their tax position, a sale, or harvesting**
 
-When the question spans several years or plans, end the reply with one line: a deep review is available and sends about five research subagents.
+When the question spans several years or plans, in standard depth, end the reply with one line: a deep review is available and sends about five research subagents.
 
 1. Settle the rates.
    - If the user has stated their marginal rates, pass them with the rate flags.
@@ -104,7 +104,7 @@ When the question spans several years or plans, end the reply with one line: a d
 
 **The user asks for a deep review, or to compare multi-year plans**
 
-Run this only when the person asks for a deep review or for depth.
+Run this when the person asks for a deep review or for depth, or when the session's depth rule makes the deep review the default.
 
 1. Make `DIR/deep-tax/` and its `baseline/` and `research/` folders, where DIR is the session scratchpad. Write `tax-report.py` to `baseline/tax-report.json`. If the ledger is empty, hand off to statement-import, as above.
 2. Ask once for what only the person knows, and write it to `income.json`: filing status, expected ordinary income and withholding for each year, Traditional and Roth balances with any after-tax basis, the years to cover, and their exit-rate and growth assumptions. Never look up or guess a bracket or income. Without income for a year, stop and say the comparison needs it.

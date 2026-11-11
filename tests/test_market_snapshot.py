@@ -1,4 +1,4 @@
-"""Yahoo helpers used by the portfolio-snapshot skill: batched day changes, the
+"""Yahoo helpers used by the portfolio-analysis skill: batched day changes, the
 on-disk sector cache, and next earnings / ex-dividend dates."""
 from __future__ import annotations
 

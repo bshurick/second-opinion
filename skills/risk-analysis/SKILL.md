@@ -72,7 +72,7 @@ Measures the risk of the connected accounts from price history and stresses it a
 
 **Other skills**
 
-Changing the portfolio in response belongs to the rebalancing or portfolio-analysis skills.
+Changing the portfolio in response belongs to the portfolio-plan or portfolio-analysis skills.
 
 ## Scripts
 

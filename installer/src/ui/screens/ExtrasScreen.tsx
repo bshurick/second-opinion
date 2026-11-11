@@ -10,7 +10,6 @@ interface Props {
   initial: ExtrasState;
   onDone: (state: ExtrasState) => void;
   /** Opens the full per-skill picker; the `c` key only works when this is given. */
-  onCustomize?: (state: ExtrasState) => void;
   onCancel?: () => void;
 }
 
@@ -18,7 +17,7 @@ interface Props {
  * Optional extras in plain words, each at its default until the user changes it. Each row says
  * what the extra does and, when it has one, what it costs (an extra step, a longer reply).
  */
-export function ExtrasScreen({ extras, initial, onDone, onCustomize, onCancel }: Props) {
+export function ExtrasScreen({ extras, initial, onDone, onCancel }: Props) {
   const [state, setState] = useState<ExtrasState>(() => Object.fromEntries(extras.map((e) => [e.key, Boolean(initial[e.key])])));
   const [cursor, setCursor] = useState(0);
   // Ink swaps the input handler after each render, so a key can arrive at the previous one. It reads these, not the state.
@@ -38,13 +37,11 @@ export function ExtrasScreen({ extras, initial, onDone, onCustomize, onCancel }:
       latest.current.state = next;
       setState(next);
     } else if (key.return) onDone(state);
-    else if (input === "c" && onCustomize) onCustomize(state);
     else if (key.escape && onCancel) onCancel();
   });
 
   const on = extras.filter((e) => state[e.key]).length;
   const hints: [string, string][] = [["↑↓", "move"], ["space", "toggle"], ["enter", "continue"]];
-  if (onCustomize) hints.push(["c", "customize every skill"]);
   if (onCancel) hints.push(["esc", "back"]);
 
   return (

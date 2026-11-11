@@ -26,7 +26,7 @@ export function parseExtrasFlag(raw: string, extras: Extra[]): Record<string, bo
  * declared default. A missing record (or one written before extras existed) leaves them at
  * their defaults, which are off for every non-skill extra; hooks/common.sh reads it the same way.
  */
-export function nonSkillDefaults(extras: Extra[], previous: InstalledRecord | null): Record<string, boolean> {
+export function nonSkillDefaults(extras: Extra[], previous: Pick<InstalledRecord, "extras"> | null): Record<string, boolean> {
   const out: Record<string, boolean> = {};
   for (const e of extras) {
     if (e.skill) continue;

@@ -2,7 +2,7 @@
 """Usage: build_screenshots.py [--only NAME ...] [--chrome PATH] [--keep-html DIR]
 
 Renders the README screenshots in ``docs/images/`` from the fictional sample results in this
-directory. Every page goes through the skill's real ``render.py``; nothing is fetched and no user
+directory. Every page goes through the skill's real renderer; nothing is fetched and no user
 data is read, so the images show the made-up household in ``HOUSEHOLD.md`` and nothing else.
 
 Each page is wrapped in a light-theme document, captured with headless Google Chrome at 1280 CSS px
@@ -32,21 +32,21 @@ SCALE = 2
 WINDOW_HEIGHT = 7000  # tall enough for every page; trailing background is trimmed
 PAGE_BG = (0xF7, 0xF7, 0xF5)  # --page in the light theme (lib/second_opinion/page.py)
 
-# name -> (skill, render.py arguments relative to this directory, crop height in CSS px or None)
+# name -> (renderer under skills/, its arguments relative to this directory, crop height in CSS px or None)
 PAGES: dict[str, tuple[str, list[str], int | None]] = {
-    "portfolio-brief": ("portfolio-snapshot", ["--in", "portfolio-brief.json", "--summary", "portfolio-brief-summary.json"], 2290),
-    "risk-analysis": ("risk-analysis", ["--in", "risk-analysis.json"], 2260),
-    "valuation": ("valuation", ["--in", "valuation.json"], 1380),
-    "retirement": ("retirement", ["--in", "retirement.json"], 1780),
-    "rebalancing": ("rebalancing", ["--in", "rebalancing.json"], 1660),
-    "spending": ("spending", ["--in", "spending-month.json", "--changes", "spending-changes.json"], 1860),
+    "portfolio-brief": ("portfolio-analysis/scripts/render_brief.py", ["--in", "portfolio-brief.json", "--summary", "portfolio-brief-summary.json"], 2290),
+    "risk-analysis": ("risk-analysis/scripts/render.py", ["--in", "risk-analysis.json"], 2260),
+    "valuation": ("valuation/scripts/render.py", ["--in", "valuation.json"], 1380),
+    "retirement": ("retirement/scripts/render.py", ["--in", "retirement.json"], 1780),
+    "rebalancing": ("portfolio-plan/scripts/render.py", ["--in", "rebalancing.json"], 1660),
+    "spending": ("spending/scripts/render.py", ["--in", "spending-month.json", "--changes", "spending-changes.json"], 1860),
     # Uncropped, unlike every page above. This skill's point is that each figure ships
     # with the disclosure that bounds it, and those run to the end: the circularity note
     # at 3321 and the whole assumptions section from 3439 to 5931. Cropping at the ~2290
     # the other pages use would have shown the numbers and none of the caveats, and even
     # 4200 cut the assumptions off mid-section. It sits in a collapsed block, so the
     # length costs the reader nothing until they open it.
-    "fixed-income": ("fixed-income", ["--in", "fixed-income.json"], None),
+    "fixed-income": ("fixed-income/scripts/render.py", ["--in", "fixed-income.json"], None),
 }
 
 CHROME_CANDIDATES = [
@@ -68,15 +68,15 @@ def find_chrome(explicit: str | None) -> str:
     sys.exit("Google Chrome not found; pass --chrome PATH or set CHROME")
 
 
-def render_page(skill: str, args: list[str], out: Path) -> None:
-    script = PLUGIN_ROOT / "skills" / skill / "scripts" / "render.py"
+def render_page(renderer: str, args: list[str], out: Path) -> None:
+    script = PLUGIN_ROOT / "skills" / renderer
     resolved = [str(HERE / a) if a.endswith(".json") else a for a in args]
     proc = subprocess.run(
         [sys.executable, str(script), *resolved, "--out", str(out)],
         capture_output=True, text=True, cwd=PLUGIN_ROOT,
     )
     if proc.returncode != 0:
-        sys.exit(f"{skill} render.py exited {proc.returncode}: {proc.stdout.strip()} {proc.stderr.strip()}")
+        sys.exit(f"{renderer} exited {proc.returncode}: {proc.stdout.strip()} {proc.stderr.strip()}")
 
 
 def wrap_light(fragment: Path, page: Path) -> None:
@@ -141,9 +141,9 @@ def main(argv: list[str] | None = None) -> int:
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)
         for name in names:
-            skill, args, crop = PAGES[name]
+            renderer, args, crop = PAGES[name]
             fragment, page, raw = work / f"{name}.fragment.html", work / f"{name}.html", work / f"{name}.raw.png"
-            render_page(skill, args, fragment)
+            render_page(renderer, args, fragment)
             wrap_light(fragment, page)
             if a.keep_html:
                 Path(a.keep_html).mkdir(parents=True, exist_ok=True)

@@ -8,7 +8,7 @@ from datetime import date, timedelta
 import pytest
 from fakes import ACCOUNTS, READ_AUTH, TRADE_AUTH, FakeSdk, fake_hub
 from scripts_util import load_script, run_json
-from second_opinion import client, market
+from second_opinion import client, market, settings
 from second_opinion.brokers import router
 from scripts_util import PLUGIN_ROOT
 from page_dom import assert_page_help, render_and_audit, requires_chrome
@@ -31,7 +31,7 @@ def sdk(monkeypatch, tmp_path):
 
 
 def test_plan_with_inline_targets_across_accounts(sdk, capsys, tmp_path) -> None:
-    rc, out = run_json(load_script("rebalancing/scripts/plan.py"), ["--target", "VTI=0.6", "--target", "BND=0.3", "--target", "CASH=0.1"], capsys)
+    rc, out = run_json(load_script("portfolio-plan/scripts/global_plan.py"), ["--target", "VTI=0.6", "--target", "BND=0.3", "--target", "CASH=0.1"], capsys)
     assert rc == 0, out
     assert out["total_value"] == 8000.0 and out["cash_after"] == 800.0
     assert [(t["symbol"], t["side"], t["value"]) for t in out["trades"]] == [("VTI", "SELL", 1200.0), ("BND", "BUY", 900.0)]
@@ -47,34 +47,65 @@ def test_plan_with_inline_targets_across_accounts(sdk, capsys, tmp_path) -> None
     assert out["routing"]["est_tax"] == 57.6 and out["routing"]["est_tax_pro_rata"] == 57.6
 
 
-def test_plan_saves_and_reuses_targets_file(sdk, capsys, tmp_path) -> None:
-    rc, out = run_json(load_script("rebalancing/scripts/plan.py"), ["--target", "VTI=0.6", "--target", "BND=0.3", "--target", "CASH=0.1", "--save"], capsys)
-    assert rc == 0 and json.loads((tmp_path / "targets.json").read_text()) == {"targets": {"VTI": 0.6, "BND": 0.3, "CASH": 0.1}, "classes": {}}
-    rc, out = run_json(load_script("rebalancing/scripts/plan.py"), ["--contribute", "2000", "--no-sells"], capsys)
-    assert rc == 0 and out["sources"]["targets"] == str(tmp_path / "targets.json") and out["mode"] == "contribution"
+def run_plan(argv: list[str]) -> int:
+    return load_script("portfolio-plan/scripts/global_plan.py").main(argv)
+
+
+def test_rebalance_save_writes_settings(sdk, tmp_path, capsys) -> None:
+    assert run_plan(["--target", "VTI=0.6", "--target", "BND=0.4", "--save"]) == 0
+    assert settings.get("plan.targets") == {"VTI": 0.6, "BND": 0.4}
+    assert not (tmp_path / "targets.json").exists()
+
+
+def test_plan_saves_and_reuses_targets(sdk, capsys, tmp_path) -> None:
+    rc, out = run_json(load_script("portfolio-plan/scripts/global_plan.py"), ["--target", "VTI=0.6", "--target", "BND=0.3", "--target", "CASH=0.1", "--class", "vti=VTI", "--save"], capsys)
+    assert rc == 0 and settings.get("plan.targets") == {"VTI": 0.6, "BND": 0.3, "CASH": 0.1} and settings.get("plan.classes") == {"VTI": "VTI"}
+    assert [h["key"] for h in settings.load()["history"]] == ["plan.targets", "plan.classes"]
+    rc, out = run_json(load_script("portfolio-plan/scripts/global_plan.py"), ["--contribute", "2000", "--no-sells"], capsys)
+    assert rc == 0 and out["sources"]["targets"] == str(tmp_path / "settings.json") and out["mode"] == "contribution"
     assert [(t["symbol"], t["side"], t["units"]) for t in out["trades"]] == [("BND", "BUY", 30.0)]
+
+
+def test_plan_reads_an_old_targets_file_through_settings(sdk, capsys, tmp_path) -> None:
+    (tmp_path / "targets.json").write_text(json.dumps({"targets": {"stocks": 0.7, "bonds": 0.3}, "classes": {"vti": "stocks", "BND": "bonds"}}))
+    rc, out = run_json(load_script("portfolio-plan/scripts/global_plan.py"), [], capsys)
+    assert rc == 0, out
+    assert {r["key"] for r in out["allocation"]} == {"stocks", "bonds", "CASH"}  # class keys upper-cased: vti counts as stocks
+    assert out["sources"]["targets"] == str(tmp_path / "settings.json")
+    assert (tmp_path / "targets.json.migrated").is_file() and settings.get("plan.targets") == {"stocks": 0.7, "bonds": 0.3}
+
+
+def test_plan_tax_rates_default_from_settings(sdk, capsys, tmp_path) -> None:
+    args = ["--target", "VTI=0.6", "--target", "BND=0.3", "--target", "CASH=0.1"]
+    rc, out = run_json(load_script("portfolio-plan/scripts/global_plan.py"), args, capsys)
+    assert next(t for t in out["trades"] if t["symbol"] == "VTI")["est_tax"] == 57.6  # 240 gain at 24%
+    settings.set_value("taxes.short_term_rate", 0.32)
+    rc, out = run_json(load_script("portfolio-plan/scripts/global_plan.py"), args, capsys)
+    assert next(t for t in out["trades"] if t["symbol"] == "VTI")["est_tax"] == 76.8
+    rc, out = run_json(load_script("portfolio-plan/scripts/global_plan.py"), [*args, "--short-term", "0.1"], capsys)
+    assert next(t for t in out["trades"] if t["symbol"] == "VTI")["est_tax"] == 24.0
 
 
 def test_plan_targets_file_with_classes(sdk, capsys, tmp_path) -> None:
     f = tmp_path / "my-targets.json"
     f.write_text(json.dumps({"targets": {"stocks": 0.7, "bonds": 0.3}, "classes": {"VTI": "stocks", "BND": "bonds"}}))
-    rc, out = run_json(load_script("rebalancing/scripts/plan.py"), ["--targets", str(f), "--whole-shares"], capsys)
+    rc, out = run_json(load_script("portfolio-plan/scripts/global_plan.py"), ["--targets", str(f), "--whole-shares"], capsys)
     assert rc == 0 and {r["key"] for r in out["allocation"]} == {"stocks", "bonds", "CASH"}
     assert all(t["units"] == float(int(t["units"])) for t in out["trades"])
 
 
 def test_plan_uses_yahoo_prices_when_available(sdk, monkeypatch, capsys) -> None:
     monkeypatch.setattr(market, "day_changes", lambda symbols, hub=None: {"VTI": {"price": 110.0, "previous_close": 100.0}, "BND": {"price": 50.0, "previous_close": 50.0}})
-    rc, out = run_json(load_script("rebalancing/scripts/plan.py"), ["--target", "VTI=0.6", "--target", "BND=0.3", "--target", "CASH=0.1"], capsys)
+    rc, out = run_json(load_script("portfolio-plan/scripts/global_plan.py"), ["--target", "VTI=0.6", "--target", "BND=0.3", "--target", "CASH=0.1"], capsys)
     assert rc == 0 and out["total_value"] == 8600.0 and out["sources"]["prices"] == "yahoo"
 
 
 def test_plan_errors(sdk, capsys, monkeypatch) -> None:
-    rc, out = run_json(load_script("rebalancing/scripts/plan.py"), [], capsys)
-    assert rc == 2 and "no targets" in out["error"]
-    rc, out = run_json(load_script("rebalancing/scripts/plan.py"), ["--target", "VTI=1", "--account", "nope"], capsys)
+    rc, out = run_json(load_script("portfolio-plan/scripts/global_plan.py"), [], capsys)
+    assert rc == 2 and "no targets" in out["error"] and "settings.json" in out["error"]
+    rc, out = run_json(load_script("portfolio-plan/scripts/global_plan.py"), ["--target", "VTI=1", "--account", "nope"], capsys)
     assert rc == 2 and "unknown account" in out["error"]
-    rc, out = run_json(load_script("rebalancing/scripts/plan.py"), ["--target", "VTI=0.5"], capsys)
+    rc, out = run_json(load_script("portfolio-plan/scripts/global_plan.py"), ["--target", "VTI=0.5"], capsys)
     assert rc == 2 and "sum to 1" in out["error"]
 
 
@@ -83,7 +114,7 @@ def test_rebalance_math_script_from_stdin(capsys, monkeypatch) -> None:
     import sys
 
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"positions": [{"symbol": "VTI", "units": 60, "price": 100}, {"symbol": "BND", "units": 30, "price": 50}], "cash": 500, "targets": {"VTI": 0.6, "BND": 0.3, "CASH": 0.1}})))
-    load_script("rebalancing/scripts/rebalance.py").main()
+    load_script("portfolio-plan/scripts/rebalance.py").main()
     assert json.loads(capsys.readouterr().out)["cash_after"] == 800.0
 
 
@@ -104,7 +135,7 @@ def test_plan_uses_ledger_lots_with_real_terms(sdk, capsys, tmp_path) -> None:
         {"date": recent, "type": "BUY", "symbol": "VTI", "units": 20, "price": 95.0, "amount": -1900.0, "account_id": "acc-1"},
         {"date": recent, "type": "BUY", "symbol": "BND", "units": 30, "price": 51.0, "amount": -1530.0, "account_id": "acc-2"},
     ])
-    rc, out = run_json(load_script("rebalancing/scripts/plan.py"), ["--target", "VTI=0.6", "--target", "BND=0.3", "--target", "CASH=0.1"], capsys)
+    rc, out = run_json(load_script("portfolio-plan/scripts/global_plan.py"), ["--target", "VTI=0.6", "--target", "BND=0.3", "--target", "CASH=0.1"], capsys)
     assert rc == 0, out
     assert out["sources"]["lots"] == "ledger" and out["lot_sources"] == {"VTI": "ledger", "BND": "ledger"}
     vti = next(t for t in out["trades"] if t["symbol"] == "VTI")
@@ -118,7 +149,7 @@ def test_plan_split_entry_rescales_units_and_cost(sdk, capsys, tmp_path) -> None
         {"date": "2024-06-01", "type": "BUY", "symbol": "VTI", "units": 30, "price": 100.0, "amount": -3000.0, "account_id": "acc-1"},
         {"date": "2024-07-01", "type": "SPLIT", "symbol": "VTI", "units": None, "amount": 0, "split_ratio": 2.0, "account_id": "acc-1"},
     ])
-    rc, out = run_json(load_script("rebalancing/scripts/plan.py"), ["--target", "VTI=0.6", "--target", "BND=0.3", "--target", "CASH=0.1"], capsys)
+    rc, out = run_json(load_script("portfolio-plan/scripts/global_plan.py"), ["--target", "VTI=0.6", "--target", "BND=0.3", "--target", "CASH=0.1"], capsys)
     assert rc == 0, out
     # 30 units @100 -> 60 units @50: units match the broker, cost basis unchanged
     assert out["lot_sources"] == {"VTI": "ledger", "BND": "snaptrade"}
@@ -131,7 +162,7 @@ def test_plan_falls_back_when_ledger_units_do_not_match(sdk, capsys, tmp_path) -
         {"date": "2024-06-01", "type": "BUY", "symbol": "VTI", "units": 60, "price": 70.0, "amount": -4200.0, "account_id": "acc-1"},
         {"date": "2025-08-03", "type": "BUY", "symbol": "BND", "units": 10, "price": 51.0, "amount": -510.0, "account_id": "acc-2"},
     ])
-    rc, out = run_json(load_script("rebalancing/scripts/plan.py"), ["--target", "VTI=0.6", "--target", "BND=0.3", "--target", "CASH=0.1"], capsys)
+    rc, out = run_json(load_script("portfolio-plan/scripts/global_plan.py"), ["--target", "VTI=0.6", "--target", "BND=0.3", "--target", "CASH=0.1"], capsys)
     assert rc == 0, out
     # VTI's replayed 60 units match the broker; BND's 10 do not
     assert out["sources"]["lots"] == "mixed" and out["lot_sources"] == {"VTI": "ledger", "BND": "snaptrade"}
@@ -151,7 +182,7 @@ def test_plan_routing_prefers_the_roth_for_sells(capsys, monkeypatch, tmp_path) 
     monkeypatch.setattr(client, "get_client", lambda settings=None: fake)
     monkeypatch.setattr(router, "load", lambda settings=None: fake_hub(fake))
     monkeypatch.setattr(market, "day_changes", lambda symbols, hub=None: {})
-    rc, out = run_json(load_script("rebalancing/scripts/plan.py"), ["--target", "VTI=0.5", "--target", "CASH=0.5"], capsys)
+    rc, out = run_json(load_script("portfolio-plan/scripts/global_plan.py"), ["--target", "VTI=0.5", "--target", "CASH=0.5"], capsys)
     assert rc == 0, out
     # total 10500, VTI target 5250 -> sell 4750: roth absorbs 4000, taxable 750
     assert [(t["value"], t["account"]) for t in out["trades"]] == [(4000.0, "acc-2"), (750.0, "acc-1")]
@@ -168,7 +199,7 @@ def test_plan_tax_flags_override_the_classification(capsys, monkeypatch, tmp_pat
     monkeypatch.setattr(client, "get_client", lambda settings=None: fake)
     monkeypatch.setattr(router, "load", lambda settings=None: fake_hub(fake))
     monkeypatch.setattr(market, "day_changes", lambda symbols, hub=None: {})
-    rc, out = run_json(load_script("rebalancing/scripts/plan.py"), ["--target", "VTI=0.6", "--target", "BND=0.3", "--target", "CASH=0.1", "--tax-advantaged", "acc-1"], capsys)
+    rc, out = run_json(load_script("portfolio-plan/scripts/global_plan.py"), ["--target", "VTI=0.6", "--target", "BND=0.3", "--target", "CASH=0.1", "--tax-advantaged", "acc-1"], capsys)
     assert rc == 0, out
     assert out["routing"]["accounts"] == {"acc-1": "tax_advantaged", "acc-2": "tax_advantaged"}
     vti = next(t for t in out["trades"] if t["side"] == "SELL")
@@ -193,7 +224,7 @@ _HIST = {
 
 def test_plan_suggest_bands_from_volatility(sdk, monkeypatch, capsys) -> None:
     monkeypatch.setattr(market, "close_histories", lambda symbols, start: _HIST)
-    rc, out = run_json(load_script("rebalancing/scripts/plan.py"), ["--target", "VTI=0.6", "--target", "BND=0.3", "--target", "CASH=0.1", "--suggest-bands"], capsys)
+    rc, out = run_json(load_script("portfolio-plan/scripts/global_plan.py"), ["--target", "VTI=0.6", "--target", "BND=0.3", "--target", "CASH=0.1", "--suggest-bands"], capsys)
     assert rc == 0, out
     bands = {b["key"]: b for b in out["suggested_bands"]}
     assert set(bands) == {"VTI", "BND"}  # CASH has no volatility
@@ -206,7 +237,7 @@ def test_plan_suggest_bands_from_volatility(sdk, monkeypatch, capsys) -> None:
 
 def test_plan_suggest_bands_degrades_without_histories(sdk, monkeypatch, capsys) -> None:
     monkeypatch.setattr(market, "close_histories", lambda symbols, start: {})
-    rc, out = run_json(load_script("rebalancing/scripts/plan.py"), ["--target", "VTI=0.6", "--target", "BND=0.3", "--target", "CASH=0.1", "--suggest-bands"], capsys)
+    rc, out = run_json(load_script("portfolio-plan/scripts/global_plan.py"), ["--target", "VTI=0.6", "--target", "BND=0.3", "--target", "CASH=0.1", "--suggest-bands"], capsys)
     assert rc == 0 and out.get("suggested_bands") == []
 
 
@@ -233,7 +264,7 @@ def test_render_builds_a_self_contained_page(tmp_path, capsys) -> None:
     src = tmp_path / "plan.json"
     src.write_text(json.dumps(plan))
     out = tmp_path / "page.html"
-    rc, res = run_json(load_script("rebalancing/scripts/render.py"), ["--in", str(src), "--out", str(out)], capsys)
+    rc, res = run_json(load_script("portfolio-plan/scripts/render.py"), ["--in", str(src), "--out", str(out)], capsys)
     assert rc == 0 and res["out"] == str(out) and res["trades"] == 2 and res["breaches"] == 2 and res["flags"] == 2
     html = out.read_text()
     assert html.startswith("<title>Rebalancing Plan</title>") and "<html" not in html and "<body" not in html
@@ -254,21 +285,21 @@ def test_render_builds_a_self_contained_page(tmp_path, capsys) -> None:
 def test_render_rejects_non_plan_input(tmp_path, capsys) -> None:
     src = tmp_path / "bad.json"
     src.write_text('{"portfolio": {}}')
-    rc, res = run_json(load_script("rebalancing/scripts/render.py"), ["--in", str(src), "--out", str(tmp_path / "x.html")], capsys)
+    rc, res = run_json(load_script("portfolio-plan/scripts/render.py"), ["--in", str(src), "--out", str(tmp_path / "x.html")], capsys)
     assert rc == 2 and "rebalance.py result" in res["error"]
     src.write_text("not json")
-    rc, res = run_json(load_script("rebalancing/scripts/render.py"), ["--in", str(src), "--out", str(tmp_path / "x.html")], capsys)
+    rc, res = run_json(load_script("portfolio-plan/scripts/render.py"), ["--in", str(src), "--out", str(tmp_path / "x.html")], capsys)
     assert rc == 2 and "could not read" in res["error"]
 
 
 @requires_chrome
 def test_every_card_explains_itself(tmp_path, capsys) -> None:
-    a = render_and_audit("rebalancing/scripts/render.py", ["--in", str(PLUGIN_ROOT / "docs/samples/rebalancing.json")], tmp_path, capsys)
+    a = render_and_audit("portfolio-plan/scripts/render.py", ["--in", str(PLUGIN_ROOT / "docs/samples/rebalancing.json")], tmp_path, capsys)
     assert_page_help(a)
 
 
 def test_term_is_long_only_after_the_one_year_anniversary() -> None:
-    plan = load_script("rebalancing/scripts/plan.py")
+    plan = load_script("portfolio-plan/scripts/global_plan.py")
     # 366 days across Feb 29 2024 is still the anniversary itself: short-term.
     assert plan._term("2023-03-01", date(2024, 3, 1)) == "short"
     assert plan._term("2023-03-01", date(2024, 3, 2)) == "long"
@@ -278,7 +309,7 @@ def test_term_is_long_only_after_the_one_year_anniversary() -> None:
     assert plan._term("2024-06-10", date(2025, 6, 11)) == "long"
 
 
-REB = "rebalancing/scripts/rebalance.py"
+REB = "portfolio-plan/scripts/rebalance.py"
 
 
 def test_new_position_gets_a_buy() -> None:
@@ -318,7 +349,7 @@ def test_class_sells_default_is_still_pro_rata() -> None:
 
 
 def test_read_book_splits_cash_by_account(sdk) -> None:
-    plan = load_script("rebalancing/scripts/plan.py")
+    plan = load_script("portfolio-plan/scripts/global_plan.py")
     hub = router.load()
     book = plan.read_book(hub, hub.list_accounts(), date(2026, 10, 29))
     assert book["cash_by_account"] == {"acc-1": 300.0, "acc-2": 200.0}
@@ -327,6 +358,144 @@ def test_read_book_splits_cash_by_account(sdk) -> None:
 
 
 def test_replayed_lots_carry_acquired_date() -> None:
-    plan = load_script("rebalancing/scripts/plan.py")
+    plan = load_script("portfolio-plan/scripts/global_plan.py")
     lots = plan._replay_lots([{"type": "BUY", "symbol": "VTI", "units": 5, "price": 10, "date": "2025-03-04", "account_id": "a"}], date(2026, 10, 29))
     assert lots["VTI"][0]["acquired"] == "2025-03-04"
+
+
+def test_plan_save_from_saved_targets_adds_no_history(sdk, capsys, tmp_path) -> None:
+    settings.set_value("plan.targets", {"VTI": 0.6, "BND": 0.3, "CASH": 0.1})
+    rc, out = run_json(load_script("portfolio-plan/scripts/global_plan.py"), ["--save"], capsys)
+    assert rc == 0, out
+    assert [h["key"] for h in settings.load()["history"]] == ["plan.targets"]
+
+
+def test_plan_missing_targets_file_explains_the_options(sdk, capsys, tmp_path) -> None:
+    rc, out = run_json(load_script("portfolio-plan/scripts/global_plan.py"), ["--targets", str(tmp_path / "nope.json")], capsys)
+    assert rc == 2 and "no targets" in out["error"] and "--target KEY=WEIGHT" in out["error"] and "--save" in out["error"]
+
+
+# --- sleeves and roles in the global plan --------------------------------------------------------
+
+SLEEVE_POSITIONS = {
+    "acc-1": [{"symbol": {"symbol": {"symbol": "VTI"}}, "units": 40, "price": 100.0, "average_purchase_price": 80.0},
+              {"symbol": {"symbol": {"symbol": "AAA"}}, "units": 10, "price": 50.0, "average_purchase_price": 40.0},
+              {"symbol": {"symbol": {"symbol": "BBB"}}, "units": 10, "price": 50.0, "average_purchase_price": 40.0},
+              {"symbol": {"symbol": {"symbol": "AMZN"}}, "units": 5, "price": 200.0, "average_purchase_price": 100.0}],
+    "acc-2": [{"symbol": {"symbol": {"symbol": "BND"}}, "units": 30, "price": 50.0, "average_purchase_price": 52.0},
+              {"symbol": {"symbol": {"symbol": "CCC"}}, "units": 10, "price": 50.0, "average_purchase_price": 40.0}],
+}
+SLEEVE_INFO = {"VTI": {"quote_type": "ETF"}, "BND": {"quote_type": "ETF"}, "AAA": {"quote_type": "EQUITY", "sector": "Healthcare"},
+               "BBB": {"quote_type": "EQUITY", "sector": "Industrials"}, "CCC": {"quote_type": "EQUITY", "sector": "Energy"},
+               "AMZN": {"quote_type": "EQUITY", "sector": "Consumer Cyclical"}}
+
+
+@pytest.fixture
+def sleeve_sdk(monkeypatch, tmp_path):
+    monkeypatch.setenv("SECOND_OPINION_DATA", str(tmp_path))
+    fake = FakeSdk(list_user_accounts=ACCOUNTS, list_brokerage_authorizations=[TRADE_AUTH, READ_AUTH],
+                   get_user_account_positions=lambda account_id: SLEEVE_POSITIONS[account_id],
+                   get_user_account_balance=lambda account_id: BALANCES[account_id])
+    monkeypatch.setattr(client, "get_client", lambda settings=None: fake)
+    monkeypatch.setattr(router, "load", lambda settings=None: fake_hub(fake))
+    monkeypatch.setattr(market, "day_changes", lambda symbols, hub=None: {})
+    monkeypatch.setattr(market, "sectors", lambda symbols, cache_path=None: {s: SLEEVE_INFO.get(s, {}) for s in symbols})
+    return fake
+
+
+def test_role_decides_taxability(sdk, capsys) -> None:
+    settings.set_value("accounts.acc-2.role", "trading")          # a Roth by raw type, saved as trading
+    settings.set_value("accounts.acc-1.role", "retirement")
+    rc, out = run_json(load_script("portfolio-plan/scripts/global_plan.py"), ["--target", "VTI=0.6", "--target", "BND=0.3", "--target", "CASH=0.1"], capsys)
+    assert rc == 0, out
+    assert out["routing"]["accounts"] == {"acc-1": "tax_advantaged", "acc-2": "taxable"}
+
+
+def test_role_savings_is_taxable_and_no_role_keeps_the_raw_type(sdk, capsys) -> None:
+    settings.set_value("accounts.acc-1.role", "savings")
+    rc, out = run_json(load_script("portfolio-plan/scripts/global_plan.py"), ["--target", "VTI=0.6", "--target", "BND=0.3", "--target", "CASH=0.1"], capsys)
+    assert rc == 0, out
+    assert out["routing"]["accounts"] == {"acc-1": "taxable", "acc-2": "tax_advantaged"}
+
+
+def test_picks_sleeve_is_one_line(sleeve_sdk, capsys) -> None:
+    settings.set_value("plan.sleeves.EMPLOYER.members", ["AMZN"])
+    args = ["--target", "VTI=0.5", "--target", "BND=0.2", "--target", "PICKS=0.1", "--target", "EMPLOYER=0.1", "--target", "CASH=0.1"]
+    rc, out = run_json(load_script("portfolio-plan/scripts/global_plan.py"), args, capsys)
+    assert rc == 0, out
+    rows = {r["key"]: r for r in out["allocation"]}
+    assert set(rows) == {"VTI", "BND", "PICKS", "EMPLOYER", "CASH"}
+    assert rows["PICKS"]["value"] == 1000.0 and sorted(rows["PICKS"]["members"]) == ["AAA", "BBB"]   # CCC sits in the Roth
+    assert rows["EMPLOYER"]["value"] == 1000.0
+    assert any(f["code"] == "UNMAPPED" and "CCC" in f["message"] for f in out["flags"])
+
+
+def test_explicit_class_wins_over_the_sleeve(sleeve_sdk, capsys) -> None:
+    settings.set_value("plan.sleeves.EMPLOYER.members", ["AMZN"])   # no EMPLOYER target: AMZN is left untouched
+    args = ["--target", "VTI=0.5", "--target", "BND=0.2", "--target", "PICKS=0.2", "--target", "CASH=0.1", "--class", "BBB=VTI"]
+    rc, out = run_json(load_script("portfolio-plan/scripts/global_plan.py"), args, capsys)
+    assert rc == 0, out
+    rows = {r["key"]: r for r in out["allocation"]}
+    assert rows["PICKS"]["value"] == 500.0 and rows["VTI"]["value"] == 4500.0
+
+
+def test_sleeve_key_with_no_members_flags_no_holdings(sdk, capsys, monkeypatch) -> None:
+    monkeypatch.setattr(market, "sectors", lambda symbols, cache_path=None: {s: {"quote_type": "ETF"} for s in symbols})
+    args = ["--target", "VTI=0.5", "--target", "BND=0.3", "--target", "PICKS=0.1", "--target", "CASH=0.1", "--contribute", "5000", "--no-sells"]
+    rc, out = run_json(load_script("portfolio-plan/scripts/global_plan.py"), args, capsys)
+    assert rc == 0, out
+    assert any(f["code"] == "NO_HOLDINGS" and "PICKS" in f["message"] for f in out["flags"])
+    assert not any(t["symbol"] == "PICKS" for t in out["trades"])
+
+
+def test_run_overrides_cash_contribution_and_targets(sdk) -> None:
+    gp = load_script("portfolio-plan/scripts/global_plan.py")
+    out = gp.run(["--no-sells"], overrides={"targets": {"VTI": 0.5, "BND": 0.5}, "cash": 0.0, "contribution": 1000.0})
+    assert out["sources"]["targets"] == "overrides"
+    assert not any(t["side"] == "SELL" for t in out["trades"])
+    assert sum(t["value"] for t in out["trades"]) == pytest.approx(1000.0, abs=0.01)
+    assert out["cash_after"] == pytest.approx(0.0, abs=0.01)
+
+
+def test_render_takes_the_dispatcher_envelope(tmp_path, capsys) -> None:
+    plan = json.loads((PLUGIN_ROOT / "docs/samples/rebalancing.json").read_text())
+    src = tmp_path / "env.json"
+    src.write_text(json.dumps({"command": "rebalance", "sleeve": None, "global": plan, "trades": plan["trades"], "flags": plan["flags"]}))
+    rc, res = run_json(load_script("portfolio-plan/scripts/render.py"), ["--in", str(src), "--out", str(tmp_path / "p.html")], capsys)
+    assert rc == 0 and res["trades"] == len(plan["trades"])
+    src.write_text(json.dumps({"command": "rebalance", "no_targets": True, "global": None, "trades": []}))
+    rc, res = run_json(load_script("portfolio-plan/scripts/render.py"), ["--in", str(src), "--out", str(tmp_path / "p.html")], capsys)
+    assert rc == 2 and "no global plan" in res["error"]
+
+
+def test_saved_whole_shares_applies_to_plans(sdk, capsys) -> None:
+    from second_opinion import settings
+    plan = load_script("portfolio-plan/scripts/global_plan.py")
+    args = ["--target", "VTI=0.555", "--target", "BND=0.345", "--target", "CASH=0.1"]
+    rc, out = run_json(plan, args, capsys)
+    assert rc == 0 and any(t["units"] != int(t["units"]) for t in out["trades"])
+    settings.set_value("accounts.acc-2.whole_shares", True)
+    rc, out = run_json(plan, args, capsys)
+    assert rc == 0 and out["trades"] and all(t["units"] == int(t["units"]) for t in out["trades"])
+
+
+def test_unset_employer_vest_candidate_is_not_a_pick_in_the_global_plan(sdk, capsys, monkeypatch) -> None:
+    from second_opinion import holdings
+    monkeypatch.setitem(POSITIONS, "acc-1", POSITIONS["acc-1"] + [
+        {"symbol": {"symbol": {"symbol": "ZZZ"}}, "units": 20, "price": 25.0, "average_purchase_price": 20.0}])
+    monkeypatch.setattr(market, "sectors", lambda symbols, cache_path=None: {
+        "VTI": {"quote_type": "ETF", "sector": "ETF", "fund_sectors": {"technology": 0.3}},
+        "BND": {"quote_type": "ETF", "sector": "ETF", "fund_sectors": {}},
+        "ZZZ": {"quote_type": "EQUITY", "sector": "Utilities", "fund_sectors": None}})
+    plan = load_script("portfolio-plan/scripts/global_plan.py")
+    args = ["--target", "VTI=0.5", "--target", "BND=0.3", "--target", "PICKS=0.2"]
+    monkeypatch.setattr(holdings, "employer_candidate", lambda hub, accounts, roles, today: None)
+    rc, out = run_json(plan, args, capsys)
+    assert rc == 0, out
+    assert next(r for r in out["allocation"] if r["key"] == "PICKS")["value"] == 500.0
+    cand = {"symbol": "ZZZ", "deposits": ["2026-08-01"], "vests": ["2026-08-01"], "every_days": None, "sold_within_days": None}
+    monkeypatch.setattr(holdings, "employer_candidate", lambda hub, accounts, roles, today: cand)
+    rc, out = run_json(plan, args, capsys)
+    assert rc == 0, out
+    assert next(r for r in out["allocation"] if r["key"] == "PICKS")["value"] == 0.0
+    assert any(f["code"] == "STANDING_DEFAULT" and "ZZZ" in f["message"] for f in out["flags"])

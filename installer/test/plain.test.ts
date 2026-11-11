@@ -44,7 +44,7 @@ describe("plain driver", () => {
     expect(fs.readFileSync(path.join(environ.SECOND_OPINION_DATA, ".env"), "utf8")).toContain("SNAPTRADE_CONSUMER_KEY=secret-key-1234");
     if (process.platform !== "win32") expect(fs.statSync(path.join(environ.SECOND_OPINION_DATA, ".env")).mode & 0o777).toBe(0o600);
     expect(fs.existsSync(path.join(target, ".env"))).toBe(false); // credentials live in the data dir, which survives updates
-    expect(fs.readdirSync(path.join(target, "skills")).sort()).toEqual(["a", "b", "c", "setup"]);
+    expect(fs.readdirSync(path.join(target, "skills")).sort()).toEqual(["a", "b", "c", "get-started"]);
   });
 
   it("pulls dependencies in and requires the key they need", async () => {
