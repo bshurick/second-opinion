@@ -13,6 +13,7 @@
     "must_be_true": [
      "Margin holds"
     ],
+    "stress": false,
     "enterprise_value": 1630.14,
     "equity_value": 1430.14,
     "value_per_share": 14.3,
@@ -214,6 +215,7 @@
     "must_be_true": [
      "Rivals cut price"
     ],
+    "stress": false,
     "enterprise_value": 680.07,
     "equity_value": 480.07,
     "value_per_share": 4.8,

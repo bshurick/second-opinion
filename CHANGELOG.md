@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.7.0
+
+- deep valuation and deep picker: the research is fetched once, before any subagent starts. A research pack per company holds the SEC financials, the filing text, the earnings releases, the analyst consensus, a quick value and the red-flag passages, with an index of the files and the script commands. Subagents read it instead of fetching the same filing many times, so a run makes far fewer tool calls and finishes sooner.
+- fewer searches: a deep valuation plans 25 web searches (it was about 30) and a deep picker with three finalists plans 127 (it was 160). Analyst targets, ratings and estimates come from Yahoo through `sentiment.py`'s new `analysts` block, and the company's own results come from its earnings releases, so neither costs a search.
+- new search caps: Forensic accountant 1, Management claims 3, Industry and news 6 (4 inside the picker), Segment economics 1, Thread deep-dive 2, Red team 2, Industry scanner 6, Quick reader 1 per company. `budget.py` holds the plans (`valuation`, `valuation-picker`, `picker-3`, `picker-4`, `picker-5`) and keeps the count.
+- valuation: one thread round of up to four threads by default. A second round of up to two threads runs only when a scenario's value moved more than 10% in the first, and there is no third. The Red team still runs after the threads.
+- valuation: `deep_prep.py` makes the case folder, the pack, the budget and a model skeleton in one call. `deep_run.py` runs the model and the returns and says whether a second round is due. `render_deep.py --case` builds the page from the case folder.
+- stock-screener: the deep picker's quick readers all start at once, one per batch of five companies, instead of in waves of three. Each reads a data file and a pack that `cards.py` fetched beforehand.
+- stock-screener: `pick_prep.py` writes the macro snapshot from FRED, runs the screens and starts the budget. `prospects.py` runs the industry scanners' four prospect tests on up to 25 tickers in one call. `pool.py` merges, trims and health-checks the candidates. `pick_assemble.py` runs the gate, builds the page and prints the commands that save the picks.
+- news headlines work again: the Yahoo feed the plugin read had stopped answering, so `sentiment.py` and the brief's headlines now fall back to Yahoo search.
+- valuation: a foreign filer whose statements are in another currency than its share price no longer gets a cash-flow value, in standard or deep depth. `inputs.py` flags it `CURRENCY_MISMATCH`.
+- A typical deep valuation now sends 8 to 11 subagents, and a deep picker 25 to 35.
+- stock-screener: a balance-sheet check before the deep valuations. `cards.py` gives every data file a `leverage` block: net debt today (the latest quarter) against the latest annual EBITDA, and interest coverage. A name over 2x net debt to EBITDA or under 6x coverage starts its value hint at 3 at most and is not a finalist. `DEBT_CHANGED_SINCE_ANNUAL` marks a company whose debt moved a lot since its last 10-K, whose annual leverage figures are then stale.
+- valuation and the deep picker's gate: the worst case judged is the severest single story. A scenario that stacks several risks is marked `"stress": true`; the page labels it "Stress test", and the gate reports its return without failing on it.
+
 ## 1.6.0
 
 - trading: every order belongs to trading. The protocol (account choice, dollar amounts, the pre-buy check, the preview, one confirmation block, cash-account settlement) moved there from portfolio-analysis, which hands order requests on.

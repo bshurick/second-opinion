@@ -8,10 +8,15 @@ average; at most 60, one FINRA file per trading day). This is the share of each 
 (the open short position outstanding), which FINRA publishes only twice a month.
 news: up to ``--news`` Yahoo headlines from the last ``--news-days`` days, newest first, each
 with its publication date-time.
+analysts: Yahoo's analyst consensus (``market.analyst_view``): price ``targets``, this month's
+``recommendations`` counts, rating ``actions`` of the last 180 days and the EPS and revenue
+``estimates``. Use it for analyst targets and consensus instead of a web search.
 
-Output: {"as_of", "symbols": {SYM: {"short_volume": <summary entry or null>, "news": [...]}},
+Output: {"as_of", "symbols": {SYM: {"short_volume": <summary entry or null>, "news": [...],
+"analysts": {"targets", "recommendations", "actions", "estimates", ...}}},
 "flags": [{"code", "message"}]}. Flags: NO_SHORT_VOLUME (no FINRA rows for a symbol; its
-short_volume is null), NEWS_UNAVAILABLE (the news fetch failed; its news is []).
+short_volume is null), NEWS_UNAVAILABLE (the news fetch failed; its news is []),
+ANALYSTS_UNAVAILABLE (Yahoo returned no targets, ratings, actions or estimates for a symbol).
 Exit 2 on a bad symbol, an empty list, more than 25 symbols or --days above 60.
 """
 from __future__ import annotations
@@ -75,7 +80,13 @@ def run(args: list[str]) -> dict:
         except Exception as e:  # noqa: BLE001 — news is best effort
             news = []
             flags.append({"code": "NEWS_UNAVAILABLE", "message": f"{s}: news fetch failed ({e.__class__.__name__}: {e})"})
-        out[s] = {"short_volume": entry, "news": news}
+        try:
+            analysts = market.analyst_view(s)
+        except Exception:  # noqa: BLE001 — analyst_view does not raise; this guards a broken install
+            analysts = {"symbol": s, "as_of": None, "source": "yahoo", "targets": None, "recommendations": None, "actions": [], "estimates": None}
+        if not (analysts.get("targets") or analysts.get("recommendations") or analysts.get("actions") or analysts.get("estimates")):
+            flags.append({"code": "ANALYSTS_UNAVAILABLE", "message": f"{s}: Yahoo returned no analyst targets, ratings, actions or estimates"})
+        out[s] = {"short_volume": entry, "news": news, "analysts": analysts}
     return {"as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"), "symbols": out, "flags": flags}
 
 

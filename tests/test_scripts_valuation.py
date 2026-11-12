@@ -395,6 +395,28 @@ def test_inputs_flags_sectors_where_a_cash_flow_dcf_says_little(fake_yahoo, caps
     assert flag["code"] == {"financial": "DCF_NOT_MEANINGFUL_FOR_FINANCIALS", "reit": "DCF_NOT_MEANINGFUL_FOR_REITS", "utility": "DCF_NOT_MEANINGFUL_FOR_UTILITIES"}[kind] and "intrinsic.py" in flag["message"]
 
 
+def test_inputs_flags_statements_in_another_currency_than_the_price(fake_yahoo, capsys) -> None:
+    """TSM: statements in TWD, the ADR quoted in USD. The per-share values are not comparable to the price."""
+    fake_yahoo.state["info"].update(currency="USD", financial_currency="TWD")
+    rc, out = run_json(load_script(INPUTS), ["tsm"], capsys)
+    assert rc == 0, out
+    flag = next(f for f in out["flags"] if f["code"] == "CURRENCY_MISMATCH")
+    assert "TWD" in flag["message"] and "USD" in flag["message"]
+    assert out["currency"] == {"price": "USD", "statements": "TWD", "mismatch": True}
+
+    fake_yahoo.state["info"].update(currency="USD", financial_currency="USD")
+    rc, out = run_json(load_script(INPUTS), ["ko"], capsys)
+    assert _codes(out) == [] and out["currency"] == {"price": "USD", "statements": "USD", "mismatch": False}
+
+    fake_yahoo.state["info"].update(currency="GBp", financial_currency="GBP")  # London quotes in pence: a different unit all the same
+    rc, out = run_json(load_script(INPUTS), ["ko"], capsys)
+    assert "CURRENCY_MISMATCH" in _codes(out)
+
+    fake_yahoo.state["info"].update(currency="USD", financial_currency=None)  # Yahoo did not say: no flag
+    rc, out = run_json(load_script(INPUTS), ["ko"], capsys)
+    assert _codes(out) == [] and out["currency"]["mismatch"] is False
+
+
 def test_inputs_falls_back_for_missing_pieces(fake_yahoo, capsys) -> None:
     fake_yahoo.state["yields"]["^TNX"] = None
     fake_yahoo.state["statements"] = {"income_statement": {}, "cash_flow": {}}

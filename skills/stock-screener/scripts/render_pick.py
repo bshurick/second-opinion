@@ -15,6 +15,7 @@ Turns a deep-picker run into one self-contained HTML page for the Artifact tool.
      "picks": {"SYMBOL": {"thesis", "bad_pick"}}, "missing_roles": [...], "notes": [...]}
 
 Sections: Picks (each gate pass or pass_flagged result, with central and worst annual return, the
+stress test's return when there is one (not gated), the
 range of scenario values,
 thesis, what would make it a bad pick, and a link to its deep valuation; a plain "none passed"
 card otherwise), Near misses (each fail with its reasons), Funnel, Industry map (grouped favored,
@@ -74,14 +75,14 @@ SCRIPT = r"""
   F.intro(g('intro'), {lead: `${passes.length} of ${G.results.length} finalists passed the downside gate: no scenario loses money over five years, and the central case earns at least ${F.pct(G.hurdle, 1)} a year at today’s price.`});
 
   g('picks').innerHTML = passes.length ? passes.map(r => { const p = (D.picks || {})[r.symbol] || {};
-    return `<div class="pickc"><h3>${esc(r.symbol)}</h3><div class="r"><b>Central value ${money(r.central.value_per_share)} vs price ${money(r.price)} · ${pct(r.central.irr)} a year</b><br>${esc(r.central.name)} case · worst ${esc(r.worst.name)} ${pct(r.worst.irr)}${r.value_range ? ` · value ${money(r.value_range[0])} – ${money(r.value_range[1])}` : ''}</div>
+    return `<div class="pickc"><h3>${esc(r.symbol)}</h3><div class="r"><b>Central value ${money(r.central.value_per_share)} vs price ${money(r.price)} · ${pct(r.central.irr)} a year</b><br>${esc(r.central.name)} case · worst ${esc(r.worst.name)} ${pct(r.worst.irr)}${r.stress ? ` · stress test ${esc(r.stress.name)} ${pct(r.stress.irr)} (not gated)` : ''}${r.value_range ? ` · value ${money(r.value_range[0])} – ${money(r.value_range[1])}` : ''}</div>
       ${p.thesis ? `<div class="t">${esc(p.thesis)}</div>` : ''}${p.bad_pick ? `<div class="b"><b>What would make this a bad pick:</b> ${esc(p.bad_pick)}</div>` : ''}
       ${r.verdict === 'pass_flagged' ? `<div class="w">${esc(r.reasons[r.reasons.length - 1])}</div>` : ''}
       ${r.page ? `<div class="b" style="margin-top:6px"><a href="${esc(r.page)}" target="_blank" rel="noopener">Deep valuation →</a></div>` : ''}</div>`; }).join('')
     : '<p><b>No finalist passed the downside gate.</b> The near misses below show which test each failed.</p>';
   F.help(g('picks-card'), {lead: 'The central case is the first scenario of the deep valuation; the scenarios are not averaged. A pick is a finalist whose deep valuation passed two tests at today’s price: no scenario loses money over five years, dividends included, and the central scenario earns at least the hurdle. A warning line means every scenario sits above the price, which can mean a downside case is missing.'});
 
-  g('near').innerHTML = fails.length ? fails.map(r => `<details class="row"><summary><span class="n">${esc(r.symbol)}</span><span class="m">central ${money(r.central.value_per_share)} · ${pct(r.central.irr)} a year · worst ${r.worst ? pct(r.worst.irr) : '—'}</span></summary>
+  g('near').innerHTML = fails.length ? fails.map(r => `<details class="row"><summary><span class="n">${esc(r.symbol)}</span><span class="m">central ${money(r.central.value_per_share)} · ${pct(r.central.irr)} a year · worst ${r.worst ? pct(r.worst.irr) : '—'}${r.stress ? ` · stress ${pct(r.stress.irr)}` : ''}</span></summary>
       <ul>${r.reasons.map(x => `<li>${esc(x)}</li>`).join('')}</ul>${r.page ? `<div class="d"><a href="${esc(r.page)}" target="_blank" rel="noopener">Deep valuation →</a></div>` : ''}</details>`).join('')
     : '<p class="muted">None: every finalist passed.</p>';
   F.help(g('near-card'), {lead: 'Finalists that were valued in depth and failed: a scenario that loses money, a central case below the hurdle, or a return that could not be computed.'});

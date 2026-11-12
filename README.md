@@ -148,8 +148,8 @@ Six modes go beyond the scripted answers. Research subagents work through primar
 
 | Mode | Ask | What you get | Typical run | Needs |
 |---|---|---|---|---|
-| Deep valuation | *"Do a deep dive on PHM: what has to go right, and what would I earn at today's price?"* | Three to five scenarios valued by segment, each with its return at today's price and what has to be true | 10 to 15 subagents, 30 searches | SEC EDGAR |
-| Deep picker | *"Find me the best opportunities right now: run the deep picker."* | A market scan and screens narrowed to three to five finalists, each with a deep valuation | 30 to 40 subagents, 160 searches | SEC EDGAR |
+| Deep valuation | *"Do a deep dive on PHM: what has to go right, and what would I earn at today's price?"* | Three to five scenarios valued by segment, each with its return at today's price and what has to be true | 8 to 11 subagents, 25 searches | SEC EDGAR |
+| Deep picker | *"Find me the best opportunities right now: run the deep picker."* | A market scan and screens narrowed to three to five finalists, each with a deep valuation | 25 to 35 subagents, 127 searches | SEC EDGAR |
 | Portfolio review | *"Run a deep review of my portfolio: what single belief do I depend on most?"* | The beliefs your holdings and income share, with how much rests on each and what you would lose if it were wrong | 8 subagents, 40 searches | SEC EDGAR |
 | Property review | *"Run a deep review of 12 Main Street as a rental. The HOA papers and inspection report are in ~/Documents/condo."* | Named scenarios from your documents and local data, the weakest input that matters most, and the break-even price | 6 subagents, 35 searches | |
 | Decision review | *"Run a deep review of my trades: which were skill and which were luck?"* | Your largest trades graded without seeing the result, then sorted into skill, luck, bad luck or mistake | 10 subagents, 30 searches | Imported ledger |

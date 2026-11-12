@@ -42,7 +42,10 @@ for residual income), plus ``discount_premium``. ``value_ex_premiums`` reruns wi
 
 Scenario: {"name", "summary", "must_be_true": [...], "overrides": {"<segment>": {field: value}},
 "payout"?, "annual_dilution"?, "claims"?, "exit_multiple"? {"metric": "ebit"|"ebitda"|"revenue"|
-"fcfe", "multiple"}}. Overrides replace the named fields only; "fails": null removes a failure.
+"fcfe", "multiple"}, "stress"? true}. Overrides replace the named fields only; "fails": null removes a
+failure. ``stress`` marks the one compound stress test (several risks landing at once): it is valued
+like any scenario and echoed as ``"stress": true``, and the deep picker's gate reports it without
+judging it. At most one scenario is a stress test, and never the first (central) one.
 
 Path to the horizon, per scenario, t = 1..horizon: FCFE_t = sum FCFF_t + residual-income dividends
 - cost_of_debt * (1 - tax) * net_debt_t-1; distributions_t = payout * max(FCFE_t, 0); net_debt_t =
@@ -52,7 +55,7 @@ value at year H (its flows after H and its tail, at its own rate) less net debt_
 claims, per share_H. Exit ``multiple`` applies ``exit_multiple`` to year-H company totals (EBIT
 nets out cost segments grossed up for tax; EBITDA adds da_pct_revenue * revenue).
 
-Output: {"symbol", "price", "horizon", "scenarios": [{"name", "summary", "must_be_true",
+Output: {"symbol", "price", "horizon", "scenarios": [{"name", "summary", "must_be_true", "stress",
 "enterprise_value", "equity_value", "value_per_share", "value_ex_premiums", "upside",
 "segments": [{"name", "kind", "value", "pv_terminal", "terminal_share", "discount_rate", "premium",
 "premium_reason", "years": [...]}], "bridge", "path": [{"t", "fcfe", "distributions_per_share",
@@ -478,6 +481,13 @@ def run_model(params: dict) -> dict:
     sc_names = [s.get("name") for s in scenarios if isinstance(s, dict)]
     if len(sc_names) != len(scenarios) or not all(sc_names) or len(set(sc_names)) != len(sc_names):
         raise ValueError("scenarios need unique names")
+    stress = [s.get("name") for s in scenarios if s.get("stress")]
+    if any(not isinstance(s.get("stress", False), bool) for s in scenarios):
+        raise ValueError("a scenario's stress must be true or false")
+    if len(stress) > 1:
+        raise ValueError(f"at most one scenario can be a stress test; {', '.join(stress)} are marked stress")
+    if scenarios[0].get("stress"):
+        raise ValueError("the first scenario is the central case and cannot be the stress test")
     ctx = {"years": years, "horizon": horizon, "base_rate": base_rate, "tax": tax}
     history = params.get("history") or {}
     flags: list[dict] = []
@@ -531,6 +541,7 @@ def run_model(params: dict) -> dict:
             flag("NEGATIVE_EQUITY", f"{sc['name']}: the debt and other claims exceed the business value.")
         results.append({
             "name": sc["name"], "summary": sc.get("summary") or "", "must_be_true": list(sc.get("must_be_true") or []),
+            "stress": bool(sc.get("stress")),
             "enterprise_value": round(ev, 2), "equity_value": round(equity, 2), "value_per_share": round(vps, 2),
             "value_ex_premiums": round(vps_ex, 2),
             "upside": round(vps / price - 1, 4) if price else None,

@@ -7,19 +7,22 @@ Input: {"hurdle": 0.10, "floor": 0.0, "finalists": [{"symbol", "price", "page",
 "model": <valuation model.py output>, "returns": <valuation returns.py output>}]}.
 
 Rule B. Each finalist's scenarios are matched to their returns by name. It passes when every
-scenario's annual return is at least ``floor`` (default 0: no scenario loses money over the
-horizon, dividends included) and the central scenario (the first in ``model.scenarios``) earns
-at least ``hurdle`` (default 10%). A scenario with no return (unmatched or null) fails. A
-finalist that passes while every scenario's value sits above the price is ``pass_flagged``: a
-downside case may be missing.
+gated scenario's annual return is at least ``floor`` (default 0: no gated scenario loses money over
+the horizon, dividends included) and the central scenario (the first in ``model.scenarios``) earns
+at least ``hurdle`` (default 10%). A gated scenario with no return (unmatched or null) fails. A
+scenario marked ``"stress": true`` in ``model.scenarios`` (the compound "several risks at once"
+test) is not gated: it is reported as ``stress`` and named in ``reasons`` when it loses money, so the
+worst case judged is the severest single story. A finalist that passes while every gated
+scenario's value sits above the price is ``pass_flagged``: a downside case may be missing.
 
 A non-finite return (NaN) counts as not computed. When ``returns`` carries the price it was
 computed at, the gate uses that price, and exits 2 when it differs from the finalist's ``price`` by
 more than 1%.
 
 Output: {"hurdle", "floor", "results": [{"symbol", "price", "verdict": "pass"|"pass_flagged"|
-"fail", "value_range": [lowest, highest scenario value per share], "central": {"name", "irr",
-"value_per_share"}, "worst": {...}, "checks": {"worst_ok",
+"fail", "value_range": [lowest, highest scenario value per share, the stress test included],
+"central": {"name", "irr", "value_per_share"}, "worst": {...} (the lowest-return gated scenario),
+"stress": {...} or null, "checks": {"worst_ok",
 "central_ok", "all_above_price"}, "reasons": [str], "page", "implied"}], "counts": {"pass",
 "pass_flagged", "fail"}}. Results run pass, pass_flagged, fail, each by central return, highest
 first. Exit 2 with {"error"} on invalid input.
@@ -74,15 +77,20 @@ def run_gate(params: dict) -> dict:
         if not isinstance(scen, list) or not scen or not isinstance(rets, list):
             raise ValueError(f"{sym}: needs model.scenarios and returns.scenarios")
         irr_by = {r.get("name"): r.get("irr") for r in rets if isinstance(r, dict)}
-        rows = [{"name": s.get("name"), "irr": irr_by.get(s.get("name")), "value_per_share": s.get("value_per_share")} for s in scen]
-        reasons = []
-        missing = [r["name"] for r in rows
-                   if not isinstance(r["irr"], (int, float)) or isinstance(r["irr"], bool) or not math.isfinite(r["irr"])]
-        for r in rows:
-            if r["name"] in missing:
+        all_rows = [{"name": s.get("name"), "irr": irr_by.get(s.get("name")), "value_per_share": s.get("value_per_share"),
+                     "_stress": s.get("stress") is True and i > 0} for i, s in enumerate(scen)]
+        for r in all_rows:
+            if not isinstance(r["irr"], (int, float)) or isinstance(r["irr"], bool) or not math.isfinite(r["irr"]):
                 r["irr"] = None  # never echo NaN or infinity back out
+        stress = next(({k: v for k, v in r.items() if k != "_stress"} for r in all_rows if r["_stress"]), None)
+        rows = [{k: v for k, v in r.items() if k != "_stress"} for r in all_rows if not r["_stress"]]
+        reasons = []
+        missing = [r["name"] for r in rows if r["irr"] is None]
         for name in missing:
             reasons.append(f"The return for scenario '{name}' could not be computed.")
+        if stress is not None and stress["irr"] is not None and stress["irr"] < floor:
+            verb = "loses" if stress["irr"] < 0 else "earns"
+            reasons.append(f"Stress test '{stress['name']}' (several risks at once; not gated) {verb} {_pct(stress['irr'])} a year.")
         known = [r for r in rows if r["name"] not in missing]
         central = rows[0]
         worst = min(known, key=lambda r: r["irr"]) if known else None
@@ -100,10 +108,11 @@ def run_gate(params: dict) -> dict:
                 reasons.append("Every scenario is worth more than the price; a downside case may be missing.")
         else:
             verdict = "fail"
-        values = [r["value_per_share"] for r in rows if isinstance(r["value_per_share"], (int, float)) and not isinstance(r["value_per_share"], bool)]
+        values = [r["value_per_share"] for r in rows + ([stress] if stress else [])
+                  if isinstance(r["value_per_share"], (int, float)) and not isinstance(r["value_per_share"], bool)]
         results.append({"symbol": sym, "price": price, "verdict": verdict,
                         "value_range": [min(values), max(values)] if values else None,
-                        "central": central, "worst": worst,
+                        "central": central, "worst": worst, "stress": stress,
                         "checks": {"worst_ok": worst_ok, "central_ok": central_ok, "all_above_price": all_above},
                         "reasons": reasons, "page": f.get("page"), "implied": (f.get("model") or {}).get("implied")})
     results.sort(key=lambda r: (ORDER[r["verdict"]], -(r["central"]["irr"] if isinstance(r["central"]["irr"], (int, float)) else -9)))

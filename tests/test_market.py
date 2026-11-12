@@ -329,3 +329,137 @@ def test_day_changes_skips_yahoo_when_hub_covers_everything(monkeypatch) -> None
     monkeypatch.setattr(market, "_yf", boom)
     hub = HubStub([{"symbol": "AAPL", "price": 1.0, "previous_close": 1.0, "source": "etrade", "realtime": True}])
     assert market.day_changes(["AAPL"], hub=hub) == {"AAPL": {"price": 1.0, "previous_close": 1.0, "source": "etrade"}}
+
+
+class _AnalystTicker:
+    analyst_price_targets = {"current": 28.42, "high": 33.4, "low": 19.0, "mean": 27.43529, "median": 29.0}
+    recommendations_summary = FakeFrame([
+        {"period": "0m", "strongBuy": 1, "buy": 2, "hold": 10, "sell": 4, "strongSell": 2},
+        {"period": "-1m", "strongBuy": 0, "buy": 9, "hold": 9, "sell": 9, "strongSell": 9},
+    ])
+    earnings_estimate = FakeFrame([
+        {"period": "0q", "avg": 0.74509, "low": 0.71, "high": 0.79, "yearAgoEps": 0.93, "numberOfAnalysts": 13, "growth": -0.1988, "currency": "USD"},
+        {"period": "0y", "avg": 3.24, "low": 3.15, "high": 3.29, "yearAgoEps": 3.12, "numberOfAnalysts": 18, "growth": 0.0386, "currency": "USD"},
+    ])
+    revenue_estimate = FakeFrame([
+        {"period": "0q", "avg": 15301797640, "low": 14338861000, "high": 15865000000, "numberOfAnalysts": 11, "yearAgoRevenue": 14639000000, "growth": 0.0453, "currency": "USD"},
+    ])
+
+    def __init__(self, today: date) -> None:
+        d = lambda days: datetime.combine(today, datetime.min.time()) - __import__("datetime").timedelta(days=days)  # noqa: E731
+        rows = [
+            {"GradeDate": d(400), "Firm": "Old Co", "ToGrade": "Buy", "FromGrade": "Hold", "Action": "up", "priceTargetAction": "Raises", "currentPriceTarget": 40.0, "priorPriceTarget": 30.0},
+            {"GradeDate": d(30), "Firm": "Barclays", "ToGrade": "Underweight", "FromGrade": "Equal-Weight", "Action": "down", "priceTargetAction": "Lowers", "currentPriceTarget": 19.0, "priorPriceTarget": 26.0},
+            {"GradeDate": d(5), "Firm": "RBC Capital", "ToGrade": "Sector Perform", "FromGrade": "", "Action": "init", "priceTargetAction": "Announces", "currentPriceTarget": 28.0, "priorPriceTarget": 0.0},
+        ]
+        rows += [{"GradeDate": d(60 + i), "Firm": f"Firm {i}", "ToGrade": "Hold", "FromGrade": "Hold", "Action": "main", "priceTargetAction": "Maintains", "currentPriceTarget": 25.0, "priorPriceTarget": 25.0} for i in range(12)]
+        self.upgrades_downgrades = FakeFrame(rows)
+
+
+def test_analyst_view_maps_all_four_parts(monkeypatch):
+    today = date.today()
+    monkeypatch.setattr(market, "_ticker", lambda s: _AnalystTicker(today))
+    out = market.analyst_view("hpq")
+    assert out["symbol"] == "HPQ" and out["source"] == "yahoo" and out["as_of"]
+    assert out["targets"] == {"current": 28.42, "low": 19.0, "mean": 27.4353, "median": 29.0, "high": 33.4}
+    assert out["recommendations"] == {"strong_buy": 1, "buy": 2, "hold": 10, "sell": 4, "strong_sell": 2, "count": 19}
+    acts = out["actions"]
+    assert len(acts) == 10
+    assert acts[0] == {"date": (today - __import__("datetime").timedelta(days=5)).isoformat(), "firm": "RBC Capital", "action": "init",
+                       "from_grade": None, "to_grade": "Sector Perform", "target": 28.0, "prior_target": None}
+    assert acts[1]["firm"] == "Barclays" and acts[1]["prior_target"] == 26.0
+    assert all(a["firm"] != "Old Co" for a in acts)
+    assert [a["date"] for a in acts] == sorted((a["date"] for a in acts), reverse=True)
+    eps = out["estimates"]["eps"]
+    assert eps[0] == {"period": "0q", "avg": 0.7451, "low": 0.71, "high": 0.79, "year_ago": 0.93, "analysts": 13, "growth": -0.1988}
+    assert out["estimates"]["revenue"][0]["year_ago"] == 14639000000 and out["estimates"]["revenue"][0]["analysts"] == 11
+
+
+def test_analyst_view_never_raises(monkeypatch):
+    class Boom:
+        def __getattr__(self, name):
+            raise RuntimeError("429 Too Many Requests")
+
+    monkeypatch.setattr(market, "_ticker", lambda s: Boom())
+    out = market.analyst_view("XYZ")
+    assert out["targets"] is None and out["recommendations"] is None and out["actions"] == [] and out["estimates"] is None
+
+    def no_ticker(s):
+        raise RuntimeError("no yfinance")
+
+    monkeypatch.setattr(market, "_ticker", no_ticker)
+    assert market.analyst_view("XYZ")["actions"] == []
+
+
+def test_analyst_view_zero_targets_are_none(monkeypatch):
+    t = SimpleNamespace(analyst_price_targets={"current": 5.0, "high": 0, "low": 0.0, "mean": 0, "median": None},
+                        recommendations_summary=FakeFrame([]), upgrades_downgrades=None, earnings_estimate=FakeFrame([]), revenue_estimate=None)
+    monkeypatch.setattr(market, "_ticker", lambda s: t)
+    out = market.analyst_view("XYZ")
+    assert out["targets"] is None  # only the quote itself, no analyst figure
+    assert out["recommendations"] is None and out["actions"] == [] and out["estimates"] is None
+
+
+def test_company_info_carries_both_currencies(fake_yf) -> None:
+    fake_yf.setdefault("TSM", FakeTicker("TSM")).info = {"longName": "TSMC", "currency": "USD", "financialCurrency": "TWD"}
+    out = market.company_info("TSM")
+    assert out["currency"] == "USD" and out["financial_currency"] == "TWD"
+    assert market.company_info("AAPL")["financial_currency"] is None  # Yahoo did not say
+
+
+def _news_yf(monkeypatch, ticker_news, search_news):
+    """A yfinance stand-in whose Ticker.news and Search(...).news are given (an Exception is raised)."""
+    searched: list[tuple] = []
+
+    class Ticker:
+        def __init__(self, sym):
+            self.sym = sym
+
+        @property
+        def news(self):
+            if isinstance(ticker_news, Exception):
+                raise ticker_news
+            return ticker_news
+
+    class Search:
+        def __init__(self, query, news_count=8, **kwargs):
+            searched.append((query, news_count))
+            if isinstance(search_news, Exception):
+                raise search_news
+            self.news = search_news
+
+    monkeypatch.setattr(market, "_yf", lambda: SimpleNamespace(Ticker=Ticker, Search=Search))
+    return searched
+
+
+def _story(title, hours_ago, tickers=None):
+    when = int(datetime.now().timestamp()) - hours_ago * 3600
+    row = {"title": title, "publisher": "Wire", "link": f"https://example.com/{title}", "providerPublishTime": when}
+    return {**row, "relatedTickers": tickers} if tickers is not None else row
+
+
+def test_recent_news_falls_back_to_search_when_ticker_news_raises(monkeypatch) -> None:
+    searched = _news_yf(monkeypatch, RuntimeError("HTTP 404"), [_story("old", 30, ["NVDA"]), _story("new", 2, ["NVDA", "MSFT"]), _story("other", 1, ["MSFT"]), _story("stale", 24 * 40, ["NVDA"])])
+    out = market.recent_news("nvda", days=7, limit=3)
+    assert [n["title"] for n in out] == ["new", "old"]  # dated, newest first; another company's story and the stale one left out
+    assert set(out[0]) == {"title", "publisher", "published", "url", "summary"}
+    assert out[0]["publisher"] == "Wire" and out[0]["url"] == "https://example.com/new" and out[0]["published"].startswith("20")
+    assert searched and searched[0][0] == "NVDA" and searched[0][1] >= 3
+
+
+def test_recent_news_falls_back_to_search_when_ticker_news_is_empty(monkeypatch) -> None:
+    _news_yf(monkeypatch, [], [_story("only", 1)])  # no relatedTickers: kept
+    assert [n["title"] for n in market.recent_news("XYZ")] == ["only"]
+
+
+def test_recent_news_keeps_ticker_news_when_it_answers(monkeypatch) -> None:
+    searched = _news_yf(monkeypatch, [_story("direct", 1)], [_story("searched", 1)])
+    assert [n["title"] for n in market.recent_news("XYZ")] == ["direct"] and searched == []
+
+
+def test_recent_news_raises_the_first_error_when_both_fail(monkeypatch) -> None:
+    _news_yf(monkeypatch, RuntimeError("Too Many Requests"), RuntimeError("search down"))
+    with pytest.raises(RuntimeError, match="Too Many Requests"):
+        market.recent_news("XYZ")
+    _news_yf(monkeypatch, [], RuntimeError("search down"))
+    assert market.recent_news("XYZ") == []

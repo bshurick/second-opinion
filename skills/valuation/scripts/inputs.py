@@ -9,6 +9,7 @@ Filled `dcf.py` and `ddm.py` input JSONs from Yahoo. Output:
    "dcf_input_latest": {...same, on the latest year's cash flow; cyclicals only...},
    "dcf_scenarios": {"bear": {...}, "base": {...}, "bull": {...}},
    "ddm_input": {...ready to pipe into ddm.py...},
+   "currency": {"price": "USD", "statements": "TWD", "mismatch": true},
    "flags": [...]}
 
 How each figure is built (all of it echoed in "assumptions" with its source,
@@ -57,6 +58,13 @@ so every one can be challenged):
   when present, else `sharesOutstanding`, else the statement figure. Yahoo's
   `sharesOutstanding` can hold one class of a dual-class company; when the
   implied count is more than 5% above it, flag SHARE_CLASSES_COMBINED names both.
+- currency: Yahoo's quote currency (`info.currency`) and the statements'
+  (`info.financialCurrency`), from the same info call. When both are known and
+  differ (a foreign filer's ADR: TSM is quoted in USD and reports in TWD; a
+  London share quoted in pence), flag CURRENCY_MISMATCH: fcf0 and net debt are
+  in the statements' currency, so dcf.py's per-share value is too, and it
+  cannot be set against the price (nor, for an ADR, against one depositary
+  share). The figures are still filled; convert them before any use.
 - A corporate-action check compares the latest annual income statement's
   Diluted Average Shares with today's share count; a ratio below 0.75 or above
   1.33 raises CORPORATE_ACTION_SUSPECTED (a split, reverse split or spin-off may
@@ -251,6 +259,13 @@ def main(argv: list[str] | None = None) -> int:
         business_type = _BUSINESS_TYPES.get(info.get("sector") or "", "industrial")
         if business_type != "industrial":
             flags.append({"code": f"DCF_NOT_MEANINGFUL_FOR_{_FLAG_SUFFIX[business_type]}", "message": f"Yahoo sector {info.get('sector')}: {_DCF_CAVEAT[business_type]}"})
+
+        price_currency, statement_currency = info.get("currency") or None, info.get("financial_currency") or None
+        currency_mismatch = bool(price_currency and statement_currency and str(price_currency) != str(statement_currency))
+        if currency_mismatch:
+            flags.append({"code": "CURRENCY_MISMATCH", "message": f"the statements are in {statement_currency} and the price is quoted in {price_currency}; fcf0, net debt and every per-share value "
+                                                                  f"built from them are in {statement_currency} (and, for an ADR, per ordinary share), so a DCF value cannot be set against the price or give a return. "
+                                                                  "Convert the cash flows and the share count first, or value it in a deep model."})
 
         income = _latest_row(stmts.get("income_statement") or {})
         interest = _number(income, "Interest Expense")
@@ -479,6 +494,7 @@ def main(argv: list[str] | None = None) -> int:
             **({"dcf_input_latest": {**dcf_input, "fcf0": fcf0_latest}} if cyclical else {}),
             "dcf_scenarios": dcf_scenarios,
             "ddm_input": ddm_input,
+            "currency": {"price": price_currency, "statements": statement_currency, "mismatch": currency_mismatch},
             "flags": flags,
         }
 

@@ -23,6 +23,7 @@
      "irr": 0.03,
      "value_per_share": 45
     },
+    "stress": null,
     "checks": {
      "worst_ok": true,
      "central_ok": true,
@@ -53,6 +54,7 @@
      "irr": 0.08,
      "value_per_share": 55
     },
+    "stress": null,
     "checks": {
      "worst_ok": true,
      "central_ok": true,
@@ -85,6 +87,7 @@
      "irr": -0.02,
      "value_per_share": 40
     },
+    "stress": null,
     "checks": {
      "worst_ok": false,
      "central_ok": true,

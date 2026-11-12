@@ -276,3 +276,38 @@ def test_render_pick_leads_with_the_central_value(tmp_path, capsys) -> None:
     assert text.index("Central value $62.00") < text.index("worst Bear")
     assert "central $60.00 · +12.0% a year · worst" in text  # near-miss row (LOSS)
     assert "first scenario of the deep valuation" in (tmp_path / "p.html").read_text() and "not averaged" in (tmp_path / "p.html").read_text()
+
+
+def _with_stress(f: dict, name: str) -> dict:
+    for s in f["model"]["scenarios"]:
+        if s["name"] == name:
+            s["stress"] = True
+    return f
+
+
+def test_gate_judges_the_severest_single_story_not_the_stress_test(capsys, monkeypatch) -> None:
+    """A compound 'everything at once' case is reported, not gated: CVS failed on one at -12.7%."""
+    out = run_stdin(GATE, {"finalists": [_with_stress(finalist("CMP", 50, [("Base", 66, 0.12), ("Squeeze", 48, 0.02), ("All at once", 20, -0.13)]), "All at once")]}, capsys, monkeypatch)
+    r = out["results"][0]
+    assert r["verdict"] == "pass" and r["worst"]["name"] == "Squeeze"
+    assert r["stress"] == {"name": "All at once", "irr": -0.13, "value_per_share": 20}
+    assert r["value_range"] == [20, 66]
+    assert any("Stress test 'All at once'" in x and "not gated" in x and "13.0%" in x for x in r["reasons"])
+
+
+def test_gate_still_fails_a_single_story_that_loses_money(capsys, monkeypatch) -> None:
+    out = run_stdin(GATE, {"finalists": [_with_stress(finalist("CMP", 50, [("Base", 66, 0.12), ("Squeeze", 40, -0.03), ("All at once", 20, -0.13)]), "All at once")]}, capsys, monkeypatch)
+    r = out["results"][0]
+    assert r["verdict"] == "fail" and r["worst"]["name"] == "Squeeze"
+    assert r["reasons"][0].startswith("Worst scenario 'Squeeze' loses 3.0%")
+
+
+def test_gate_pass_flagged_looks_at_the_gated_scenarios(capsys, monkeypatch) -> None:
+    out = run_stdin(GATE, {"finalists": [_with_stress(finalist("UP", 50, [("Base", 70, 0.15), ("Bear", 55, 0.08), ("All at once", 30, -0.05)]), "All at once")]}, capsys, monkeypatch)
+    assert out["results"][0]["verdict"] == "pass_flagged"
+
+
+def test_gate_never_treats_the_central_case_as_the_stress_test(capsys, monkeypatch) -> None:
+    out = run_stdin(GATE, {"finalists": [_with_stress(finalist("C", 50, [("Base", 40, -0.02), ("Bear", 35, -0.04)]), "Base")]}, capsys, monkeypatch)
+    r = out["results"][0]
+    assert r["verdict"] == "fail" and r["stress"] is None and r["central"]["name"] == "Base"

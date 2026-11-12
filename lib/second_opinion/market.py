@@ -140,6 +140,9 @@ def company_info(symbol: str) -> dict[str, Any]:
         "target_high_price": info.get("targetHighPrice"), "target_low_price": info.get("targetLowPrice"),
         "target_mean_price": info.get("targetMeanPrice"), "recommendation": info.get("recommendationKey"),
         "analyst_count": info.get("numberOfAnalystOpinions"), "institutional_ownership": info.get("heldPercentInstitutions"),
+        # The quote's currency and the statements' (TSM: USD and TWD). When they differ, per-share
+        # values built from the statements are not in the price's currency.
+        "currency": info.get("currency"), "financial_currency": info.get("financialCurrency"),
     }
 
 
@@ -660,14 +663,42 @@ def option_chain(symbol: str, expiry: str | None = None) -> dict[str, Any]:
     return {"symbol": symbol.upper(), "spot": _scalar(spot), "expiry": expiry, "expiries": expiries, "calls": _chain_rows(chain.calls), "puts": _chain_rows(chain.puts)}
 
 
+def _search_news(symbol: str, count: int) -> list[Any]:
+    """Yahoo's search endpoint's stories for ``symbol``, less those tagged for other tickers only."""
+    sym = symbol.upper()
+    rows = getattr(_yf().Search(sym, news_count=count), "news", None) or []
+    out = []
+    for item in rows:
+        related = item.get("relatedTickers") if isinstance(item, dict) else None
+        if isinstance(related, list) and related and sym not in {str(r).upper() for r in related}:
+            continue
+        out.append(item)
+    return out
+
+
 def recent_news(symbol: str, days: int = 7, limit: int = 3) -> list[dict[str, Any]]:
     """Up to ``limit`` Yahoo headlines for ``symbol`` published in the last ``days`` days, newest first.
 
     Each item: {title, publisher, published (ISO date-time), url, summary}. Items without a publication
     date are dropped (the dateline is what makes a headline usable), so an empty list means no dated
     story in the window, not a failure.
+
+    Source: ``Ticker.news``; when that raises or returns nothing (yfinance 1.7's endpoint answers
+    HTTP 404 for every symbol), Yahoo's search endpoint (``Search(symbol).news``), whose stories are
+    kept when tagged with the symbol or not tagged at all; its items carry no summary. Raises
+    ``Ticker.news``'s error only when the search fails too.
     """
-    raw = _ticker(symbol).news or []
+    try:
+        raw, failure = _ticker(symbol).news or [], None
+    except Exception as exc:  # noqa: BLE001 — any failure of the first endpoint sends us to the second
+        raw, failure = [], exc
+    if not raw:
+        try:
+            raw = _search_news(symbol, max(10, limit * 3))
+        except Exception:  # noqa: BLE001
+            if failure is not None:
+                raise failure from None
+            raw = []
     floor = datetime.now(timezone.utc) - timedelta(days=days)
     out: list[dict[str, Any]] = []
     for item in raw:
@@ -698,3 +729,96 @@ def recent_news(symbol: str, days: int = 7, limit: int = 3) -> list[dict[str, An
         )
     out.sort(key=lambda x: x["published"], reverse=True)
     return out[:limit]
+
+
+_ANALYST_ACTION_DAYS = 180
+_ANALYST_ACTION_LIMIT = 10
+
+
+def _positive(v: Any) -> float | None:
+    """A price target as a number, or None: Yahoo writes a missing target as 0."""
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0 else None
+
+
+def _analyst_part(t: Any, attr: str) -> Any:
+    try:
+        return getattr(t, attr)
+    except Exception:  # noqa: BLE001 — each Yahoo analyst endpoint fails on its own (429, no coverage)
+        return None
+
+
+def _estimate_rows(df: Any, year_ago: str) -> list[dict[str, Any]]:
+    return [
+        {"period": r.get("period"), "avg": r.get("avg"), "low": r.get("low"), "high": r.get("high"),
+         "year_ago": r.get(year_ago), "analysts": r.get("numberofanalysts"), "growth": r.get("growth")}
+        for r in _records(df) if r.get("period") is not None
+    ]
+
+
+def analyst_view(symbol: str) -> dict[str, Any]:
+    """Yahoo's analyst consensus for ``symbol``: price targets, this month's ratings, recent rating
+    actions and the EPS and revenue estimates. It never raises: a part Yahoo does not return is None
+    (``actions`` is ``[]``), so a caller can tell "no coverage" from the parts that did arrive.
+
+    {"symbol", "as_of", "source": "yahoo",
+     "targets": {"current", "low", "mean", "median", "high"} | None,
+     "recommendations": {"strong_buy", "buy", "hold", "sell", "strong_sell", "count"} | None,
+     "actions": [{"date", "firm", "action", "from_grade", "to_grade", "target", "prior_target"}],
+     "estimates": {"eps": [{"period", "avg", "low", "high", "year_ago", "analysts", "growth"}], "revenue": [...]} | None}
+
+    ``targets`` is None when no low, mean, median or high target is above zero (Yahoo's ``current``
+    is the share price, not a target). ``recommendations`` is the current month's row (``0m``).
+    ``actions`` covers the last 180 days, newest first, at most 10; a zero target is None.
+    """
+    today = date.today()
+    out: dict[str, Any] = {"symbol": symbol.upper(), "as_of": today.isoformat(), "source": "yahoo",
+                           "targets": None, "recommendations": None, "actions": [], "estimates": None}
+    try:
+        t = _ticker(symbol)
+    except Exception:  # noqa: BLE001
+        return out
+
+    try:
+        raw = _analyst_part(t, "analyst_price_targets")
+        if isinstance(raw, dict):
+            tg = {k: _positive(_scalar(raw.get(k))) for k in ("current", "low", "mean", "median", "high")}
+            if any(tg[k] is not None for k in ("low", "mean", "median", "high")):
+                out["targets"] = tg
+    except Exception:  # noqa: BLE001
+        pass
+
+    try:
+        rows = _records(_analyst_part(t, "recommendations_summary"))
+        row = next((r for r in rows if r.get("period") == "0m"), None)
+        if row:
+            rec = {name: int(row.get(key) or 0) for name, key in
+                   (("strong_buy", "strongbuy"), ("buy", "buy"), ("hold", "hold"), ("sell", "sell"), ("strong_sell", "strongsell"))}
+            rec["count"] = sum(rec.values())
+            if rec["count"]:
+                out["recommendations"] = rec
+    except Exception:  # noqa: BLE001
+        pass
+
+    try:
+        floor = (today - timedelta(days=_ANALYST_ACTION_DAYS)).isoformat()
+        actions = []
+        for r in _records(_analyst_part(t, "upgrades_downgrades")):
+            when = r.get("gradedate")
+            if not isinstance(when, str) or when[:10] < floor:
+                continue
+            actions.append({"date": when[:10], "firm": r.get("firm") or None, "action": r.get("action") or None,
+                            "from_grade": r.get("fromgrade") or None, "to_grade": r.get("tograde") or None,
+                            "target": _positive(r.get("currentpricetarget")), "prior_target": _positive(r.get("priorpricetarget"))})
+        actions.sort(key=lambda a: a["date"], reverse=True)
+        out["actions"] = actions[:_ANALYST_ACTION_LIMIT]
+    except Exception:  # noqa: BLE001
+        pass
+
+    try:
+        eps = _estimate_rows(_analyst_part(t, "earnings_estimate"), "yearagoeps")
+        revenue = _estimate_rows(_analyst_part(t, "revenue_estimate"), "yearagorevenue")
+        if eps or revenue:
+            out["estimates"] = {"eps": eps, "revenue": revenue}
+    except Exception:  # noqa: BLE001
+        pass
+    return out

@@ -51,6 +51,8 @@ def companyfacts() -> dict:
 @pytest.fixture
 def env(monkeypatch, tmp_path):
     monkeypatch.setenv("SECOND_OPINION_DATA", str(tmp_path))
+    # Pin the clock before the stubbed next earnings (2026-11-05), or the pick reads as awaiting its filing.
+    monkeypatch.setattr(PICKS, "date", type("D", (date,), {"today": classmethod(lambda cls: date(2026, 9, 15))}))
     state = {"price": 20.0, "next_earnings": "2026-11-05"}
     monkeypatch.setattr(edgar, "cik_for", lambda s: (1234, "Acme Corp"))
     monkeypatch.setattr(edgar, "company_facts", lambda cik: companyfacts())

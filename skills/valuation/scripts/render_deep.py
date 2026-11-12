@@ -1,8 +1,19 @@
 #!/usr/bin/env python3
-"""Usage: render_deep.py [--in page.json] --out page.html
+"""Usage: render_deep.py --case DIR
+       render_deep.py [--in page.json] --out page.html
 
 Turns a deep valuation (model.py output, returns.py output, the belief ledger and the blocks the
-analyst picked) into one self-contained HTML page for the Artifact tool. Input::
+analyst picked) into one self-contained HTML page for the Artifact tool.
+
+``--case DIR`` assembles the input from the case folder and writes ``DIR/page.json`` (the input
+shape below) and ``DIR/page.html``. It reads ``model.out.json`` and ``returns.out.json`` (deep_run.py's
+files; symbol and price come from the model output), ``ledger.json`` (a list of entries, or an object
+with ``ledger``) and ``blocks.json``: ``{"blocks": [...], "as_of"?, "notes"?, "missing_roles"?}``.
+``as_of`` defaults to today. A missing ``model.out.json`` or ``blocks.json`` is exit 2 naming the
+file; without ``ledger.json`` the ledger is empty, and without ``returns.out.json`` the returns are
+null. Nothing is written when the input is invalid. ``--case`` takes neither ``--in`` nor ``--out``.
+
+Input (``--in``, or stdin)::
 
     {"symbol": "ACME", "price": 50.0, "as_of": "2026-10-05",
      "model": <model.py output>, "returns": <returns.py output>,
@@ -15,7 +26,9 @@ analyst picked) into one self-contained HTML page for the Artifact tool. Input::
 The first scenario in model.scenarios is the central case: the page labels it "Central", pins it first
 in the scenario table and headlines its value and return. The other scenarios are alternatives and
 nothing is averaged: scenarios carry no probabilities. The headline tiles show price, the central
-value and return, the worst case (lowest value) and the range.
+value and return, the worst case (lowest value among the scenarios that are not the stress test) and
+the range. A scenario marked ``"stress": true`` (several risks at once) is labelled "Stress test" in
+the table and gets its own tile; the deep picker's gate does not judge it.
 
 Always shown first: the headline tiles, the scenario table (value per share, upside, annualized return, total
 multiple, what has to be true), a line on what today's price implies (model.py's ``implied``),
@@ -54,6 +67,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
@@ -113,22 +127,24 @@ SCRIPT = r"""
   g('h1').textContent = `${D.symbol || ''} deep valuation`.trim();
   g('sub').textContent = `Price ${money(price)}${D.as_of ? ' · as of ' + D.as_of : ''} · ${scs.length} scenarios · ${M.horizon}-year horizon`;
   F.intro(g('intro'), {lead: `What one share of ${esc(D.symbol || 'this company')} could be worth under ${scs.length} different futures, built segment by segment from the company’s filings, and what buying at ${money(price)} would earn a year in each. The central case is the scenario the research found most consistent with the evidence; the others are alternatives and are not averaged.`});
-  const C = scs[0], cr = ret[C.name] || {}, worst = scs.reduce((a, s) => s.value_per_share < a.value_per_share ? s : a, scs[0]), wr = ret[worst.name] || {};
+  const gated = scs.filter((s, i) => i === 0 || !s.stress), ST = scs.find((s, i) => i > 0 && s.stress);
+  const C = scs[0], cr = ret[C.name] || {}, worst = gated.reduce((a, s) => s.value_per_share < a.value_per_share ? s : a, gated[0]), wr = ret[worst.name] || {};
   const allv = scs.map(s => s.value_per_share).filter(F.isNum), irrTxt = r => F.isNum(r.irr) ? pct(r.irr) : '—';
   const tile = (k, v, d) => `<div class="tile"><div class="k">${esc(k)}</div><div class="v">${v}</div><div class="d">${d}</div></div>`;
   g('headline').innerHTML = tile('Price', esc(money(price)), D.as_of ? 'as of ' + esc(D.as_of) : '&nbsp;')
     + tile('Central value', esc(money(C.value_per_share)), `${esc(C.name)}${F.isNum(C.upside) ? ' · ' + esc(pct(C.upside)) + ' vs price' : ''}`)
     + tile('Central return / yr', esc(irrTxt(cr)), `${esc(C.name)} · ${M.horizon}-year horizon`)
     + tile('Worst case', esc(money(worst.value_per_share)), `${esc(worst.name)} · ${esc(irrTxt(wr))} a year`)
+    + (ST ? tile('Stress test', esc(money(ST.value_per_share)), `${esc(ST.name)} · ${esc(irrTxt(ret[ST.name] || {}))} a year · several risks at once`) : '')
     + tile('Range', `${esc(money(Math.min(...allv)))} to ${esc(money(Math.max(...allv)))}`, 'scenarios not averaged');
 
   F.table(g('sc'), [
-    {key: 'name', label: 'Scenario', left: true, fmt: (v, r) => `${r.central ? '<span class="pill pill-central">Central</span>' : ''}<b>${esc(v)}</b><div class="muted" style="font-size:12px">${esc(r.summary)}</div>${r.must.length ? `<ul class="must">${r.must.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}`},
+    {key: 'name', label: 'Scenario', left: true, fmt: (v, r) => `${r.central ? '<span class="pill pill-central">Central</span>' : ''}${r.stress ? '<span class="pill" style="margin-left:0;margin-right:6px">Stress test</span>' : ''}<b>${esc(v)}</b><div class="muted" style="font-size:12px">${esc(r.summary)}</div>${r.must.length ? `<ul class="must">${r.must.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}`},
     {key: 'value', label: 'Value / share', fmt: v => money(v)},
     {key: 'upside', label: 'vs price', fmt: v => F.isNum(v) ? pct(v) : '—'},
     {key: 'irr', label: `Return / yr (${M.horizon}y)`, fmt: v => F.isNum(v) ? pct(v) : '—'},
     {key: 'mult', label: 'Total multiple', fmt: v => F.isNum(v) ? F.num(v, 2) + '×' : '—'},
-  ], scs.map((s, i) => ({central: i === 0, name: s.name, summary: s.summary, value: s.value_per_share, upside: s.upside, irr: (ret[s.name] || {}).irr, mult: (ret[s.name] || {}).total_multiple, must: s.must_be_true || []})), {sortKey: 'value', pin: r => r.central});
+  ], scs.map((s, i) => ({central: i === 0, stress: i > 0 && !!s.stress, name: s.name, summary: s.summary, value: s.value_per_share, upside: s.upside, irr: (ret[s.name] || {}).irr, mult: (ret[s.name] || {}).total_multiple, must: s.must_be_true || []})), {sortKey: 'value', pin: r => r.central});
   const IM = M.implied;
   if (IM && F.isNum(IM.value)) {
     const what = IM.field === 'roe_shift' ? 'return on equity' : 'operating margin';
@@ -224,7 +240,7 @@ SCRIPT = r"""
     } else if (b.type === 'skepticism') {
       const [c, el] = card('Cost of skepticism', 'How much of each scenario’s value the extra discount for doubtful plans takes away, and why each extra discount is there.');
       F.table(el, [{key: 'name', label: 'Scenario', left: true}, {key: 'v', label: 'Value / share', fmt: v => money(v)}, {key: 'x', label: 'Without the extra discount', fmt: v => money(v)}, {key: 'd', label: 'Difference', fmt: v => money(v)}],
-        scs.map((s, i) => ({central: i === 0, name: s.name, v: s.value_per_share, x: s.value_ex_premiums, d: s.value_per_share - s.value_ex_premiums})), {sortKey: 'name'});
+        scs.map((s, i) => ({central: i === 0, stress: i > 0 && !!s.stress, name: s.name, v: s.value_per_share, x: s.value_ex_premiums, d: s.value_per_share - s.value_ex_premiums})), {sortKey: 'name'});
       const prem = []; scs.forEach(s => s.segments.forEach(x => { if (x.premium) prem.push(`<li><b>${esc(s.name)} · ${esc(x.name)}</b>: +${F.num(x.premium * 100, 1)} points — ${esc(x.premium_reason || 'no reason given')}</li>`); }));
       el.insertAdjacentHTML('beforeend', prem.length ? `<ul style="font-size:13px;margin-top:10px">${prem.join('')}</ul>` : '<p class="muted">No extra discount was applied.</p>');
       F.help(c, {lead: 'Where a plan is vague or the evidence leans against it, the model discounts that part of the business at a higher rate. This card shows what that choice costs in value.'});
@@ -363,12 +379,60 @@ def build(data: dict) -> tuple[str, str, dict]:
                            "blocks": [b["type"] for b in data.get("blocks") or []], "flags": flags, "ledger": counts}
 
 
+def _case_file(case: Path, name: str, *, required: bool):
+    path = case / name
+    if not path.is_file():
+        if required:
+            raise InvalidInput(f"{case} has no {name}")
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise InvalidInput(f"could not read {path} ({name}): {exc}") from exc
+
+
+def case_input(case: Path) -> dict:
+    """The page input (the --in shape) assembled from a case folder's files."""
+    model = _case_file(case, "model.out.json", required=True)
+    spec = _case_file(case, "blocks.json", required=True)
+    if not isinstance(model, dict):
+        raise InvalidInput(f"{case / 'model.out.json'} (model.out.json) must be a JSON object: model.py's output")
+    if not isinstance(spec, dict) or not isinstance(spec.get("blocks"), list):
+        raise InvalidInput(f"{case / 'blocks.json'} (blocks.json) must be an object with a blocks list")
+    ledger = _case_file(case, "ledger.json", required=False)
+    if isinstance(ledger, dict):
+        ledger = ledger.get("ledger")
+    if ledger is None:
+        ledger = []
+    if not isinstance(ledger, list) or not all(isinstance(e, dict) for e in ledger):
+        raise InvalidInput(f"{case / 'ledger.json'} (ledger.json) must be a list of entries, or an object with ledger")
+    data = {"symbol": model.get("symbol"), "price": model.get("price"), "as_of": str(spec.get("as_of") or date.today().isoformat()),
+            "model": model, "returns": _case_file(case, "returns.out.json", required=False), "ledger": ledger, "blocks": spec["blocks"]}
+    for key in ("missing_roles", "notes"):
+        if spec.get(key):
+            data[key] = spec[key]
+    return data
+
+
 def main(argv: list[str] | None = None) -> int:
     def go(args: list[str]) -> dict:
         p = _Parser(prog="render_deep.py", add_help=False)
+        p.add_argument("--case", default=None)
         p.add_argument("--in", dest="inp", default=None)
-        p.add_argument("--out", required=True)
+        p.add_argument("--out", default=None)
         ns = p.parse_args(args)
+        if ns.case:
+            if ns.inp or ns.out:
+                raise InvalidInput("render_deep.py: --case writes page.json and page.html into the case folder; it takes neither --in nor --out")
+            case = Path(ns.case).expanduser()
+            data = case_input(case)
+            page_json = json.dumps(data, indent=2, ensure_ascii=False) + "\n"  # before build() adds its computed fields
+            _, markup, info = build(data)
+            (case / "page.json").write_text(page_json, encoding="utf-8")
+            out = page.write(case / "page.html", markup)
+            return {"out": str(out), **info}
+        if not ns.out:
+            raise InvalidInput("render_deep.py: give --case DIR, or --out FILE with --in FILE (or the JSON on stdin)")
         try:
             raw = Path(ns.inp).read_text(encoding="utf-8") if ns.inp else sys.stdin.read()
             data = json.loads(raw)

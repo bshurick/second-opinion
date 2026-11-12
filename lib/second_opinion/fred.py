@@ -33,6 +33,16 @@ SERIES_NAMES = {
     "AAA": "Moody's Seasoned Aaa Corporate Bond Yield",
     "DGS10": "10-Year Treasury Constant Maturity Rate",
     "WRMFNS": "Retail Money Market Funds",
+    "DGS2": "2-Year Treasury Constant Maturity Rate",
+    "FEDFUNDS": "Federal Funds Effective Rate",
+    "BAMLC0A4CBBBEY": "ICE BofA BBB US Corporate Index Effective Yield",
+    "MORTGAGE30US": "30-Year Fixed Rate Mortgage Average",
+    "UNRATE": "Unemployment Rate",
+    "DCOILWTICO": "Crude Oil Prices: West Texas Intermediate",
+    "DHHNGSP": "Henry Hub Natural Gas Spot Price",
+    "CPIAUCSL": "Consumer Price Index for All Urban Consumers: All Items",
+    "RSAFS": "Advance Retail Sales: Retail Trade and Food Services",
+    "IPMAN": "Industrial Production: Manufacturing",
 }
 
 

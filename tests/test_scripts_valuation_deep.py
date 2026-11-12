@@ -738,3 +738,97 @@ def test_render_deep_central_without_returns_row_shows_dash(tmp_path) -> None:
     assert tile == "—"
     data["returns"] = None
     assert 'Central return / yr</div><div class="v">—</div>' in _dom(data, tmp_path)
+
+
+# --- render_deep.py --case ---------------------------------------------------------------------
+
+
+def case_dir(tmp_path, *, ledger_as_object: bool = False, drop: tuple[str, ...] = ()):
+    """A case folder as deep_run.py leaves it, plus the ledger and the blocks the analyst writes."""
+    data = page_input()
+    data["ledger"][0]["takeaway"] = "Buybacks of $2.9B a year outrun free cash flow of $100M."
+    case = tmp_path / "deep-ACME"
+    case.mkdir()
+    files = {
+        "model.out.json": data["model"], "returns.out.json": data["returns"],
+        "ledger.json": {"ledger": data["ledger"]} if ledger_as_object else data["ledger"],
+        "blocks.json": {"blocks": data["blocks"], "as_of": data["as_of"], "notes": data["notes"], "missing_roles": data["missing_roles"]},
+    }
+    for name, body in files.items():
+        if name not in drop:
+            (case / name).write_text(json.dumps(body))
+    return case, data
+
+
+@pytest.mark.parametrize("ledger_as_object", [False, True])
+def test_render_deep_case_builds_page_json_and_html(ledger_as_object, tmp_path, capsys) -> None:
+    case, data = case_dir(tmp_path, ledger_as_object=ledger_as_object)
+    rc, res = run_json(load_script(RENDER), ["--case", str(case)], capsys)
+    assert rc == 0, res
+    assert res["out"] == str(case / "page.html") and res["symbol"] == "ACME" and len(res["blocks"]) == 9
+    assert res["scenarios"] == ["Base", "Squeeze"] and res["ledger"]["hurts"] == 1
+    raw = (case / "page.json").read_text()
+    page_json = json.loads(raw)
+    assert page_json["model"] == json.loads((case / "model.out.json").read_text())
+    assert page_json["returns"] == json.loads((case / "returns.out.json").read_text())
+    assert page_json["symbol"] == "ACME" and page_json["price"] == 20.0 and page_json["as_of"] == "2026-10-05"
+    assert page_json["notes"] == data["notes"] and page_json["missing_roles"] == ["industry"]
+    assert page_json["ledger"] == data["ledger"]  # as written: no computed fields added
+    assert "$2.9B a year outrun free cash flow of $100M" in raw
+    html = (case / "page.html").read_text()
+    assert "$2.9B a year outrun free cash flow of $100M" in html
+    # the page.json it wrote is the existing --in shape
+    rc, again = run_json(load_script(RENDER), ["--in", str(case / "page.json"), "--out", str(tmp_path / "again.html")], capsys)
+    assert rc == 0 and (tmp_path / "again.html").read_text() == html
+
+
+@pytest.mark.parametrize("missing", ["blocks.json", "model.out.json"])
+def test_render_deep_case_names_the_missing_file(missing, tmp_path, capsys) -> None:
+    case, _ = case_dir(tmp_path, drop=(missing,))
+    rc, res = run_json(load_script(RENDER), ["--case", str(case)], capsys)
+    assert rc == 2 and missing in res["error"]
+    assert not (case / "page.json").exists() and not (case / "page.html").exists()
+
+
+def test_render_deep_case_without_ledger_or_returns_files(tmp_path, capsys) -> None:
+    case, data = case_dir(tmp_path, drop=("ledger.json", "returns.out.json"))
+    blocks = [b for b in data["blocks"] if b["type"] != "ledger"]
+    (case / "blocks.json").write_text(json.dumps({"blocks": blocks}))
+    rc, res = run_json(load_script(RENDER), ["--case", str(case)], capsys)
+    assert rc == 0, res
+    page_json = json.loads((case / "page.json").read_text())
+    assert page_json["ledger"] == [] and page_json["returns"] is None and page_json["as_of"]
+
+
+def test_render_deep_case_invalid_blocks_write_nothing(tmp_path, capsys) -> None:
+    case, _ = case_dir(tmp_path)
+    (case / "blocks.json").write_text(json.dumps({"blocks": [{"type": "chart3d"}]}))
+    rc, res = run_json(load_script(RENDER), ["--case", str(case)], capsys)
+    assert rc == 2 and "chart3d" in res["error"] and not (case / "page.json").exists()
+    (case / "blocks.json").write_text(json.dumps([{"type": "skepticism"}]))
+    rc, res = run_json(load_script(RENDER), ["--case", str(case)], capsys)
+    assert rc == 2 and "blocks.json" in res["error"]
+
+
+def test_render_deep_needs_case_or_out(tmp_path, capsys) -> None:
+    rc, res = run_json(load_script(RENDER), [], capsys)
+    assert rc == 2 and "--case" in res["error"]
+    rc, res = run_json(load_script(RENDER), ["--case", str(tmp_path), "--out", str(tmp_path / "p.html")], capsys)
+    assert rc == 2 and "--case" in res["error"]
+
+
+def test_one_stress_scenario_is_valued_and_echoed() -> None:
+    m = load_script(MODEL).run_model(base_input(scenarios=[{"name": "Base"}, {"name": "Squeeze", "overrides": {"Core": {"margin": 0.10}}},
+                                                           {"name": "All at once", "stress": True, "overrides": {"Core": {"margin": 0.05}}}]))
+    assert [s["stress"] for s in m["scenarios"]] == [False, False, True]
+    assert m["scenarios"][2]["value_per_share"] < m["scenarios"][1]["value_per_share"]
+
+
+@pytest.mark.parametrize("scenarios, needle", [
+    ([{"name": "Base", "stress": True}, {"name": "Bear"}], "central case and cannot be the stress test"),
+    ([{"name": "Base"}, {"name": "A", "stress": True}, {"name": "B", "stress": True}], "at most one scenario can be a stress test"),
+    ([{"name": "Base"}, {"name": "A", "stress": "yes"}], "stress must be true or false"),
+])
+def test_stress_scenario_rules(scenarios, needle) -> None:
+    with pytest.raises(ValueError, match=needle):
+        load_script(MODEL).run_model(base_input(scenarios=scenarios))

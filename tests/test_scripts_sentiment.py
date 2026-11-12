@@ -9,9 +9,18 @@ def _rows(n=3):
     return [{"date": f"2026-10-0{i + 1}", "short": 40, "total": 100} for i in range(n)]
 
 
-def _patch(monkeypatch, rows, news):
+_EMPTY_VIEW = {"source": "yahoo", "targets": None, "recommendations": None, "actions": [], "estimates": None}
+
+
+def _view(sym):
+    return {"symbol": sym, "as_of": "2026-10-01", "source": "yahoo", "targets": {"current": 10.0, "low": 8.0, "mean": 12.0, "median": 12.0, "high": 15.0},
+            "recommendations": {"strong_buy": 1, "buy": 2, "hold": 3, "sell": 0, "strong_sell": 0, "count": 6}, "actions": [], "estimates": None}
+
+
+def _patch(monkeypatch, rows, news, analysts=_view):
     monkeypatch.setattr(sentiment.finra, "short_volume", lambda syms, days=20: {s: rows.get(s, []) for s in syms})
     monkeypatch.setattr(sentiment.market, "recent_news", news)
+    monkeypatch.setattr(sentiment.market, "analyst_view", analysts, raising=False)
 
 
 def test_two_symbols_merged(monkeypatch, capsys):
@@ -77,3 +86,19 @@ def test_days_capped_at_60(monkeypatch, capsys):
     assert rc == 2 and "error" in out
     rc, _ = run_json(sentiment, ["AAA", "--days", "60"], capsys)
     assert rc == 0
+
+
+def test_analysts_block_and_unavailable_flag(monkeypatch, capsys):
+    def analysts(sym):
+        if sym == "CCC":
+            raise RuntimeError("boom")
+        return _view(sym) if sym == "AAA" else {"symbol": sym, "as_of": "2026-10-01", **_EMPTY_VIEW}
+
+    _patch(monkeypatch, {"AAA": _rows(), "BBB": _rows(), "CCC": _rows()}, lambda *a, **k: [], analysts)
+    rc, out = run_json(sentiment, ["AAA,BBB,CCC"], capsys)
+    assert rc == 0
+    assert out["symbols"]["AAA"]["analysts"]["targets"]["mean"] == 12.0
+    assert out["symbols"]["BBB"]["analysts"]["targets"] is None
+    assert out["symbols"]["CCC"]["analysts"]["actions"] == []
+    flags = [f for f in out["flags"] if f["code"] == "ANALYSTS_UNAVAILABLE"]
+    assert len(flags) == 2 and "BBB" in flags[0]["message"] and "CCC" in flags[1]["message"]

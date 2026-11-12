@@ -30,6 +30,7 @@ Quick mode runs a discounted-cash-flow range cross-checked against comparable mu
 | `shares_outstanding` (in `assumptions`) | Yahoo's implied count across every share class when present, else `sharesOutstanding`, else the statement figure. `SHARE_CLASSES_COMBINED` fires when the implied count is more than 5% above the one-class figure. |
 | `assumptions.nci_share`, `LARGE_MINORITY_INTEREST` | The share of net income that goes to noncontrolling interests. At 10% or more the flag fires, `fcf0` is scaled to the parent's share, and the tax rate excludes the partners' earnings. Book value understates the claim, so a deep model values it from the minority's earnings. |
 | `CORPORATE_ACTION_SUSPECTED` | Today's share count is under 0.75 or over 1.33 times the latest statement's diluted average shares, or Yahoo's split record shows an adjustment after the latest annual statement (spin-offs appear as fractional ratios; Yahoo restates share history, which hides them from the ratio). The statements may describe a business or share count that no longer exists. Per-share values are not meaningful until a post-action year is reported. |
+| `CURRENCY_MISMATCH` | The statements are in another currency than the share price (a foreign filer, such as an ADR). `fcf0`, net debt and every per-share value built from them are in the statements' currency, so a DCF value cannot be set against the price or give a return. |
 | `assumptions.fcf0_latest`, `dcf_input_latest`, `CYCLICAL`, `CYCLE_BASE_SPLIT` | `CYCLICAL` fires when the cash-flow margin swings widely across the statements. `dcf_input_latest` then reruns the DCF on the latest year's cash flow. `CYCLE_BASE_SPLIT` fires when the two bases differ more than 2x: present both values, never one base. `intrinsic.py`'s `normalized` block gives a mid-cycle view. |
 | `ddm_input` | Discounts at the cost of equity. `dividend_cagr` runs over complete calendar years. |
 
@@ -125,7 +126,7 @@ The saved depth decides the default; when it is deep, the session's depth rule s
 
 - Quick answers "what's X worth", "value check", "fair price", several tickers and the screener funnel's price check.
 - These words upgrade one request to Deep: "deep dive", "in depth", "full valuation", "dig into X", "what could go wrong with X's plan".
-- A single ticker with no such words gets Quick, ending with one line: a deep version is available and sends ten to fifteen research subagents.
+- A single ticker with no such words gets Quick, ending with one line: a deep version is available, and it sends roughly eight to eleven research subagents and spends about 25 web searches.
 
 ### What `returns.py` adds
 
@@ -149,23 +150,46 @@ The saved depth decides the default; when it is deep, the session's depth rule s
 
 - `discount_premium` with `premium_reason` raises one segment's discount rate for a doubtful or vague plan. `value_ex_premiums` shows the value without any premium.
 - A scenario overrides named segment fields. `fails` ends a segment at a year with a salvage value.
+- `"stress": true` marks the one compound stress test (several risks landing at once). It is valued like any scenario, the page labels it "Stress test", and the deep picker's gate reports it without judging it. Never the first scenario, and at most one.
 - Each scenario's `path` and `exit` feed `returns_input`.
 - `implied` is what today's price implies: the one shift to every operating margin (or to every residual-income ROE) that makes the first scenario worth the price.
 - Flags: `TERMINAL_HEAVY`, `NEGATIVE_EQUITY`, `MARGIN_ABOVE_HISTORY`, `REINVESTMENT_NEGATIVE`.
 
 ### The deep-mode case folder
 
-Each deep run keeps its work in `DIR/deep-SYMBOL/`, where DIR is the session scratchpad:
+Each deep run keeps its work in `DIR/deep-SYMBOL/`, where DIR is the session scratchpad. `deep_prep.py` makes the folder and everything marked "prep" below.
 
 | Path | Holds |
 |---|---|
-| `baseline/` | Quick-mode script output |
+| `baseline/INDEX.md` | Prep. The research pack's index: every file with its size, the headline figures, what is missing and why, and the script commands resolved to absolute paths. Subagents start here. |
+| `baseline/*.json` | Prep. `edgar.json`, `fundamentals.json`, `inputs.json`, `intrinsic-inputs.json`, `intrinsic.json`, `quick_value.json`, `sentiment.json` (news, short-sale volume and the `analysts` consensus), `earnings.json`, `redflags.json`, `forensic-checks.json`, `pack.json` |
+| `baseline/releases/<filing date>.txt` | Prep. The text of the latest twelve earnings releases |
+| `baseline/filings/` | Prep. The latest 10-K as `10k-item1.txt`, `10k-item1a.txt`, `10k-item7.txt`, `10k-item8.txt`, `10k-item9a.txt`, with `10k-item1a-diff.txt`, `10k-item8-diff.txt`, `10k-items.json`, `segment-note.txt`, and the latest 10-Q's `10q-item1.txt` (the financial statements and notes, with the latest quarter-end balance sheet) and `10q-item2.txt`. When the 10-K's Items are stubs that only point to another page, the text is in `10k-full.txt` and the stub files are listed in `missing`. |
+| `baseline/picker-industry-*` | Prep. Copies of the `--industry` files, when the deep picker passed any |
+| `budget.json` | Prep. The web-search budget. Only `budget.py` writes it. |
+| `model.skeleton.json` | Prep. A `model.py` input with `price`, `shares_outstanding`, `base_discount_rate`, `tax_rate`, `cost_of_debt`, `annual_dilution` and the defaults filled, empty `claims`, `segments` and `scenarios`, and `_notes` giving each value's source and what is left to fill |
 | `research/<role>.md` | One findings file per research role |
 | `ledger.json` | The belief ledger: `id`, `belief`, `holder`, `stakes`, `verdict`, `if_true` (`up` or `down`), `headline`, `takeaway`, optional `effect_per_share`, `for` and `against` (each `claim`, `source`, `date`), `consequence`, `thread` |
 | `threads/<n>-<slug>.md` | One file per deep-dive |
-| `model.json` | The `model.py` input |
+| `model.json` | The `model.py` input: the filled skeleton. `_notes` stays in it; `deep_run.py` drops top-level keys that start with `_`. |
+| `model.out.json`, `returns.out.json`, `runs.json` | Written by `deep_run.py`: the `model.py` output, the `returns.py` output, and one entry per run |
 | `custom/*.py` | Calculations the engine cannot express, each printing JSON |
-| `page.json` | The `render_deep.py` input |
+| `blocks.json` | The page's blocks: `{"blocks": [...], "as_of"?, "notes"?, "missing_roles"?}` |
+| `page.json`, `page.html` | Written by `render_deep.py --case` from `model.out.json`, `returns.out.json`, `ledger.json` and `blocks.json` |
+
+- A pack source that fails is named in `missing` with the reason under Missing in `INDEX.md`, and the run goes on.
+- The pack's `summary.flags` carries `CURRENCY_MISMATCH` and `THIN_EDGAR_HISTORY` when they fired. Each message is in `summary.flag_notes` and at the top of `INDEX.md`.
+- With `CURRENCY_MISMATCH`, `quick_value.json` has a null `basis` and no bear, base, bull or return.
+- `THIN_EDGAR_HISTORY` means `edgar.json` has no annual rows or no 10-K was found: a foreign filer, or a successor registrant whose filings sit under a predecessor. The pack's figures then come from Yahoo alone.
+- Money and share counts in the model are in millions. The pack's JSON files are in absolute currency.
+- `budget.py` plans: `valuation` holds 25 searches (`forensic` 1, `claims` 3, `industry` 6, `segments` 1, `threads` 8, `threads_round2` 4, `red_team` 2). `valuation-picker` is the same with `industry` 4, so 23.
+- Every `budget.py` command prints `caps`, `used`, `used_total`, `remaining`, `threads_allowed`, `round2_threads_allowed` and `flags` (`ROLE_OVER_CAP`, `OVER_BUDGET`).
+- `threads_allowed` is the lowest of 4, half of what is left of the `threads` cap, and half of `remaining`. `round2_threads_allowed` is the same for the `threads_round2` cap, with 2 in place of 4. So a thread round never spends the searches kept for the next round or the red team.
+- `deep_run.py` prints each scenario's `value_per_share`, `value_ex_premiums`, `upside`, `irr` and `change_vs_prev` (against the same-named scenario in the run named by `compared_to`; null on the first run), plus `implied` and the flags of `model.py` and `returns.py`.
+- Its `compared_to` is the previous run's number, or the `run` number passed as `--compare-to N`.
+- Its `max_move` is the largest absolute `change_vs_prev`, and `round2_due` is true when that is above 10%.
+- Its `unmatched` lists each scenario with no same-named scenario in the other run (`name`, `run`, `value_per_share`), and any entry raises `SCENARIOS_CHANGED`.
+- Its `position` says where the price sits among the scenario values: `brackets_price`, `all_above_price` (every value is above the price) or `all_below_price`.
 
 `render_deep.py` always opens with the scenario table and the price against the scenarios. After that it shows the blocks you list, in your order. `segments`, `drivers`, `ledger`, `track_record`, `forensics`, `skepticism`, `sensitivity`, `custom` and `text` are described in its docstring. A ledger claim without a source and a date is exit 2.
 
@@ -183,7 +207,7 @@ Read these with the Read tool and ground the answer in what they say. Do not ans
   - comparable-multiples methodology (which multiples, peer selection, transaction comps) or Adjusted Present Value (APV)
 - Read `references/value-investing.md` before answering anything about Benjamin Graham, Warren Buffett, value investing, the margin of safety, the Graham number, net-nets or net current asset value, owner earnings, or a "value screen".
 - `references/value-investing.md` maps every figure `intrinsic.py` emits to its source (Graham's chapters 11, 14, 15 and 20; the 1977, 1983, 1986 and 1992 Berkshire letters; Greenwald).
-- `references/deep-roles.md` holds the brief for each deep-mode research subagent. Hand a subagent its section and the Shared rules section, verbatim.
+- `references/deep-roles.md` holds the brief for each deep-mode research subagent. A subagent reads the Shared rules section and its own role section from the file itself.
 
 ## Scripts
 
@@ -200,8 +224,11 @@ Run with the Bash tool. All print JSON on stdout.
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/valuation/scripts/intrinsic.py" <<< '<input json>'
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/valuation/scripts/render.py" --in valuation.json --out page.html
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/valuation/scripts/returns.py" <<< '<input json>'
-"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/valuation/scripts/model.py" < DIR/deep-SYMBOL/model.json
-"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/valuation/scripts/render_deep.py" --in DIR/deep-SYMBOL/page.json --out DIR/deep-SYMBOL/page.html
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/valuation/scripts/deep_prep.py" SYMBOL --case DIR/deep-SYMBOL [--plan valuation|valuation-picker] [--industry FILE ...]
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/valuation/scripts/budget.py" DIR/deep-SYMBOL add ROLE=N [ROLE=N ...]
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/valuation/scripts/budget.py" DIR/deep-SYMBOL
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/valuation/scripts/deep_run.py" --case DIR/deep-SYMBOL [--label TEXT] [--compare-to N]
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/valuation/scripts/render_deep.py" --case DIR/deep-SYMBOL
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/picks.py" save-deep SYMBOL --case DIR/deep-SYMBOL [--source URL]
 ```
 
@@ -217,15 +244,18 @@ Run with the Bash tool. All print JSON on stdout.
 | `intrinsic.py` | Graham and Buffett figures, checklists, the `normalized` block and margin-of-safety rows. |
 | `render.py` | The interactive page from the collected results. |
 | `returns.py` | Annualized return at today's price per scenario, in `convergence` or `paths` mode. |
-| `model.py` | Segment-by-segment, scenario-by-scenario valuation with the path to the horizon and `returns_input`. |
-| `render_deep.py` | The deep-mode page: scenario table, price strip, then the chosen blocks. |
+| `deep_prep.py` | Everything a deep valuation needs before research starts: the case folder, the research pack in `baseline/`, `budget.json` and `model.skeleton.json`. Prints `summary`, `missing`, `budget`, `index`, `skeleton` and `flags`. |
+| `budget.py` | The search budget in `budget.json`. `add` records the searches each role used in a round. With only the folder it prints the status. |
+| `model.py` | Segment-by-segment, scenario-by-scenario valuation with the path to the horizon and `returns_input`. `deep_run.py` runs it. |
+| `deep_run.py` | One pass of the arithmetic: `model.py` on `model.json`, then `returns.py` on its `returns_input`. Writes `model.out.json`, `returns.out.json` and `runs.json`, and prints the scenarios with `max_move`, `round2_due` and `position`. |
+| `render_deep.py` | The deep-mode page: scenario table, price strip, then the chosen blocks. `--case` assembles `page.json` from the case folder and writes `page.html` beside it. |
 | `picks.py save-deep` | The stock-screener skill's pick store: keeps the deep valuation as the baseline its re-checks measure against. |
 
 | Exit code | Meaning | What to show |
 |---|---|---|
-| 2 | Bad input. For `render.py`, no script result is present. For `render_deep.py`, a missing model, an unknown block, or an undated ledger claim. | `error` |
-| 4 | `intrinsic-inputs.py` only. `SKILL_MISSING`: the fundamental-research skill is not installed. `CONFIG_MISSING`: EDGAR is not configured. | `error` |
-| 5 | A data source (Yahoo, EDGAR) returned an error | `error` |
+| 2 | Bad input. For `render.py`, no script result is present. For `render_deep.py`, a missing `model.out.json` or `blocks.json`, an unknown block, or an undated ledger claim. For `deep_prep.py`, a ticker the SEC does not list or an `--industry` file that does not exist. For `deep_run.py`, no `model.json`, a `--compare-to` run that `runs.json` does not have, or a model that `model.py` or `returns.py` rejects; nothing is written. For `budget.py`, an unknown role or no `budget.json`. | `error` |
+| 4 | `intrinsic-inputs.py` and `deep_prep.py`. `SKILL_MISSING`: the fundamental-research skill is not installed. `CONFIG_MISSING`: a script reported that EDGAR is not configured. | `error` |
+| 5 | A data source (Yahoo, EDGAR) returned an error. For `deep_prep.py`, `EDGAR_UNREADABLE`: the SEC refused the requests or is down, so the pack has no `edgar.json`. | `error` |
 | 6 | Python dependencies missing | `error`, and say the get-started skill repairs it |
 
 ## Steps
@@ -247,7 +277,8 @@ Run with the Bash tool. All print JSON on stdout.
    | Companies with changing capital structure | Consider Adjusted Present Value (APV) instead of the standard WACC-based DCF. |
    | Early-stage / pre-profit companies | Flag the systematic DCF biases against high-growth, long-payback firms identified in the literature. Widen the valuation range accordingly. |
 
-4. If a `DCF_NOT_MEANINGFUL_FOR_…` flag or `NEGATIVE_FCF` fired, do not present the DCF as an estimate of value. Skip to step 9.
+4. If a `DCF_NOT_MEANINGFUL_FOR_…` flag, `NEGATIVE_FCF` or `CURRENCY_MISMATCH` fired, do not present the DCF as an estimate of value. Skip to step 9.
+   - With `CURRENCY_MISMATCH`, say that no cash-flow value is given because the statements are in another currency, and value the company on multiples in the price currency.
 5. Review the historical record in the statements: revenue growth, operating margins, NOPAT, capex, D&A, changes in working capital, and free cash flow (FCFF).
 6. Challenge each entry in `assumptions` against that record instead of accepting it, and state the ones you keep.
    - `wacc`: CAPM for the cost of equity and the company's effective borrowing cost for the cost of debt.
@@ -276,58 +307,80 @@ Run with the Bash tool. All print JSON on stdout.
 
 **Deep (one company)**
 
-1. Run `edgar.py SYMBOL` from the fundamental-research skill. If it exits 4, stop. Say deep mode needs SEC EDGAR; in standard depth offer quick mode, and in deep depth say no fair value can be given without it.
-2. Make `DIR/deep-SYMBOL/` and its `baseline/`, `research/`, `threads/` and `custom/` folders. Write the output of `fundamentals.py`, `inputs.py`, `intrinsic-inputs.py` and `edgar.py` into `baseline/`.
-3. Tell the person deep mode has started and roughly how many research tasks it will run.
-   - Write `budget.json` in the case folder: the web searches this run may spend (about 30 for one company: the role caps in `references/deep-roles.md`, plus 2 per thread), each role's cap, and the searches used so far.
-   - The session has one shared pool of about 200 searches. A deep valuation run by the deep picker takes its budget from the picker's plan.
-   - A deep valuation run by the deep picker receives the finalist's industry object and `.md` notes. Hand them to the Industry and news role in its prompt, so it takes the sector outlook from them and spends its searches (cap 4) on company news and competitors.
-4. Dispatch the four round-1 roles in parallel with the Agent tool (general-purpose type): Forensic accountant, Management claims, Industry and news, Segment economics.
-   - Each prompt names the Shared rules section and the role's section of `references/deep-roles.md` by its absolute path for the subagent to read, plus the case folder path, the symbol and today's date.
-   - Each prompt also gives the fundamental-research script commands with `SNAPTRADE_PY` and `CLAUDE_PLUGIN_ROOT` already resolved to absolute paths. A subagent does not inherit them.
-   - Each prompt states the role's search cap as a hard limit. After each agent returns, add the searches it used to `budget.json`.
+1. Run `deep_prep.py SYMBOL --case DIR/deep-SYMBOL`. Read `summary`, `missing`, `budget` and `flags` from what it prints, not from the files.
+   - When the deep picker runs this valuation, add `--plan valuation-picker` and one `--industry FILE` for each industry object and notes file it handed over.
+   - If it exits 4, stop. Say deep mode needs SEC EDGAR; in standard depth offer quick mode, and in deep depth say no fair value can be given without it.
+   - An EDGAR contact that is not set does not exit 4. `flags` then carries `DEFAULT_USER_AGENT`: the SEC may refuse the requests. Say so once and that the get-started skill sets it.
+   - If it exits 5, the SEC could not be read and there is no pack. Stop the same way as for exit 4, and dispatch no research role. If the `error` names `DEFAULT_USER_AGENT`, say that the get-started skill sets the EDGAR contact and that the run can be retried after it.
+   - Otherwise go on with what `missing` names, and list in the reply's Flags the files a role needed.
+   - `BUDGET_KEPT` means the case folder already had a budget from an earlier run, and its count carries on.
+   - If `flags` carries `CURRENCY_MISMATCH`, carry it into step 6: build the model in one currency, converting with a dated exchange rate recorded as a ledger entry. Name the flag in the reply's Flags.
+   - If `flags` carries `THIN_EDGAR_HISTORY`, tell each research role that the pack lacks the annual table and the 10-K text, and that filings come through `filing.py --url` from the filing index or the predecessor registrant. Name the flag in the reply's Flags.
+   - A dotted ticker (`BRK.B`) is prepared in the dash form (`BRK-B`), printed as `symbol`. Use that form in the later commands.
+2. Tell the person deep mode has started and roughly how many research tasks it will run.
+   - The session has one shared pool of about 200 searches, and `budget.json` is this run's share of it.
+   - For several companies, run two or three deep valuations at a time. Each dispatches up to five subagents at once, and the session caps both concurrent subagents and web searches. Count 25 searches per company and keep 20 in reserve.
+3. Dispatch the four round-1 roles in one message with the Agent tool (general-purpose type): Forensic accountant, Management claims, Industry and news, Segment economics.
+   - Keep each prompt to these items: the absolute path of `references/deep-roles.md` with the two sections to read (Shared rules and the role's own), the case folder path, the symbol, today's date, and the role's search cap as a hard limit.
+   - End each prompt with the instruction to start from `baseline/INDEX.md` in the case folder. The index holds the pack's files and the resolved script commands, so the prompt lists neither.
+   - The caps are in `budget`'s `caps`: `forensic`, `claims`, `industry`, `segments`.
    - If the Agent tool is unavailable, run the roles one after another yourself, and say so in the reply.
-   - For several companies, run two or three deep valuations at a time. Each dispatches up to five subagents at once, and the session caps both concurrent subagents and web searches. Split the search pool before starting, about 30 per company, and keep 20 in reserve.
-5. If a role failed or wrote no file, add its name to `missing_roles` and go on.
-6. Merge the candidate beliefs into `ledger.json`. Combine duplicates. Set `verdict` to `open` where the evidence is thin. Rank by stakes, then by how evenly the evidence splits.
+4. Run `budget.py DIR/deep-SYMBOL add forensic=N claims=N industry=N segments=N` once, with the searches each role reported. If a role failed or wrote no file, add its name to `missing_roles` and go on.
+5. Merge the candidate beliefs into `ledger.json`. Combine duplicates. Set `verdict` to `open` where the evidence is thin. Rank by stakes, then by how evenly the evidence splits.
    - Stakes are how much value moves if the belief is wrong, never how much attention the belief gets in the news.
    - A belief settled by a single source, or by a policy that can be reversed, keeps its stakes and stays eligible for a thread.
    - Give every entry `if_true`: `up` when the belief, if true, raises the value, `down` when it lowers it. The page combines it with the verdict to mark each row as working for or against the value.
    - Give every entry a `headline`, a label of a few words such as "Questionable SMB growth" (at most 60 characters), and a `takeaway`: one plain sentence saying what the research concluded. Update both after each thread. Add `effect_per_share` when a model rerun measured what the belief's consequence did to the central value.
-7. Write `model.json`:
+6. Copy `model.skeleton.json` to `model.json`, read its `_notes`, and fill it. Leave `_notes` in the file.
    1. Take the segments from `research/segments.md`, plus a `cost` segment for unallocated corporate cost when it is reported.
    2. Anchor each driver on the segment's history. Move it only where a ledger entry gives a dated reason.
    3. In a year when revenue shrinks, set that year's `sales_to_capital` to about 4 unless the history shows inventory being released. At the normal ratio, a shrinking year hands back far more capital than builders and manufacturers actually free up.
-   4. Write three to five scenarios that differ in their story (what happens to the business), not just in a growth shift. Each has a `summary` and its `must_be_true` list.
+   4. Write three to five scenarios that differ in their story (what happens to the business), not just in a growth shift. Each has a `summary` and its `must_be_true` list. The first scenario is the central one.
+      - The worst of them is the severest single story: the one risk that hurts most lands hard, at the worst dated evidence supports, while the rest of the business runs as in the central case. Size it from the company's own record (its worst past downturn) or the industry's, not by stacking risks. Do not soften it to make a return look better.
+      - When two or more risks could plausibly land together, add one more scenario that stacks them, with `"stress": true`. It is the stress test: shown on the page, not judged by the deep picker's gate. It may be a sixth scenario.
    5. Give a `discount_premium` only where a ledger entry is doubtful, contradicted or vague. Put the entry's id in the `premium_reason`.
-   6. Take `claims` from the balance-sheet table in `research/segments.md`, not from `inputs.py`. Its net debt comes from Yahoo's total debt, which counts a finance arm's warehouse lines as corporate debt. Take `base_discount_rate` from `inputs.py`'s `wacc`, and add `history` with each segment's best historical margin.
-      - For a company valued only through `residual_income` segments, `claims` is empty, because debt and cash sit inside book value, and `base_discount_rate` is the cost of equity.
-      - `retention` nets out new share issuance, and `annual_dilution` stays 0.
-   7. Set the rest of the top level: `price`, `tax_rate` and `cost_of_debt` from `inputs.py`'s `assumptions`, `payout` as the share of free cash flow the company has paid out in dividends and buybacks (default 1), and `annual_dilution` from the share-count trend. `returns.py` needs `price`.
-   8. Check `inputs.py`'s discount rate before using it:
-      - Look at `ERP_DEFAULT` and `ERP_STALE` first. The equity risk premium is a dated default unless `--erp` and `--erp-date` supply one, and a default or stale one is replaced with a current dated figure when the value moves on it.
+   6. Take `claims` from the balance-sheet table in `research/segments.md`, in millions, not from `inputs.py`. Its net debt comes from Yahoo's total debt, which counts a finance arm's warehouse lines as corporate debt. Add `history` with each segment's best historical margin.
+      - For a company valued only through `residual_income` segments, `claims` is empty, because debt and cash sit inside book value, and `base_discount_rate` is the cost of equity (in `_notes`).
+      - `retention` nets out new share issuance, so set `annual_dilution` to 0 there.
+   7. The skeleton already holds `price`, `shares_outstanding`, `tax_rate`, `cost_of_debt`, `base_discount_rate` (`inputs.py`'s `wacc`) and `annual_dilution` (the share-count trend from EDGAR). If `flags` had `SKELETON_INCOMPLETE`, set the fields it names by hand.
+      - Set `payout` to the share of free cash flow the company has paid out in dividends and buybacks (default 1).
+      - Keep a negative `annual_dilution` only when the buybacks are expected to go on and are not also counted in `payout`.
+      - If `flags` had `DILUTION_UNRELIABLE`, the skeleton's `annual_dilution` is 0 because the share history holds a split or a listing. Set it from the buyback and issuance history in the filings.
+   8. Check the skeleton's discount rate before using it:
+      - Look at `ERP_DEFAULT` and `ERP_STALE` in `_notes` first. The equity risk premium is a dated default unless `inputs.py --erp RATE --erp-date YYYY-MM-DD` supplies one, and a default or stale one is replaced with a current dated figure when the value moves on it.
       - Its cost of debt has no credit spread, and its beta is a five-year figure.
       - When the rate moves the value, rebuild it from dated sources and record it as a ledger entry.
    9. Fit any shared cost path (a platform or head-office cost) after the segment revenue paths are final.
    10. Add a `sensitivity` on the two inputs the central scenario hangs on. `roe_shift` serves a residual-income segment, and `discount_shift` with segment `"*"` moves every discount rate at once.
-8. Run `model.py`, then `returns.py` on its `returns_input`. If `model.py` exits 2, fix `model.json` and rerun. Read `implied`: if every scenario sits above the price, or every one below, a scenario is probably missing. Write the one the price implies before the threads.
-9. Thread rounds, at most three:
-   1. Check `budget.json` first. If fewer than 4 searches remain, skip the thread rounds, say so in the flags, and go to the Red team.
-      - Otherwise pick up to four `open` or contested beliefs with high or medium stakes, no more than the remaining searches allow at 2 each.
+7. Run `deep_run.py --case DIR/deep-SYMBOL --label baseline`. It replaces separate `model.py` and `returns.py` runs.
+   - If it exits 2, fix `model.json` from the `error` and rerun.
+   - If `position` is `all_above_price` or `all_below_price`, a scenario is probably missing. Read `implied`, write the scenario the price implies, and rerun before the threads.
+8. Run one thread round:
+   1. Take `threads_allowed` from the step 4 output. If it is 0, skip the threads, say so in the flags, and go to step 10.
+   2. Pick up to `threads_allowed` `open` or contested beliefs with high or medium stakes, never more than four.
       - One of them is a blind-spot thread: the highest-stakes belief that got the least coverage, or that rests on a single source or a reversible policy.
-   2. Dispatch one Thread deep-dive per belief, in parallel. Each gets the Shared rules and Thread deep-dive sections, the ledger entry, its output file name, the case folder, and the current `model.json` values for the fields the belief touches in each scenario.
-   3. Write each verdict and its evidence into `ledger.json`, apply each model consequence to `model.json`, and add any new beliefs. Then recheck fields fitted to others (a cost path fitted to revenue), since each thread changes one field at a time.
-   4. Rerun `model.py` and `returns.py`.
-   5. Stop when no scenario's `value_per_share` moved more than 5% in the round, or after round three.
-10. Dispatch the Red team with its section and the name of the central scenario.
-    - Apply each proposed change that holds up, and rerun.
-    - Keep a list of the changes you rejected, each with one line on why.
-11. If a case needs arithmetic the engine cannot express:
+   3. Dispatch one Thread deep-dive per belief, all in one message. Each prompt is the round-1 prompt with the Thread deep-dive section and a cap of 2, plus the ledger entry, the output file name, and the current `model.json` values for the fields the belief touches in each scenario.
+   4. Run `budget.py DIR/deep-SYMBOL add threads=N` once, with the total the threads reported.
+   5. Write each verdict and its evidence into `ledger.json`, apply each model consequence to `model.json`, and add any new beliefs. Then recheck fields fitted to others (a cost path fitted to revenue), since each thread changes one field at a time.
+   6. Run `deep_run.py --case DIR/deep-SYMBOL --label threads-1 --compare-to N` after every consequence is in, where N is the `run` number of the last run before the round.
+      - If you run it again inside the round, pass the same N. `round2_due` then measures the whole round's move.
+      - Keep scenario names the same between runs: a renamed or added scenario is not compared by name. If `flags` carries `SCENARIOS_CHANGED`, read `unmatched` for the scenarios left out of the comparison.
+9. Only if that run printed `round2_due` true and step 8's `budget.py` output has `round2_threads_allowed` of 1 or more, run a second round of at most `round2_threads_allowed` threads.
+   - Follow step 8's sub-steps 2 to 6, recording the searches as `threads_round2=N`, labelling the run `threads-2`, and passing the `run` number of the last `threads-1` run as `--compare-to`.
+   - Never run a third round, whatever this run prints.
+10. If a case needs arithmetic the engine cannot express:
     1. Write it as `custom/<name>.py` printing JSON with an `answer` (one plain sentence with the figure that matters) and, when there is more than one figure, a `table` of display-ready strings: `{"columns": [...], "rows": [[...]]}`, with rates as "8.6%" and values as "$31.96". Use a model axis instead when `model.py`'s sensitivity can express the grid.
     2. Have the Red team rerun it.
     3. Show it as a `custom` block. Never fold it silently into a total.
-12. Write `page.json`. Pick the blocks that tell this company's story, in the order a reader needs them. Run `render_deep.py --in DIR/deep-SYMBOL/page.json --out DIR/deep-SYMBOL/page.html`.
-13. Publish with the Artifact tool: icon chart, description "Deep valuation: SYMBOL at PRICE". Republish the same path on later runs.
+11. Dispatch the Red team: the round-1 prompt with the Red team section, the `red_team` cap and the name of the central scenario.
+    - Run `budget.py DIR/deep-SYMBOL add red_team=N`.
+    - Apply each proposed change that holds up, and run `deep_run.py --case DIR/deep-SYMBOL --label red-team`. A `round2_due` on this run starts no thread round.
+    - Keep a list of the changes you rejected, each with one line on why.
+12. Write `blocks.json`: the blocks that tell this company's story, in the order a reader needs them, with `missing_roles` and any `notes`. Then run `render_deep.py --case DIR/deep-SYMBOL`.
+    - It takes the model, the returns and the ledger from the case files, so do not copy them into `blocks.json` and do not write `page.json` by hand.
+    - A `custom` block carries the JSON its script printed as `result`.
+    - If it exits 2, fix the block or ledger entry the `error` names and rerun.
+13. Publish `DIR/deep-SYMBOL/page.html` with the Artifact tool: icon chart, description "Deep valuation: SYMBOL at PRICE". Republish the same path on later runs.
 14. If the stock-screener skill is installed and the company is already a saved pick, or the person holds it or asks to track it, save the baseline: `picks.py save-deep SYMBOL --case DIR/deep-SYMBOL --source <page link>`. The case folder lives in the session scratchpad, which is cleared, so this is what later re-checks measure against. The deep picker saves its own picks.
 15. Reply in the deep format below. If the Artifact tool is unavailable, use the deep markdown fallback. When the baseline was not saved, end with one line offering to save it for re-checks.
 
@@ -378,11 +431,11 @@ The page carries the sensitivity grids, checklists, owner earnings, normalized b
 **Deep mode, page published:** these parts, then stop.
 
 1. The artifact link on its own line.
-2. A table: scenario | value per share | return a year at today's price, from `model.py` and `returns.py`.
+2. A table: scenario | value per share | return a year at today's price, from the last `deep_run.py` output (`value_per_share`, `irr`). Label the scenario with `stress` true "(stress test)".
 3. What today's price implies (`implied`), in one line, and which scenario comes nearest to it.
 4. The two or three ledger verdicts that move value most, each with its source and date, and what it changed in the model.
 5. One line on the cost of skepticism: the largest gap between `value_per_share` and `value_ex_premiums`, with its reason.
-6. **Flags**: `model.py` and `returns.py` flags, missing research roles, rejected red-team changes, and searches used against the budget when a role hit its cap or rounds were cut. Or "None".
+6. **Flags**: the last `deep_run.py` run's `flags`, missing research roles, pack files in `missing` that a role needed, rejected red-team changes, and `used_total` against `total` from `budget.py` when it flagged `ROLE_OVER_CAP` or `OVER_BUDGET` or a thread round was skipped. Or "None".
 7. One sentence, once: the figures are general information at the stated assumptions, not financial, tax, or legal advice.
 
 **Deep mode, markdown fallback:** the same parts without the link, plus the full ledger as a list (belief, verdict, the deciding evidence with sources).
@@ -396,7 +449,7 @@ The page carries the sensitivity grids, checklists, owner earnings, normalized b
 - Every discount-rate premium is stated with its reason and the ledger entry behind it.
 - Scenarios carry no probabilities. Present them side by side and leave the weighing to the person.
 - Ground every estimate in historical data. Do not fabricate financials or guess at numbers you have not retrieved.
-- When a `DCF_NOT_MEANINGFUL_FOR_…` flag or `NEGATIVE_FCF` fires, do not present the DCF as an estimate of value.
+- When a `DCF_NOT_MEANINGFUL_FOR_…` flag, `NEGATIVE_FCF` or `CURRENCY_MISMATCH` fires, do not present the DCF as an estimate of value.
 - Margin-of-safety bands are description, not a signal.
 - Explain your reasoning at each step so the user can follow and challenge your assumptions.
 - Distinguish clearly between historical facts, your projections, and your interpretation.
