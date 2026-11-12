@@ -34,6 +34,7 @@ Input JSON contract (stdin)::
       "unreadable_picks": [SYM],             # picks whose saved data could not be read: they take no money
       "pick_store_unreadable": bool,         # rebalance: bad input when true, the holds cannot be known
       "include_light": bool,                 # optional; wins over settings.include_light; refused at deep depth
+      "allocation": "fill" | "split",        # optional, default fill: how added money is split (see below)
       "depth": "standard" | "deep",          # optional, default standard; deep holds light picks
                                              # (DEEP_VALUATION_NEEDED), ignores a saved include_light,
                                              # and refuses new-pick on a light pick
@@ -65,7 +66,7 @@ Output JSON contract (stdout)::
       "unallocated_amount",           # money left as cash: pick-cap leftover, buys scaled
                                       # down by ACCOUNT_SHORT, whole-share rebalance remainder
       "satellite_net",                # satellite-pick BUY values less SELL values in trades
-      "settings_used": {ceiling, weighting, include_light, short_term_gain_policy,
+      "settings_used": {ceiling, weighting, allocation, include_light, short_term_gain_policy,
                         employer_symbol, depth},
       "flags": [{code, message}]   # STANDING_DEFAULT, PICK_IN_RETIREMENT,
                                    # EMPLOYER_CONCENTRATION, LOW_N_EFF, SECTOR_HEAVY,
@@ -81,8 +82,8 @@ Method: total is every position in every account plus all cash. Satellite
 value counts satellite holdings in every account (retirement copies get
 PICK_IN_RETIREMENT and no trades); employer stock is its own bucket and is
 outside the ceiling, N_eff and tracking error. N_eff is over per-symbol
-satellite values. ``add`` spreads ``amount`` over the trading-account picks by
-the strategy's shares, sends each pick's whole delta to the trading
+satellite values. ``add`` spreads ``amount`` over the trading-account picks
+(fill or split, below), sends each pick's whole delta to the trading
 account holding more of it (tie: account id order), and limits buys to the
 room under the target in force (none: no limit) unless
 ``over_ceiling``. An account short of cash moves the shortfall to another
@@ -92,7 +93,15 @@ trading account that holds the same pick, else its buys are scaled down
 ``core``, employer and other rows are left out, CASH takes the rest; sells
 use the smallest-gain order.
 
-Adding money (``add``, and the rest of ``new-pick`` with ``amount``) only buys: it never sells a pick. The strategy's raw weights
+Adding money (``add``, and the rest of ``new-pick`` with ``amount``) only buys: it never sells a pick.
+Allocation ``fill`` (the default, every strategy but ``size``): each pick taking money has a target of
+its raw weight's share of those picks' value plus the amount, and the amount goes to the gaps below
+target (weights.fill_gaps), so a pick at or above target gets nothing. ``new-pick`` with ``amount``
+puts the new symbol in the fill at 0 with its own raw weight (valuation: its saved pick's tilt factor,
+neutral without one; market_cap: ``market_caps`` for it; equal: 1); under ``size``, ``split``, with no
+existing trading-account pick, or with no market cap for it (NO_MARKET_CAP) it opens at the median
+and the rest goes to the picks as for ``add``. Allocation ``split``: ``amount`` by the raw weights,
+whatever the picks hold. The strategy's raw weights
 (weights.strategy_weights) are ``equal`` 1, ``market_cap`` the company's market cap, ``valuation``
 weights.tilt_factor and ``size`` the current value, whatever else the picks hold; ``equal`` is used
 when nothing is saved. A pick takes no money when it is due for a recheck or of unknown age
@@ -264,12 +273,16 @@ def _settings_used(settings: dict, params: dict) -> tuple[dict, str]:
         if params.get("include_light") is True:
             raise ValueError("include_light is not available when depth is deep; light picks take no money")
         light = False  # a saved include_light is ignored at deep depth
+    allocation = params.get("allocation") or "fill"
+    if allocation not in ("fill", "split"):
+        raise ValueError("allocation must be fill or split")
     policy = settings.get("short_term_gain_policy")
     if policy not in (None, "hold", "allow"):
         raise ValueError("settings.short_term_gain_policy must be hold or allow")
     used = {
         "ceiling": ceiling,
         "weighting": weighting,
+        "allocation": allocation,
         "include_light": bool(light),
         "short_term_gain_policy": policy,
         "employer_symbol": settings.get("employer_symbol"),
@@ -727,27 +740,67 @@ def _participants(sat: dict[str, dict[str, float]], positions: list[dict], param
     return rows, raw, held
 
 
-def _strategy_add(amount: float, ctx: dict, positions: list[dict], spare: dict[str, float], params: dict,
-                  used: dict, flags: list[dict], pick_flags: dict[str, list[str]],
-                  shorts: dict[str, float] | None = None) -> dict:
-    """Split ``amount`` by the strategy's shares and place it per account. It never sells.
+def _new_pick_weight(new: dict, params: dict, used: dict, flags: list[dict]) -> float | None:
+    """The new pick's raw weight under the strategy, or None when it has none (size, no market cap)."""
+    strategy, sym = used["weighting"], new["symbol"]
+    if strategy == "equal":
+        return 1.0
+    if strategy == "valuation":
+        row = _pick_inputs({sym: {new["account"]: 0.0}},
+                           [{"symbol": sym, "price": new["price"], "bucket": "satellite", "role": "trading"}],
+                           {sym: (params.get("picks") or {}).get(sym)} if (params.get("picks") or {}).get(sym) is not None else {},
+                           used["include_light"], [], {})[0]
+        return weights.tilt_factor(row)
+    if strategy == "market_cap":
+        cap = _num((params.get("market_caps") or {}).get(sym), f"market_caps.{sym}")
+        if cap is not None and math.isfinite(cap) and cap > 0:
+            return cap
+        _flag(flags, "NO_MARKET_CAP", f"{sym} has no market cap; it opens at the median pick value and the rest is split by market cap")
+    return None
 
-    The 5% pick cap limits buys except under size; what no pick can take is ``unplaced``.
-    With no trusted pick under valuation the weights are all neutral (VALUATION_FALLBACK).
+
+def _strategy_deltas(amount: float, ctx: dict, positions: list[dict], params: dict, used: dict,
+                     flags: list[dict], pick_flags: dict[str, list[str]],
+                     new: dict | None = None) -> tuple[dict[str, float], float | None]:
+    """Each trading-account pick's buy for ``amount``, and the new pick's buy (None: not filled).
+
+    fill (the default, every strategy but size): each pick's target is its strategy share of the
+    picks taking money plus ``amount``, and the money goes to the gaps below target
+    (weights.fill_gaps); a new pick joins at 0 when its weight is known. split: ``amount`` by the
+    strategy's shares, whatever the picks hold. The 5% pick cap limits buys except under size.
     """
     sat = _holdings(positions, "satellite")
-    if not sat:
-        return {"alloc": {}, "unplaced": amount}
     rows, raw, held = _participants(sat, positions, params, used, flags, pick_flags)
     if used["weighting"] == "valuation" and not any(r["eligible"] and r["confidence"] > 0 for r in rows if r["symbol"] not in held):
         _flag(flags, "VALUATION_FALLBACK", "no trading-account pick has an eligible valuation with confidence above 0; the weights are neutral, so the split is equal")
     room = None
     if used["weighting"] != "size":
         room = {sym: max(0.0, weights.PICK_CAP * ctx["total"] - sum(sat[sym].values())) for sym in raw}
-    deltas = weights.split_capped(raw, amount, room)
+    fill = used["allocation"] == "fill" and used["weighting"] != "size"
+    new_w = _new_pick_weight(new, params, used, flags) if new is not None and fill else None
+    if fill:
+        current = {sym: sum(sat[sym].values()) for sym in raw}
+        if new_w is not None:
+            raw, current = {**raw, new["symbol"]: new_w}, {**current, new["symbol"]: 0.0}
+            room = {**(room or {}), new["symbol"]: weights.PICK_CAP * ctx["total"]}
+        deltas = weights.fill_gaps(raw, current, amount, room) if raw else {}
+    else:
+        deltas = weights.split_capped(raw, amount, room)
+    new_delta = deltas.pop(new["symbol"], 0.0) if new_w is not None else None
     for sym, d in deltas.items():
         if room is not None and d >= room[sym] - _EPS:
             pick_flags.setdefault(sym, []).append("PICK_CAP")
+    return deltas, new_delta
+
+
+def _strategy_add(amount: float, ctx: dict, positions: list[dict], spare: dict[str, float], params: dict,
+                  used: dict, flags: list[dict], pick_flags: dict[str, list[str]],
+                  shorts: dict[str, float] | None = None) -> dict:
+    """Plan ``amount`` into the trading-account picks (``_strategy_deltas``) and place it per account. It never sells."""
+    sat = _holdings(positions, "satellite")
+    if not sat:
+        return {"alloc": {}, "unplaced": amount}
+    deltas, _ = _strategy_deltas(amount, ctx, positions, params, used, flags, pick_flags)
     alloc = _fund(deltas, sat, spare, flags, shorts)
     return {"alloc": alloc, "unplaced": max(0.0, amount - _placed(alloc))}
 
@@ -1134,6 +1187,13 @@ def run_sleeves(params: dict) -> dict:
             spare[aid] = spare.get(aid, 0.0) + sum(r["cap"] for r in rows)
         amount, over = _limit(amount, ctx, params, flags)
         got = 0.0
+        rest = None
+        if new is not None and new.get("fill") and _holdings(positions, "satellite"):
+            rest, new_delta = _strategy_deltas(amount, ctx, positions, params, used, flags, pick_flags, new)
+            if new_delta is None:
+                rest = None
+            else:
+                new = {**new, "needed": new_delta}
         if new is not None:
             want = min(amount, new["needed"])
             got = max(0.0, min(want, spare.get(new["account"], 0.0)))
@@ -1143,7 +1203,10 @@ def run_sleeves(params: dict) -> dict:
                 _flag(flags, "ACCOUNT_SHORT", f"account {new['account']} is {want - got:.2f} short of money; the {new['symbol']} buy is scaled down")
             spare[new["account"]] = spare.get(new["account"], 0.0) - got
             amount -= want
-        if amount > _EPS:
+        if rest is not None:
+            alloc = _fund(rest, _holdings(positions, "satellite"), spare, flags, shorts)
+            unplaced += max(0.0, amount - _placed(alloc))
+        elif amount > _EPS:
             alloc, _ = satellite(amount, 0.0)
         if got > _EPS:
             alloc.setdefault(new["account"], {})[new["symbol"]] = got
@@ -1205,7 +1268,7 @@ def run_sleeves(params: dict) -> dict:
         new_pick = {"symbol": sym, "needed": _r2(needed), "allocated": 0.0, "account": account}
         new_positions = [{"symbol": sym, "price": price, "account": account}]
         funded(needed if amount is None else amount, True,
-               {"symbol": sym, "needed": needed, "account": account})
+               {"symbol": sym, "needed": needed, "account": account, "price": price, "fill": amount is not None})
         new_pick["allocated"] = _r2(sum(a.get(sym, 0.0) for a in alloc.values()))
     elif mode == "rebalance":
         if used["weighting"] == "size":

@@ -45,6 +45,7 @@ Where the default ceiling, the proposed size, the equal-weight default and the v
   - Four strategies: `equal`, `market_cap`, `valuation` and `size`. `equal` is the default, and adding money only buys. Market cap is a person's strategy choice, not a research finding.
   - Valuation weighting is opt-in, uses deep valuations only, and tilts by a shrunk score on an absolute scale (see Formulas). Two picks with nearly equal expected returns get nearly equal shares; a wide gap at full confidence tilts clearly. New money follows the tilt, and only a rebalance on request trims.
   - Confidence halves every 182 days and is 0 when a recheck is due, so a stale or pre-filing valuation gets no tilt. A pick with no next earnings date is due after 120 days, and one with no known age is due at once.
+  - Added money fills toward target by default: each pick's target is its strategy share of the sleeve after the deposit, and the money goes to the picks furthest below target, with no sale. This is cash-flow rebalancing, the first tool in taxable accounts: it pulls the sleeve back toward target without realising gains, so a selling rebalance is needed less often. `--split` splits the money by share instead, ignoring what each pick holds.
   - The 5% cap limits how high a pick's target can be.
   - A pick priced more than 5% above its central value gets a smaller share, by its confidence, and is not sold when adding money. A light valuation takes a neutral share unless the person includes light valuations, and stays flagged.
 - The 182-day half-life, the shrink factor 0.5 and the tilt strength 0.5 are builder's choices inside the range the research describes (shrink factors of about 0.25–0.5); they are not fitted values.
@@ -96,7 +97,8 @@ The employer line (10% of total value) lives in `sleeves.py`, not `weights.py`.
 - Tilted weight of an eligible pick ∝ value_i × max(0, 1 + `TILT_LAMBDA` × a_i / `TILT_SCALE`), scaled to the target total, with no target above `PICK_CAP` × total. Money a capped pick cannot take goes to the other picks by their shares.
 - An eligible pick with confidence above 0 priced above central value × (1 + `TRIM_MIN_GAP`) gets a share scaled by (1 − confidence_i × (1 − central_value / price)).
 - A light pick has no scenario returns, so its expected return is the annual return if the price converges to the light base fair value in 3 years: (base / price)^(1/3) − 1. The 3-year horizon is a builder's choice.
-- A new pick is sized at the median current pick value, capped at `PICK_CAP` × total.
+- Fill: over the picks taking money, target_i = share_i × (Σ current_j + amount), gap_i = max(0, target_i − current_i), buy_i = amount × gap_i / Σ gap_j, then capped as above. Σ gap_j ≥ amount, so no uncapped pick passes its target.
+- A new pick with no amount is sized at the median current pick value, capped at `PICK_CAP` × total; with an amount it joins the fill at 0 with its own share.
 
 ## Sources
 

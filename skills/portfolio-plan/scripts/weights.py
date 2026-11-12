@@ -10,6 +10,11 @@ cap, valuation tilt_factor, size the pick's value. split_capped splits an amount
 a pick cannot take more than its room, the overflow goes to the others by weight, and money no
 pick can take is left out of the result. All-zero weights split equally.
 
+fill_gaps(raw, current, amount, room): new money toward targets with no sells. Each pick's target is
+its ``raw`` share (all-zero: equal) of sum(current) + amount; the amount is split in proportion to
+each pick's gap below target, max(0, target - current), through split_capped with ``room``. The gaps
+sum to at least the amount, so without a cap no pick is pushed past its target.
+
 tilt_factor: one pick's valuation weight, with score a = SHRINK_K x confidence x (expected_return -
 MARKET_RETURN) on an absolute scale (not standardised across picks), so near-equal returns give
 near-equal weights. A pick is overvalued when price is above central_value x (1 + TRIM_MIN_GAP); its
@@ -131,6 +136,15 @@ def split_capped(raw: dict[str, float], amount: float, room: dict[str, float] | 
             out[s] = max(0.0, room[s])
         open_ -= full
     return out
+
+
+def fill_gaps(raw: dict[str, float], current: dict[str, float], amount: float,
+              room: dict[str, float] | None = None) -> dict[str, float]:
+    total = sum(current.get(s, 0.0) for s in raw) + amount
+    weight = sum(raw.values())
+    share = {s: (raw[s] / weight if weight > 0 else 1.0 / len(raw)) for s in raw}
+    gaps = {s: max(0.0, share[s] * total - current.get(s, 0.0)) for s in raw}
+    return split_capped(gaps, amount, room)
 
 
 def band(target: float) -> float:

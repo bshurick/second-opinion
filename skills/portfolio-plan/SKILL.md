@@ -58,10 +58,18 @@ One portfolio plan over the connected accounts. The global plan rebalances class
 
 - **`equal` is the default.** Research finds equal or size weights hard to beat and estimated returns the weakest input, so `valuation` runs only when the person asks for it or has saved it. The person chooses the strategy; never question the choice.
 - **Adding money only buys.** Adding to picks, a contribution and the rest of an opened pick with `--amount` never sell a pick.
-- **Valuation weighting** uses deep picks from the stock-screener pick store. The tilt shrinks as the valuation ages (half-life 182 days) and a pick due for a recheck gets none. Light picks and stocks with no saved valuation take a neutral share. With no eligible pick, adding money splits equally (`weighting_used` is `equal`); a rebalance exits 2.
+- **Adding money fills toward target (the default).**
+  - Each pick's target is its strategy share of the picks taking money plus the new money.
+  - The money goes to the picks below target, in proportion to how far below they are; a pick above target gets nothing.
+  - `--split` instead splits the money by the strategy's shares, whatever the picks hold. Under `size` the two are the same. `settings_used.allocation` says which ran.
+- **Valuation weighting** uses deep picks from the stock-screener pick store. The tilt shrinks as the valuation ages (half-life 182 days) and a pick due for a recheck gets none. Light picks and stocks with no saved valuation take a neutral share. With no eligible pick, adding money uses equal shares (`weighting_used` is `equal`); a rebalance exits 2.
 - **Deep depth.** Light picks are held (`DEEP_VALUATION_NEEDED`), `--include-light` and opening a light pick are refused (exit 2), and a saved `include_light` is ignored.
 - **Held picks, under every strategy.** A pick due for a recheck holds its value (`HELD_FOR_RECHECK`); so does one whose deep valuation needs a rerun (`DEEP_VALUATION_NEEDED`), and under `market_cap` one with no market cap (`NO_MARKET_CAP`).
-- **Opening a pick.** A new pick opens at the median of the existing picks, capped at 5% of total value, in the trading account holding the most pick value (with no picks yet, the one with the most cash plus core). With an open re-check or a needed valuation rerun it still opens, and carries the flag.
+- **Opening a pick.**
+  - Without `--amount`, a new pick opens at the median of the existing picks.
+  - With `--amount`, it joins the fill at $0 with its own strategy share (its own valuation tilt, or its market cap), so the amount is shared between it and the picks below target.
+  - Under `size`, with `--split`, or under `market_cap` with no market cap for it (`NO_MARKET_CAP`), it opens at the median and the rest is split.
+  - Either way it is capped at 5% of total value and opens in the trading account holding the most pick value (with no picks yet, the one with the most cash plus core). With an open re-check or a needed valuation rerun it still opens, and carries the flag.
 - **Rebalancing the picks happens only on request.** It moves money between picks and keeps the sleeve total, using no cash and selling no core fund.
   - A pick is trimmed only when it is above target by at least max(25% of its target, $250). Any pick below target can receive proceeds, furthest below first (`IN_BAND` means it is inside its band and did not trade).
   - Each account trims no further than the picks in that account can take, and proceeds buy picks in the same account only. With whole shares, under one share's worth can remain (`UNALLOCATED`).
@@ -97,7 +105,7 @@ Run with the Bash tool. Every script prints JSON.
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-plan/scripts/render.py" --in plan.json --out page.html
 ```
 
-Common flags: `[--weighting equal|market_cap|valuation|size] [--include-light] [--over-ceiling] [--whole-shares] [--sell SYM[,SYM]] [--short-term R] [--long-term R] [--min-trade N] [--band-abs R] [--band-rel R] [--partial]`. The sleeve flags reach the picks sleeve, the band and min-trade flags reach the global plan.
+Common flags: `[--weighting equal|market_cap|valuation|size] [--include-light] [--split] [--over-ceiling] [--whole-shares] [--sell SYM[,SYM]] [--short-term R] [--long-term R] [--min-trade N] [--band-abs R] [--band-rel R] [--partial]`. The sleeve flags reach the picks sleeve, the band and min-trade flags reach the global plan.
 
 | Command | What it does |
 |---|---|
@@ -117,6 +125,7 @@ Every `plan.py` output carries `command`, `sleeve` (the sleeve engine's output o
 |---|---|
 | `--weighting` | This run only; wins over the saved weighting. `size` works for adding money only. |
 | `--include-light` | This run only, standard depth only; light valuations enter the tilt. |
+| `--split` | This run only; adding money (and the rest of an opened pick with `--amount`) splits by the strategy's shares instead of filling toward target. Only when the person asks for an even or by-share split. |
 | `--over-ceiling` | Lets the picks sleeve pass its target. Only when the person asked for that in their own words. |
 | `--whole-shares` | Whole-share trades, when the broker does not take fractional orders or a preview rejects fractional units. |
 | `--sell SYM[,SYM]` | Core funds sold first, in that order, when a new pick's account is short of cash. Each must be a core fund held in a trading account, else exit 2. |

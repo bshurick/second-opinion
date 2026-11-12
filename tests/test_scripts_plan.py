@@ -148,3 +148,10 @@ def test_employer_default_is_one_flag_across_both_engines(cs_sdk, monkeypatch) -
     assert out["global"] is not None
     msgs = [f["message"] for f in out["flags"] if f["code"] == "STANDING_DEFAULT" and f["message"].startswith("employer_symbol is unset")]
     assert len(msgs) == 1, msgs
+
+
+def test_contribute_split_reaches_the_sleeve(cs_sdk) -> None:
+    out = load_script(P).run(["contribute", "500", "--sleeve", "PICKS", "--split", *TODAY])
+    assert out["sleeve"]["settings_used"]["allocation"] == "split"
+    out = load_script(P).run(["contribute", "500", "--sleeve", "PICKS", *TODAY])
+    assert out["sleeve"]["settings_used"]["allocation"] == "fill"

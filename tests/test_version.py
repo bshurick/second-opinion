@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_versions_match_and_changelog_has_entry():
     v = json.loads((ROOT / ".claude-plugin/plugin.json").read_text())["version"]
     m = json.loads((ROOT / ".claude-plugin/marketplace.json").read_text())["plugins"][0]["version"]
-    assert v == m == "1.7.0"
+    assert v == m == "1.8.0"
     assert f"## {v}" in (ROOT / "CHANGELOG.md").read_text()
 
 

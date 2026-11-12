@@ -4,7 +4,7 @@
        plan.py withdraw AMOUNT
        plan.py rebalance [--sleeve PICKS]
        plan.py open SYMBOL [--amount A]
-       common: [--weighting equal|market_cap|valuation|size] [--include-light] [--over-ceiling]
+       common: [--weighting equal|market_cap|valuation|size] [--include-light] [--split] [--over-ceiling]
                [--whole-shares] [--sell SYM[,SYM]] [--short-term R] [--long-term R]
                [--min-trade N] [--band-abs R] [--band-rel R] [--partial]
 
@@ -53,7 +53,7 @@ from second_opinion.errors import InvalidInput  # noqa: E402
 
 _EPS = 0.005
 _SLEEVE_FLAGS = ("weighting", "sell", "short_term", "long_term", "today")
-_SLEEVE_SWITCHES = ("include_light", "over_ceiling", "whole_shares", "partial")
+_SLEEVE_SWITCHES = ("include_light", "over_ceiling", "whole_shares", "split", "partial")
 _GLOBAL_FLAGS = ("short_term", "long_term", "min_trade", "band_abs", "band_rel")
 _GLOBAL_SWITCHES = ("whole_shares", "partial")
 
@@ -69,7 +69,7 @@ def _parser() -> _Parser:
     common.add_argument("--sell", default=None)
     for name in ("--short-term", "--long-term", "--min-trade", "--band-abs", "--band-rel"):
         common.add_argument(name, type=float, default=None)
-    for name in ("--include-light", "--over-ceiling", "--whole-shares", "--partial"):
+    for name in ("--include-light", "--over-ceiling", "--whole-shares", "--split", "--partial"):
         common.add_argument(name, action="store_true")
     common.add_argument("--today", help=argparse.SUPPRESS)
     p = _Parser(prog="plan.py", add_help=False)

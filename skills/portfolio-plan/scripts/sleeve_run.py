@@ -3,7 +3,7 @@
        sleeve_run.py add AMOUNT
        sleeve_run.py new-pick SYMBOL [--amount A]
        sleeve_run.py rebalance
-       common: [--weighting equal|market_cap|valuation|size] [--include-light] [--over-ceiling]
+       common: [--weighting equal|market_cap|valuation|size] [--include-light] [--split] [--over-ceiling]
                [--whole-shares] [--sell SYM[,SYM]] [--short-term R] [--long-term R] [--partial]
 
 The picks sleeve on the connected accounts (plan.py calls it; it runs on its own too): reads
@@ -63,9 +63,12 @@ sold_within_days (median days from a vest to the next sale of the symbol; null w
 it is used as the employer stock for this run, with a STANDING_DEFAULT flag naming the vest
 evidence and the setting that changes it; with no candidate the run assumes no employer stock
 (sleeves.py's STANDING_DEFAULT). The candidate is never saved without the person's yes.
-``new-pick`` also reads the new symbol's saved valuation into ``picks``, only so its open re-check
-(RECHECK_DUE) and needed valuation rerun (DEEP_VALUATION_NEEDED) are flagged; the pick still opens
-at the median.
+``new-pick`` also reads the new symbol's saved valuation into ``picks``, so its open re-check
+(RECHECK_DUE) and needed valuation rerun (DEEP_VALUATION_NEEDED) are flagged and, with ``--amount``,
+its tilt sizes it in the fill; without ``--amount`` it opens at the median. ``--split`` sends
+allocation "split" (adding money splits by the strategy's shares instead of filling toward target).
+Market caps are read only for a trading run under market_cap: the held picks, plus the new symbol
+for ``new-pick`` without ``--split``.
 
 Output: sleeves.py's contract plus ``sources`` (holdings, prices, lots), ``no_price`` and
 ``employer_candidate`` (null when employer_symbol is saved or no vest deposit is found). This is a
@@ -289,6 +292,7 @@ def _parser() -> _Parser:
     common.add_argument("--include-light", action="store_true")
     common.add_argument("--over-ceiling", action="store_true")
     common.add_argument("--whole-shares", action="store_true")
+    common.add_argument("--split", action="store_true")
     common.add_argument("--sell", default=None)
     common.add_argument("--short-term", type=float, default=0.24)
     common.add_argument("--long-term", type=float, default=0.15)
@@ -369,6 +373,8 @@ def run(args: list[str]) -> dict:
         params["weighting"] = ns.weighting
     if ns.include_light:
         params["include_light"] = True
+    if ns.split:
+        params["allocation"] = "split"
     params["depth"] = settings.depth()
     if ns.mode == "add":
         params["amount"] = ns.amount
@@ -379,7 +385,8 @@ def run(args: list[str]) -> dict:
         params["excluded_symbols"] = sorted(set(unclassified) | set(book["no_price"]))
     trades = ns.mode in ("add", "rebalance") or (ns.mode == "new-pick" and ns.amount is not None)
     if trades and (ns.weighting or store.get("weighting") or "equal") == "market_cap":
-        params["market_caps"] = _market_caps(sorted(prices))
+        fill_new = new_sym is not None and not ns.split   # fill sizes the new pick by its own cap
+        params["market_caps"] = _market_caps(sorted(set(prices) | ({new_sym} if fill_new else set())))
     try:
         result = sleeves.run_sleeves(params)
     except (ValueError, TypeError) as exc:     # KeyError and the like are bugs, not bad input

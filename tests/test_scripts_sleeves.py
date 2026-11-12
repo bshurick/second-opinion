@@ -67,6 +67,31 @@ def test_split_capped() -> None:
     assert w.split_capped({"A": 0.0, "B": 0.0}, 100.0) == {"A": 50.0, "B": 50.0}
 
 
+def test_fill_gaps_sends_money_to_picks_below_target() -> None:
+    w = load_script(W)
+    raw = {"A": 1.0, "B": 1.0, "C": 1.0, "X": 1.0}
+    current = {"A": 3000.0, "B": 2500.0, "C": 1500.0, "X": 0.0}
+    out = w.fill_gaps(raw, current, 3000.0)                 # targets 2500 each; gaps 0, 0, 1000, 2500
+    assert out == pytest.approx({"A": 0.0, "B": 0.0, "C": 3000 * 1000 / 3500, "X": 3000 * 2500 / 3500})
+
+
+def test_fill_gaps_targets_follow_the_raw_weights() -> None:
+    w = load_script(W)
+    out = w.fill_gaps({"A": 3.0, "B": 1.0}, {"A": 1000.0, "B": 1000.0}, 2000.0)   # targets 3000, 1000
+    assert out == pytest.approx({"A": 2000.0, "B": 0.0})
+
+
+def test_fill_gaps_cap_overflow_goes_to_other_gaps() -> None:
+    w = load_script(W)
+    out = w.fill_gaps({"A": 1.0, "B": 1.0, "C": 1.0}, {"A": 0.0, "B": 0.0, "C": 3000.0}, 3000.0, {"A": 500.0, "B": 9999.0, "C": 9999.0})
+    assert out == pytest.approx({"A": 500.0, "B": 2500.0, "C": 0.0})
+
+
+def test_fill_gaps_all_zero_weights_count_as_equal() -> None:
+    w = load_script(W)
+    assert w.fill_gaps({"A": 0.0, "B": 0.0}, {"A": 0.0, "B": 1000.0}, 1000.0) == pytest.approx({"A": 1000.0, "B": 0.0})
+
+
 def test_default_weighting_is_equal_and_all_strategies_accepted() -> None:
     sl = load_script(SL)
     assert sl.run_sleeves(_params(settings={}))["settings_used"]["weighting"] == "equal"
@@ -126,6 +151,81 @@ def test_add_splits_by_current_size() -> None:
     out = load_script(SL).run_sleeves(_params(mode="add", amount=1200))
     buys = {(t["symbol"], t["account"]): t["value"] for t in out["trades"] if t["side"] == "BUY"}
     assert buys == {("AAA", "t1"): 600.0, ("BBB", "t1"): 600.0}   # BBB pro rata to its 2000 total, routed to t1 (equal holding -> first by id)
+
+
+def _uneven(**over) -> dict:
+    """The base params with AAA at 3000, BBB at 2000 and more core: total 68000, pick cap 3400."""
+    p = _params(**over)
+    p["positions"][0] = _pos("VTI", 300, "t1", "core")
+    p["positions"][1] = _pos("AAA", 60, "t1", "satellite")
+    return p
+
+
+def _buys(out: dict) -> dict:
+    agg: dict = {}
+    for t in out["trades"]:
+        if t["side"] == "BUY" and t["symbol"] not in ("VTI", "VXUS"):
+            agg[t["symbol"]] = agg.get(t["symbol"], 0.0) + t["value"]
+    return agg
+
+
+def test_add_fills_the_pick_furthest_below_target_by_default() -> None:
+    out = load_script(SL).run_sleeves(_uneven(mode="add", amount=300, weighting="equal"))
+    assert _buys(out) == pytest.approx({"BBB": 300.0}, abs=0.01)      # targets 2650 each: AAA is above, BBB 650 below
+    assert out["settings_used"]["allocation"] == "fill"
+
+
+def test_add_split_allocation_keeps_the_even_split() -> None:
+    out = load_script(SL).run_sleeves(_uneven(mode="add", amount=300, weighting="equal", allocation="split"))
+    assert _buys(out) == pytest.approx({"AAA": 150.0, "BBB": 150.0}, abs=0.01)
+    assert out["settings_used"]["allocation"] == "split"
+
+
+def test_allocation_must_be_fill_or_split() -> None:
+    with pytest.raises(ValueError, match="allocation must be fill or split"):
+        load_script(SL).run_sleeves(_params(mode="add", amount=100, allocation="even"))
+
+
+def test_add_fill_leaves_a_held_pick_out_of_the_targets() -> None:
+    p = _uneven(mode="add", amount=1000, weighting="valuation",
+                picks={"AAA": _deep(50, 0.07, recheck_due=True), "BBB": _deep(50, 0.07)})
+    out = load_script(SL).run_sleeves(p)
+    assert _buys(out) == pytest.approx({"BBB": 1000.0}, abs=0.01)     # BBB alone: target 3000, AAA's 3000 left out
+    assert "HELD_FOR_RECHECK" in next(r for r in out["splits"] if r["symbol"] == "AAA")["flags"]
+
+
+def test_new_pick_with_amount_fills_alongside_current_picks() -> None:
+    out = load_script(SL).run_sleeves(_params(mode="new-pick", weighting="equal",
+                                              new_pick={"symbol": "NEW", "price": 25.0, "amount": 2400}))
+    third = 6400 / 3                                                   # AAA 2000, BBB 2000, NEW 0, plus 2400
+    assert out["new_pick"]["allocated"] == pytest.approx(third, abs=0.01)
+    assert _buys(out) == pytest.approx({"NEW": third, "AAA": third - 2000, "BBB": third - 2000}, abs=0.01)
+
+
+def test_new_pick_fill_uses_its_own_valuation() -> None:
+    picks = {"AAA": _deep(50, 0.07), "BBB": _deep(50, 0.07), "NEW": _deep(40, 0.27)}
+    out = load_script(SL).run_sleeves(_params(mode="new-pick", weighting="valuation", picks=picks,
+                                              new_pick={"symbol": "NEW", "price": 25.0, "amount": 2400}))
+    assert out["new_pick"]["allocated"] > 6400 / 3 + 1                 # its tilt raises its target above an equal third
+
+
+def test_new_pick_without_amount_still_opens_at_the_median() -> None:
+    out = load_script(SL).run_sleeves(_params(mode="new-pick", weighting="equal", new_pick={"symbol": "NEW", "price": 25.0}))
+    assert out["new_pick"]["allocated"] == 2000.0 and set(_buys(out)) == {"NEW"}
+
+
+def test_new_pick_split_allocation_opens_at_the_median_then_splits() -> None:
+    out = load_script(SL).run_sleeves(_params(mode="new-pick", weighting="equal", allocation="split",
+                                              new_pick={"symbol": "NEW", "price": 25.0, "amount": 2600}))
+    assert out["new_pick"]["allocated"] == 2000.0
+    assert _buys(out) == pytest.approx({"NEW": 2000.0, "AAA": 300.0, "BBB": 300.0}, abs=0.01)
+
+
+def test_new_pick_with_no_market_cap_opens_at_the_median_under_fill() -> None:
+    out = load_script(SL).run_sleeves(_params(mode="new-pick", weighting="market_cap", market_caps={"AAA": 1e11, "BBB": 1e11},
+                                              new_pick={"symbol": "NEW", "price": 25.0, "amount": 3000}))
+    assert out["new_pick"]["allocated"] == 2000.0
+    assert any(f["code"] == "NO_MARKET_CAP" and f["message"].startswith("NEW") for f in out["flags"])
 
 
 def test_add_routes_to_larger_trading_holding() -> None:
@@ -1055,7 +1155,24 @@ def test_run_reads_market_caps_only_when_needed(cs_sdk, capsys, monkeypatch, arg
     run_json(r, argv, capsys)
     assert bool(calls) is reads and ("market_caps" in seen["p"]) is reads
     if reads:
-        assert "ZZZ" not in seen["p"]["market_caps"] and all(v == 1e11 for v in seen["p"]["market_caps"].values())
+        assert all(v == 1e11 for v in seen["p"]["market_caps"].values())
+        assert ("ZZZ" in seen["p"]["market_caps"]) is (argv[0] == "new-pick")      # fill sizes the new pick by its cap
+
+
+def test_run_split_reads_no_market_cap_for_the_new_pick(cs_sdk, capsys, monkeypatch) -> None:
+    r = load_script(R)
+    seen = _captured_params(r, monkeypatch)
+    monkeypatch.setattr(market, "company_info", lambda s: {"market_cap": 1e11})
+    run_json(r, ["new-pick", "ZZZ", "--amount", "100", "--weighting", "market_cap", "--split"], capsys)
+    assert "ZZZ" not in seen["p"]["market_caps"] and seen["p"]["allocation"] == "split"
+
+
+def test_run_allocation_defaults_to_fill(cs_sdk, capsys, monkeypatch) -> None:
+    r = load_script(R)
+    seen = _captured_params(r, monkeypatch)
+    rc, out = run_json(r, ["add", "100"], capsys)
+    assert rc == 0, out
+    assert "allocation" not in seen["p"] and out["settings_used"]["allocation"] == "fill"
 
 
 def test_run_market_cap_from_saved_settings(cs_sdk, capsys, tmp_path, monkeypatch) -> None:
@@ -1192,7 +1309,8 @@ def test_cap_binding_rebalance_does_not_ratchet() -> None:
 # --- adding money only buys; a new pick opens at the median -----------------------------------
 
 def test_add_equal_gives_same_dollars() -> None:
-    out = load_script(SL).run_sleeves(_rb_params({"AAA": 1000, "BBB": 4000, "CCC": 4000}, {}, cash=900, amount=900, weighting="equal"))
+    out = load_script(SL).run_sleeves(_rb_params({"AAA": 1000, "BBB": 4000, "CCC": 4000}, {}, cash=900, amount=900, weighting="equal",
+                                                 allocation="split"))
     assert _rb_trades(out) == pytest.approx({"AAA": 300.0, "BBB": 300.0, "CCC": 300.0}, abs=0.02)
 
 
@@ -1204,7 +1322,7 @@ def test_add_size_is_pro_rata() -> None:
 def test_add_market_cap_splits_by_cap_and_holds_a_missing_one() -> None:
     caps = {"AAA": 3e11, "BBB": 1e11, "CCC": None}
     out = load_script(SL).run_sleeves(_rb_params({"AAA": 1000, "BBB": 1000, "CCC": 1000}, {}, cash=400, amount=400,
-                                                 weighting="market_cap", market_caps=caps))
+                                                 weighting="market_cap", market_caps=caps, allocation="split"))
     assert _rb_trades(out) == pytest.approx({"AAA": 300.0, "BBB": 100.0}, abs=0.02)
     assert "NO_MARKET_CAP" in {f["code"] for f in out["flags"]}
 
@@ -1215,7 +1333,8 @@ def test_add_market_cap_with_no_caps_is_bad_input() -> None:
 
 
 def test_add_valuation_ignores_current_size() -> None:
-    out = load_script(SL).run_sleeves(_rb_params({"AAA": 1000, "BBB": 8000}, {"AAA": _GOOD, "BBB": _GOOD}, cash=1000, amount=1000))
+    out = load_script(SL).run_sleeves(_rb_params({"AAA": 1000, "BBB": 8000}, {"AAA": _GOOD, "BBB": _GOOD}, cash=1000, amount=1000,
+                                                 allocation="split"))
     assert _rb_trades(out) == pytest.approx({"AAA": 500.0, "BBB": 500.0}, abs=0.02)
 
 
@@ -1223,18 +1342,22 @@ def test_add_never_sells_an_overvalued_pick() -> None:
     picks = {"AAA": _GOOD, "BBB": _deep(central=30.0, er=0.02)}             # BBB priced 50, well above central
     out = load_script(SL).run_sleeves(_rb_params({"AAA": 2000, "BBB": 2000}, picks, cash=1000, amount=1000))
     assert all(t["side"] == "BUY" for t in out["trades"])
+    assert _rb_trades(out) == pytest.approx({"AAA": 1000.0}, abs=0.02)      # fill: BBB is above its smaller target
+    out = load_script(SL).run_sleeves(_rb_params({"AAA": 2000, "BBB": 2000}, picks, cash=1000, amount=1000, allocation="split"))
+    assert all(t["side"] == "BUY" for t in out["trades"])
     assert 0 < _rb_trades(out)["BBB"] < _rb_trades(out)["AAA"]
 
 
 def test_add_valuation_no_eligible_splits_equal_and_says_so() -> None:
     out = load_script(SL).run_sleeves(_rb_params({"AAA": 1000, "BBB": 3000}, {}, cash=400, amount=400))
-    assert _rb_trades(out) == pytest.approx({"AAA": 200.0, "BBB": 200.0}, abs=0.02)
+    assert _rb_trades(out) == pytest.approx({"AAA": 400.0}, abs=0.02)        # equal targets 2200: only AAA is below
     assert out["weighting_used"] == "equal"
     assert "equal" in next(f["message"] for f in out["flags"] if f["code"] == "VALUATION_FALLBACK")
 
 
 def test_add_cap_limits_buys_and_overflow_goes_to_others() -> None:
-    out = load_script(SL).run_sleeves(_rb_params({"AAA": 14800, "BBB": 2000}, {}, cash=1000, core=283000, amount=1000, weighting="equal"))
+    out = load_script(SL).run_sleeves(_rb_params({"AAA": 14800, "BBB": 2000}, {}, cash=1000, core=283000, amount=1000, weighting="equal",
+                                                 allocation="split"))
     assert _rb_trades(out) == pytest.approx({"AAA": 240.0, "BBB": 760.0}, abs=0.02)        # total 300800, cap 15040
 
 
@@ -1258,7 +1381,7 @@ def test_new_pick_opens_at_median_and_touches_nothing_else(name) -> None:
 
 def test_new_pick_amount_sends_the_rest_to_existing_picks() -> None:
     out = load_script(SL).run_sleeves(_rb_params({"AAA": 2000, "BBB": 2000, "CCC": 2000}, {}, cash=5000, mode="new-pick", weighting="equal",
-                                                 new_pick={"symbol": "NEW", "price": 40.0, "amount": 2300}))
+                                                 new_pick={"symbol": "NEW", "price": 40.0, "amount": 2300}, allocation="split"))
     assert _rb_trades(out) == pytest.approx({"NEW": 2000.0, "AAA": 100.0, "BBB": 100.0, "CCC": 100.0}, abs=0.02)
 
 
@@ -1560,7 +1683,7 @@ def test_rebalance_negative_cash_in_an_account_with_no_trades_does_not_stop_the_
 def test_add_market_cap_not_finite_holds_the_pick(cap) -> None:
     caps = {"AAA": cap, "BBB": 3e11, "CCC": 1e11}
     out = load_script(SL).run_sleeves(_rb_params({"AAA": 1000, "BBB": 1000, "CCC": 1000}, {}, cash=400, amount=400,
-                                                 weighting="market_cap", market_caps=caps))
+                                                 weighting="market_cap", market_caps=caps, allocation="split"))
     assert _rb_trades(out) == pytest.approx({"BBB": 300.0, "CCC": 100.0}, abs=0.02)
     assert "NO_MARKET_CAP" in _split_flags(out, "AAA") and "NaN" not in json.dumps(out) and "Infinity" not in json.dumps(out)
 

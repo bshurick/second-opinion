@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.0
+
+- portfolio-plan: adding money to the picks fills toward target by default. Each pick's target is its strategy share of the sleeve after the deposit, and the money goes to the picks below target, in proportion to how far below they are; a pick above target gets nothing and nothing is sold. Before, the money was split by the strategy's shares whatever each pick held, so a pick that had drifted low never caught up without a selling rebalance.
+- portfolio-plan: `open SYMBOL --amount A` puts the new pick in the same fill at $0 with its own share (its valuation tilt under `valuation`, its market cap under `market_cap`), instead of giving it the median pick value and splitting the rest. Without `--amount` it still opens at the median.
+- portfolio-plan: `--split` keeps the old split for one run. Under `size` weighting fill and split are the same. `settings_used.allocation` says which ran.
+
 ## 1.7.0
 
 - deep valuation and deep picker: the research is fetched once, before any subagent starts. A research pack per company holds the SEC financials, the filing text, the earnings releases, the analyst consensus, a quick value and the red-flag passages, with an index of the files and the script commands. Subagents read it instead of fetching the same filing many times, so a run makes far fewer tool calls and finishes sooner.
