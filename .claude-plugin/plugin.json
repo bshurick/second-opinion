@@ -1,6 +1,6 @@
 {
   "name": "second-opinion",
-  "displayName": "Second Opinion - Finance",
+  "displayName": "Second Opinion | Personal Finance",
   "version": "1.8.0",
   "description": "A brokerage-connected finance analyst for Claude Code: portfolio, risk, dividend, tax, rebalancing and retirement views of your own accounts, plus company research, valuation, options and market analysis, and gated order placement. Brokerage data comes from SnapTrade (your own free Personal API key) or a direct E*Trade login; market data from Yahoo Finance, SEC EDGAR and FRED.",
   "author": {
