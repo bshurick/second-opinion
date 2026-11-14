@@ -10,9 +10,15 @@ Turns a deep-picker run into one self-contained HTML page for the Artifact tool.
                      "prospects": [{"ticker", "name", "market_cap", "why"}] (optional),
                      "evidence": [{"claim", "source", "date"}]}],
      "candidates": [{"ticker", "name", "industry", "origin": "industry"|"screen"|"both", "held",
-                     "scores": {"quality", "direction", "tailwind", "value"} (1-5),
+                     "scores": {"quality", "direction", "tailwind", "value"} (1-5; "upside" in place of "value" in a growth run),
                      "reasons": {...}, "missing", "bad_pick", "health", "finalist"}],
      "picks": {"SYMBOL": {"thesis", "bad_pick"}}, "missing_roles": [...], "notes": [...]}
+
+A growth run (``profile`` exactly "growth" and the gate output's ``profile`` "growth", carrying
+``min_upside`` and per-result ``best``/``best_multiple``; a growth ``profile`` over a value gate renders
+as value) words the page for the best-case rule: no hurdle, each pick shows its
+best-case multiple and return, the central value against the price and the worst case labelled
+"not gated". A value run's page is as it always was.
 
 Sections: Picks (each gate pass or pass_flagged result, with central and worst annual return, the
 stress test's return when there is one (not gated), the
@@ -41,6 +47,17 @@ from second_opinion.errors import InvalidInput  # noqa: E402
 
 VERDICTS = ("favored", "neutral", "unfavored")
 SCORES = ("quality", "direction", "tailwind", "value")
+GROWTH_SCORES = ("quality", "direction", "tailwind", "upside")  # a growth run (pick.json profile "growth") scores upside, not value
+
+
+def _is_growth(data: dict) -> bool:
+    """A growth run: pick.json's profile and the gate output's profile are both "growth" (an old folder
+    whose notes say growth over a value gate renders as value)."""
+    return data.get("profile") == "growth" and isinstance(data.get("gate"), dict) and data["gate"].get("profile") == "growth"
+
+
+def _scores_for(data: dict) -> tuple:
+    return GROWTH_SCORES if _is_growth(data) else SCORES
 
 BODY = """
 <style>
@@ -71,21 +88,28 @@ SCRIPT = r"""
   const D = window.DATA, F = FA, G = D.gate, g = id => document.getElementById(id), esc = F.esc;
   const pct = v => F.isNum(v) ? F.pct(v, 1, true) : '—', money = v => F.isNum(v) ? F.money(v) : '—';
   const passes = G.results.filter(r => r.verdict !== 'fail'), fails = G.results.filter(r => r.verdict === 'fail');
-  g('sub').textContent = `As of ${D.as_of}${D.profile ? ' · ' + D.profile : ''} · hurdle ${F.pct(G.hurdle, 1)} · floor ${F.pct(G.floor, 1)}`;
-  F.intro(g('intro'), {lead: `${passes.length} of ${G.results.length} finalists passed the downside gate: no scenario loses money over five years, and the central case earns at least ${F.pct(G.hurdle, 1)} a year at today’s price.`});
+  const growth = D.profile === 'growth' && G.profile === 'growth', mu = G.min_upside;
+  if (growth) g('h1').textContent = 'Deep growth picks';
+  g('sub').textContent = growth ? `As of ${D.as_of} · growth · best case at least ${mu}x`
+    : `As of ${D.as_of}${D.profile ? ' · ' + D.profile : ''} · hurdle ${F.pct(G.hurdle, 1)} · floor ${F.pct(G.floor, 1)}`;
+  F.intro(g('intro'), {lead: growth ? `${passes.length} of ${G.results.length} finalists passed the growth gate: a best case worth at least ${mu}x the price over five years and a central case above today’s price. The worst case is shown and was not a test.`
+    : `${passes.length} of ${G.results.length} finalists passed the downside gate: no scenario loses money over five years, and the central case earns at least ${F.pct(G.hurdle, 1)} a year at today’s price.`});
+  if (growth) g('picks-card').querySelector('.sub').textContent = `Finalists whose deep valuation shows a best case worth at least ${mu}x today’s price over five years and a central case above the price.`;
 
   g('picks').innerHTML = passes.length ? passes.map(r => { const p = (D.picks || {})[r.symbol] || {};
-    return `<div class="pickc"><h3>${esc(r.symbol)}</h3><div class="r"><b>Central value ${money(r.central.value_per_share)} vs price ${money(r.price)} · ${pct(r.central.irr)} a year</b><br>${esc(r.central.name)} case · worst ${esc(r.worst.name)} ${pct(r.worst.irr)}${r.stress ? ` · stress test ${esc(r.stress.name)} ${pct(r.stress.irr)} (not gated)` : ''}${r.value_range ? ` · value ${money(r.value_range[0])} – ${money(r.value_range[1])}` : ''}</div>
+    const head = growth && r.best ? `<b>Best case ${F.isNum(r.best_multiple) ? r.best_multiple + 'x' : '—'} (${esc(r.best.name)}, ${pct(r.best.irr)} a year) · central value ${money(r.central.value_per_share)} vs price ${money(r.price)}</b><br>`
+      : `<b>Central value ${money(r.central.value_per_share)} vs price ${money(r.price)} · ${pct(r.central.irr)} a year</b><br>`;
+    return `<div class="pickc"><h3>${esc(r.symbol)}</h3><div class="r">${head}${esc(r.central.name)} case${growth ? ` ${pct(r.central.irr)} a year` : ''} · worst ${esc(r.worst.name)} ${pct(r.worst.irr)}${growth ? ' (not gated)' : ''}${r.stress ? ` · stress test ${esc(r.stress.name)} ${pct(r.stress.irr)} (not gated)` : ''}${r.value_range ? ` · value ${money(r.value_range[0])} – ${money(r.value_range[1])}` : ''}</div>
       ${p.thesis ? `<div class="t">${esc(p.thesis)}</div>` : ''}${p.bad_pick ? `<div class="b"><b>What would make this a bad pick:</b> ${esc(p.bad_pick)}</div>` : ''}
       ${r.verdict === 'pass_flagged' ? `<div class="w">${esc(r.reasons[r.reasons.length - 1])}</div>` : ''}
       ${r.page ? `<div class="b" style="margin-top:6px"><a href="${esc(r.page)}" target="_blank" rel="noopener">Deep valuation →</a></div>` : ''}</div>`; }).join('')
     : '<p><b>No finalist passed the downside gate.</b> The near misses below show which test each failed.</p>';
-  F.help(g('picks-card'), {lead: 'The central case is the first scenario of the deep valuation; the scenarios are not averaged. A pick is a finalist whose deep valuation passed two tests at today’s price: no scenario loses money over five years, dividends included, and the central scenario earns at least the hurdle. A warning line means every scenario sits above the price, which can mean a downside case is missing.'});
+  F.help(g('picks-card'), {lead: growth ? 'The central case is the first scenario of the deep valuation; the scenarios are not averaged. A growth pick is a finalist whose deep valuation passed two tests at today’s price: the best scenario earns enough a year to multiply the money by the minimum upside over five years, and the central scenario is worth more than the price. The worst case is shown for information and was not a test. A warning line means every scenario sits above the price, which can mean a downside case is missing.' : 'The central case is the first scenario of the deep valuation; the scenarios are not averaged. A pick is a finalist whose deep valuation passed two tests at today’s price: no scenario loses money over five years, dividends included, and the central scenario earns at least the hurdle. A warning line means every scenario sits above the price, which can mean a downside case is missing.'});
 
-  g('near').innerHTML = fails.length ? fails.map(r => `<details class="row"><summary><span class="n">${esc(r.symbol)}</span><span class="m">central ${money(r.central.value_per_share)} · ${pct(r.central.irr)} a year · worst ${r.worst ? pct(r.worst.irr) : '—'}${r.stress ? ` · stress ${pct(r.stress.irr)}` : ''}</span></summary>
+  g('near').innerHTML = fails.length ? fails.map(r => `<details class="row"><summary><span class="n">${esc(r.symbol)}</span><span class="m">${growth && r.best ? `best ${F.isNum(r.best_multiple) ? r.best_multiple + 'x' : '—'} · ` : ''}central ${money(r.central.value_per_share)} · ${pct(r.central.irr)} a year · worst ${r.worst ? pct(r.worst.irr) : '—'}${r.stress ? ` · stress ${pct(r.stress.irr)}` : ''}</span></summary>
       <ul>${r.reasons.map(x => `<li>${esc(x)}</li>`).join('')}</ul>${r.page ? `<div class="d"><a href="${esc(r.page)}" target="_blank" rel="noopener">Deep valuation →</a></div>` : ''}</details>`).join('')
     : '<p class="muted">None: every finalist passed.</p>';
-  F.help(g('near-card'), {lead: 'Finalists that were valued in depth and failed: a scenario that loses money, a central case below the hurdle, or a return that could not be computed.'});
+  F.help(g('near-card'), {lead: growth ? 'Finalists that were valued in depth and failed: a best case short of the minimum upside, a central case not worth more than the price, or a return that could not be computed.' : 'Finalists that were valued in depth and failed: a scenario that loses money, a central case below the hurdle, or a return that could not be computed.'});
 
   const fmax = Math.max(1, ...(D.funnel || []).map(s => s.count || 0));
   F.bars(g('funnel'), (D.funnel || []).map((s, i) => ({label: s.stage, share: (s.count || 0) / fmax, text: String(s.count), color: F.S[i % 8]})));
@@ -101,19 +125,21 @@ SCRIPT = r"""
       <div class="d"><b>Growth:</b> ${esc(i.growth || '—')}</div><div class="d"><b>Sentiment:</b> ${esc(i.sentiment || '—')}</div><ul>${ev(i.evidence)}</ul></details>`).join('') : ''; }).join('');
   F.help(g('ind-card'), {lead: 'The industry scan’s call on each industry, from dated growth forecasts, cycle position, pricing power, policy, structural threats, sentiment and valuation against its own history. Contrarian industries are out of favour while their fundamentals improve.'});
 
-  const label = {quality: 'Quality', direction: 'Direction', tailwind: 'Tailwind', value: 'Value'};
+  const label = {quality: 'Quality', direction: 'Direction', tailwind: 'Tailwind', value: 'Value', upside: 'Upside'};
   const cands = (D.candidates || []).map(c => ({...c, total: SCORES.reduce((a, k) => a + (c.scores[k] || 0), 0)})).sort((a, b) => b.total - a.total || (b.finalist - a.finalist));
   g('cand').innerHTML = cands.map(c => `<details class="row"><summary><span class="n">${esc(c.ticker)}${c.finalist ? ' ★' : ''}</span><span class="m">${esc(c.industry)} · found by ${esc(c.origin)}${c.held ? ' · held' : ''}</span>
       <span class="sc">${SCORES.map(k => `<span title="${label[k]}">${label[k][0]}${c.scores[k]}</span>`).join('')}<b>${c.total}</b></span></summary>
       <ul>${SCORES.map(k => `<li><b>${label[k]} ${c.scores[k]}/5:</b> ${esc((c.reasons || {})[k] || '—')}</li>`).join('')}</ul>
       <div class="d"><b>What the market may be missing:</b> ${esc(c.missing || '—')}</div><div class="d"><b>What would make this a bad pick:</b> ${esc(c.bad_pick || '—')}</div>
       <div class="d muted">Health check: ${esc(c.health || '—')}</div></details>`).join('');
-  F.help(g('cand-card'), {lead: 'Every company in the merged pool, highest total first. Each score runs 1 to 5 and comes from a quick read of the filings and dated news: Q quality of the business, D direction (improving or worsening), T industry tailwind, V price against value. ★ marks a finalist. Open a row for the reasons.'});
+  if (growth) g('cand-card').querySelector('.sub').textContent = 'Every company in the merged pool, scored 1 to 5 on business quality (Q), direction (D), industry tailwind (T) and upside to the best case (U).';
+  F.help(g('cand-card'), {lead: growth ? 'Every company in the merged pool, highest total first. Each score runs 1 to 5 and comes from a quick read of the filings and dated news: Q quality of the business, D direction (improving or worsening), T industry tailwind, U upside to the best case. ★ marks a finalist. Open a row for the reasons.'
+    : 'Every company in the merged pool, highest total first. Each score runs 1 to 5 and comes from a quick read of the filings and dated news: Q quality of the business, D direction (improving or worsening), T industry tailwind, V price against value. ★ marks a finalist. Open a row for the reasons.'});
 
   const flags = [...(D.missing_roles || []).map(r => ({code: 'RESEARCH_MISSING', message: `The ${r} did not complete, so its findings are absent.`})), ...(D.notes || []).map(n => ({code: 'NOTE', message: n}))];
   g('flags').innerHTML = flags.length ? flags.map(f => `<li><b>${esc(f.code)}</b>${esc(f.message)}</li>`).join('') : '<li class="muted">None</li>';
 })();
-""".replace("SCORES", '["quality","direction","tailwind","value"]')
+""".replace("SCORES", "(D.profile === 'growth' && (D.gate || {}).profile === 'growth' ? " + json.dumps(list(GROWTH_SCORES)) + " : " + json.dumps(list(SCORES)) + ")")
 
 
 class _Parser(argparse.ArgumentParser):
@@ -157,7 +183,7 @@ def _validate(data: dict) -> None:
     for c in _list_of_dicts(data.get("candidates"), "candidates"):
         if not isinstance(c.get("scores"), dict):
             raise InvalidInput(f"candidate {c.get('ticker', '?')}: scores must be an object")
-        for k in SCORES:
+        for k in _scores_for(data):
             v = c["scores"].get(k)
             if isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= 5:
                 raise InvalidInput(f"candidate {c.get('ticker', '?')}: score {k} must be a whole number from 1 to 5")
@@ -172,7 +198,7 @@ def _validate(data: dict) -> None:
 
 def build(data: dict) -> tuple[str, str, dict]:
     _validate(data)
-    title = "Deep Picks"
+    title = "Deep Growth Picks" if _is_growth(data) else "Deep Picks"
     markup = page.render(title, data, BODY, SCRIPT)
     res = data["gate"]["results"]
     info = {"title": title, "picks": [r["symbol"] for r in res if r["verdict"] != "fail"],

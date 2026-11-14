@@ -35,6 +35,10 @@ run's first scenario instead, and that move counts in ``max_move`` and so in ``r
 own ``change_vs_prev`` stays null, and the flag's message gives the figure). Keep scenario names
 the same between runs and nothing here fires.
 
+Best case. A deep valuation carries at least one scenario better than the central one: a
+non-stress scenario other than the first with a higher ``value_per_share`` (a non-numeric value is
+ignored). Without one the flag NO_BEST_CASE is raised; it never changes the exit code.
+
 ``position`` says where the price sits among the
 scenario values: ``all_above_price`` (every value is above the price), ``all_below_price``, or
 ``brackets_price``; null without a price. ``implied`` is model.py's (what the price implies).
@@ -136,6 +140,10 @@ def _compared(runs: list[dict], number: int | None) -> dict | None:
     raise InvalidInput(f"--compare-to {number}: runs.json has no run {number} (runs: {have})")
 
 
+def _is_number(x) -> bool:
+    return isinstance(x, (int, float)) and not isinstance(x, bool)
+
+
 def summarize(model: dict, rets: dict, runs: list[dict], label: str | None, against: dict | None = None) -> dict:
     """What the script prints. ``against`` is the run to measure the move from (default the last of ``runs``)."""
     against = against if against is not None else (runs[-1] if runs else None)
@@ -172,6 +180,10 @@ def summarize(model: dict, rets: dict, runs: list[dict], label: str | None, agai
             else:
                 message += f". The central (first) scenario {central['name']!r} could not be measured against that run's first scenario {was.get('name')!r} (no value there)"
         extra_flags.append({"code": "SCENARIOS_CHANGED", "message": message + ". Keep the names the same between runs."})
+    central_value = scenarios[0]["value_per_share"] if scenarios else None
+    if _is_number(central_value) and not any(
+            _is_number(s["value_per_share"]) and not s["stress"] and s["value_per_share"] > central_value for s in scenarios[1:]):
+        extra_flags.append({"code": "NO_BEST_CASE", "message": "No scenario is better than the central one; add a best case backed by dated ledger claims and rerun."})
     max_move = max(moves) if moves else None
     return {"run": number, "label": label, "price": model.get("price"), "scenarios": scenarios,
             "compared_to": against.get("run") if against else None, "max_move": max_move, "round2_due": max_move is not None and max_move > ROUND2_MOVE,

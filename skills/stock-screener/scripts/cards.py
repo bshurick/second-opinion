@@ -13,7 +13,7 @@ passages, and an ``INDEX.md`` of them) and ``DIR/cards/<TICKER>.data.json`` is w
    "company", "price", "business_type", "pack_as_of",
    "quick_value": <the pack's quick_value.json: basis, bear, base, bull, irr_5y, note, scenarios,
                    and the business-type tests for a bank, REIT or utility>,
-   "value_hint": 5 | 4 | 3 | 2 | 1 | null,
+   "value_hint": 5 | 4 | 3 | 2 | 1 | null  (a growth run: "upside_hint" in its place),
    "leverage": {"net_debt", "ebitda", "net_debt_to_ebitda", "interest_coverage", "debt_now",
                 "debt_at_annual", "ok": true | false | null, "why",
                 "flags": [LEVERAGE_HIGH, DEBT_CHANGED_SINCE_ANNUAL when they fired]},
@@ -39,6 +39,10 @@ EBITDA, or EBIT covering interest under 6x) starts from a hint of at most 3, sin
 a levered company is how the downside gate has failed. ``leverage.ok`` is null for a financial,
 REIT or utility and when figures are missing. ``THIN_EDGAR_HISTORY`` (no annual SEC data or no
 10-K under this registrant) leaves the hint as it is: it rests on Yahoo's statements alone.
+In a growth run (``growth.run_profile(DIR)``) the data file and the printed row carry ``upside_hint``
+in place of ``value_hint``: a starting point for the ``upside`` score from ``growth.upside_hint`` (the
+quick value's bull and base against the price; null with no DCF basis, ``CURRENCY_MISMATCH``, or a
+latest annual ``free_cash_flow`` in ``edgar.json`` that is not positive). ``leverage`` is unchanged.
 ``direction`` counts the last 8 quarters with revenue above the same quarter a year earlier
 (null when EDGAR has none) and gives trailing-twelve-month revenue growth. A hit on a red-flag
 term is a passage to read, not a finding.
@@ -74,8 +78,12 @@ from typing import Any
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE.parents[2] / "lib"))
 
+sys.path.insert(0, str(_HERE))
+
 from second_opinion import output, pack  # noqa: E402
 from second_opinion.errors import InvalidInput, ScriptError  # noqa: E402
+
+import growth  # noqa: E402
 
 DEFAULT_WORKERS = 3  # each pack is one Yahoo-bound chain of scripts; four at once drew HTTP 429
 INPUTS_FLAGS = ("SHARE_CLASSES_COMBINED", "CORPORATE_ACTION_SUSPECTED", "LARGE_MINORITY_INTEREST", "CYCLICAL", "CYCLE_BASE_SPLIT", "CURRENCY_MISMATCH", "THIN_EDGAR_HISTORY")
@@ -217,8 +225,17 @@ def leverage(folder: Path, business_type: Any) -> dict:
     return out
 
 
-def card_data(row: dict, built: dict, folder: Path) -> dict:
-    """The data file for one pool row from its pack (``pack.json``'s content) in ``folder``."""
+def _fcf_latest(folder: Path) -> float | None:
+    """The latest annual free cash flow in the pack's edgar.json (None when absent)."""
+    edgar = _read(folder / "edgar.json")
+    annual = [r for r in ((edgar or {}).get("annual") or []) if isinstance(r, dict)] if isinstance(edgar, dict) else []
+    return _num(annual[-1].get("free_cash_flow")) if annual else None
+
+
+def card_data(row: dict, built: dict, folder: Path, profile: str = "value") -> dict:
+    """The data file for one pool row from its pack (``pack.json``'s content) in ``folder``.
+
+    ``profile`` ``growth`` swaps ``value_hint`` for ``upside_hint``."""
     summary = built.get("summary") or {}
     quick = _read(folder / "quick_value.json")
     if not isinstance(quick, dict):
@@ -230,12 +247,17 @@ def card_data(row: dict, built: dict, folder: Path) -> dict:
     hint = None if "CURRENCY_MISMATCH" in codes else value_hint(quick.get("irr_5y"))
     if hint is not None and lev["ok"] is False and hint > LEVERAGE_HINT_CAP:
         hint = LEVERAGE_HINT_CAP
+    if profile == "growth":
+        hint_key = "upside_hint"
+        hint = None if "CURRENCY_MISMATCH" in codes else growth.upside_hint(quick, _num(summary.get("price")), _fcf_latest(folder))
+    else:
+        hint_key = "value_hint"
     return {
         **row,
         "company": summary.get("company"), "price": summary.get("price"), "business_type": summary.get("business_type"),
         "pack_as_of": built.get("as_of"),
         "quick_value": quick,
-        "value_hint": hint,
+        hint_key: hint,
         "leverage": lev,
         "red_flags": {"inputs_flags": [c for c in INPUTS_FLAGS if c in codes], "terms": {t: n for t, n in hits.items() if n}},
         "direction": direction(_read(folder / "edgar.json")),
@@ -263,7 +285,7 @@ def _limited(text: Any) -> bool:
     return any(word in str(text) for word in _RATE_LIMIT_WORDS)
 
 
-def _one(row: dict, cards_dir: Path, today: str, force: bool) -> dict:
+def _one(row: dict, cards_dir: Path, today: str, force: bool, profile: str = "value") -> dict:
     ticker = row["ticker"]
     folder = cards_dir / ticker
     start = time.monotonic()
@@ -272,7 +294,7 @@ def _one(row: dict, cards_dir: Path, today: str, force: bool) -> dict:
     try:
         if built is None:
             built = pack.build(ticker, folder, level="card")
-        data = card_data(row, built, folder)
+        data = card_data(row, built, folder, profile)
         dest = cards_dir / f"{ticker}.data.json"
         dest.write_text(json.dumps(data, indent=2, ensure_ascii=False, default=str) + "\n", encoding="utf-8")
     except ScriptError as exc:  # an unknown ticker (InvalidInput) or EDGAR not set up (ConfigError)
@@ -281,9 +303,10 @@ def _one(row: dict, cards_dir: Path, today: str, force: bool) -> dict:
         return {"ticker": ticker, "failed": f"{exc.__class__.__name__}: {exc}"}
     errors = " ".join(str(f.get("error") or "") for f in (built.get("files") or {}).values() if isinstance(f, dict) and not f.get("ok"))
     errors += " " + " ".join(str(f.get("message") or "") for f in _sentiment_flags(folder))
+    hint_key = "upside_hint" if profile == "growth" else "value_hint"
     return {"ticker": ticker, "status": status, "seconds": round(time.monotonic() - start, 1),
             "basis": data["quick_value"].get("basis"), "base": data["quick_value"].get("base"), "irr_5y": data["quick_value"].get("irr_5y"),
-            "value_hint": data["value_hint"], "leverage_ok": data["leverage"]["ok"], "net_debt_to_ebitda": data["leverage"]["net_debt_to_ebitda"],
+            hint_key: data[hint_key], "leverage_ok": data["leverage"]["ok"], "net_debt_to_ebitda": data["leverage"]["net_debt_to_ebitda"],
             "missing": data["missing"], "sentiment_flags": data["sentiment_flags"], "data": str(dest), "_limited": _limited(errors)}
 
 
@@ -311,11 +334,12 @@ def run(args: list[str]) -> dict:
         if unknown:
             raise InvalidInput(f"not in pool.json's names: {', '.join(unknown)}")
         rows = [r for r in rows if r["ticker"] in wanted]
+    profile = growth.run_profile(run_dir)
     cards_dir = run_dir / "cards"
     cards_dir.mkdir(parents=True, exist_ok=True)
     today = dt.date.today().isoformat()
     with ThreadPoolExecutor(max_workers=ns.workers) as ex:
-        results = list(ex.map(lambda r: _one(r, cards_dir, today, ns.force), rows))
+        results = list(ex.map(lambda r: _one(r, cards_dir, today, ns.force, profile), rows))
 
     done = [r for r in results if "failed" not in r]
     failed = [{"ticker": r["ticker"], "error": r["failed"]} for r in results if "failed" in r]

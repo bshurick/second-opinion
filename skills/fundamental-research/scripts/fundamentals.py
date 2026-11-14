@@ -36,7 +36,8 @@ Output JSON contract (stdout)::
                   interest_coverage, revenue_growth, eps_growth,
                   sbc, sbc_pct_revenue, sbc_vs_fcf, dso, dio,
                   goodwill_pct_assets, current_assets, current_liabilities,
-                  current_ratio, depreciation_amortization}],   # oldest first
+                  current_ratio, depreciation_amortization,
+                  research_and_development, short_term_investments}],   # oldest first
       "latest_quarter": {period, fiscal_period, fiscal_year, revenue?, net_income?,
                          eps_diluted?, derived?: true} | null,   # derived: a Q4 computed
                                                                  # as annual - 9-month YTD
@@ -211,6 +212,15 @@ _CONCEPTS: dict[str, list[str]] = {
         "DepreciationAndAmortization",
         "DepreciationAmortizationAndAccretionNet",
         "Depreciation",
+    ],
+    "research_and_development": [
+        "ResearchAndDevelopmentExpense",
+        "ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost",
+    ],
+    "short_term_investments": [
+        "ShortTermInvestments",
+        "MarketableSecuritiesCurrent",
+        "AvailableForSaleSecuritiesDebtSecuritiesCurrent",
     ],
 }
 _CORE = [
@@ -763,6 +773,8 @@ def run_fundamentals(params: dict) -> dict:
             "current_liabilities": _r2(cur_liab),
             "current_ratio": _r4(_div(cur_assets, cur_liab)) if cur_liab else None,
             "depreciation_amortization": _r2(abs(da)) if da is not None else None,
+            "research_and_development": _r2(val("research_and_development", fy)),
+            "short_term_investments": _r2(val("short_term_investments", fy)),
             "gain_on_property_sales": _r2(val("gain_on_property_sales", fy)),
             "_rev": rev,
             "_eps": eps,

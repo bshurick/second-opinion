@@ -260,3 +260,32 @@ def test_added_and_dropped_scenarios_are_listed_when_the_central_one_matches(tmp
     # against run 1 again with --compare-to, from a third run
     out3 = run(case, capsys, "--compare-to", "1")[1]
     assert [(u["name"], u["run"]) for u in out3["unmatched"]] == [("Boom", 3), ("Squeeze", 1)]
+
+
+def _scenarios_at(*shifts: tuple[str, float, bool]) -> list[dict]:
+    """A scenario per (name, margin, stress); the first is the central one."""
+    return [{"name": n, "summary": n, "must_be_true": [n], **({"stress": True} if st else {}),
+             **({"overrides": {"Core": {"margin": m}}} if i else {})} for i, (n, m, st) in enumerate(shifts)]
+
+
+def test_no_best_case_flag(tmp_path, capsys) -> None:
+    """Central 100, then 80 and 60: nothing above the central one."""
+    case = write_case(tmp_path, model_input(scenarios=_scenarios_at(("Base", 0.15, False), ("Soft", 0.12, False), ("Weak", 0.09, False))))
+    rc, out = run(case, capsys)
+    assert rc == 0, out
+    flag = next(f for f in out["flags"] if f["code"] == "NO_BEST_CASE")
+    assert flag["message"] == "No scenario is better than the central one; add a best case backed by dated ledger claims and rerun."
+
+
+def test_best_case_present(tmp_path, capsys) -> None:
+    case = write_case(tmp_path, model_input(scenarios=_scenarios_at(("Base", 0.15, False), ("Boom", 0.20, False), ("Weak", 0.09, False))))
+    rc, out = run(case, capsys)
+    assert rc == 0, out
+    assert "NO_BEST_CASE" not in {f["code"] for f in out["flags"]}
+
+
+def test_a_stress_scenario_above_the_central_one_is_not_a_best_case(tmp_path, capsys) -> None:
+    case = write_case(tmp_path, model_input(scenarios=_scenarios_at(("Base", 0.15, False), ("Soft", 0.12, False), ("Odd", 0.25, True))))
+    out = run(case, capsys)[1]
+    assert out["scenarios"][2]["value_per_share"] > out["scenarios"][0]["value_per_share"]
+    assert "NO_BEST_CASE" in {f["code"] for f in out["flags"]}

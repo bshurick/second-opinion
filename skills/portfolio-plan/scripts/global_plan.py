@@ -21,7 +21,25 @@ tax-advantaged account exists sells are filled there first. A sleeve key in the
 targets (``PICKS``, ``EMPLOYER``) is one line: plain stocks in trading accounts
 are PICKS and the saved employer member is EMPLOYER (holdings.classify);
 a symbol that is a target itself or has a class keeps it, and holdings no key
-reaches are left untouched (UNMAPPED). ``--suggest-bands`` adds per-key annualized
+reaches are left untouched (UNMAPPED). Growth picks are left to run: a saved pick
+with style growth (the stock-screener pick store, read as sleeve_run reads it;
+no stock-screener skill means none) held in a trading account gets no key, so it is
+frozen in every run that sets sleeve keys (one held in any other account has no key
+either), and a withdrawal with derived targets leaves it out of them in every
+account. A pick store that cannot be read fails closed: in a run with a PICKS key
+every plain stock in a trading account is held as a growth pick would be, and in a
+withdrawal with derived targets every plain stock in any account, with
+PICK_STORE_UNREADABLE naming them. With growth picks worth G in trading accounts, the PICKS
+line (value picks V, target T = the PICKS weight of the rebalanced universe plus
+G) aims at max(T - G, min(V, T)), passed to rebalance.py as that over the
+universe with the other targets scaled to the rest: value picks fill to T - G,
+hold when only growth picks put the sleeve over, and sell down to T when they
+alone are over; V + G > T raises GROWTH_PICKS_OVER. With no growth picks held,
+nothing changes. With growth picks counted in G the output carries ``picks_groups``: {value: {value: V,
+symbols}, growth: {value: G, symbols}, target_value: T, target_weight (the saved PICKS weight),
+line_weight (the PICKS target passed to rebalance.py)}, and GROWTH_OVER_CAP (sleeves.py's flag) marks
+each of those growth picks whose value in all accounts passes the 5% pick cap of every account's
+holdings plus cash; it makes no trade. ``--suggest-bands`` adds per-key annualized
 volatility from one batched year of Yahoo closes and proposes band widths —
 proposals, not advice. Output is rebalance.py's contract plus ``sources``,
 ``accounts``, ``holdings_by_account``, ``lot_sources`` and, with
@@ -339,22 +357,121 @@ def _buckets(positions: list[dict], employer: str | None) -> dict[tuple[str, str
     return {(p["symbol"], p["account"]): p["bucket"] for p in classified}
 
 
+def _trading(accounts: list[dict]) -> set[str]:
+    return {a["account_id"] for a in accounts if settings.account_role(a["account_id"], a.get("raw_type")) == "trading"}
+
+
+def _pick_styles() -> dict[str, str] | None:
+    """The saved picks' styles (sleeve_run._pick_styles): empty without the stock-screener skill, None
+    when the pick store cannot be read."""
+    import sleeve_run  # noqa: PLC0415 — sleeve_run imports this module
+    return sleeve_run._pick_styles()
+
+
+def _growth_symbols(positions: list[dict], accounts: list[dict], styles: dict[str, str],
+                    any_account: bool = False) -> set[str]:
+    """Saved picks with style growth held in a trading account (in any account with ``any_account``)."""
+    trading = _trading(accounts)
+    return {p["symbol"] for p in positions
+            if (any_account or p["account"] in trading) and styles.get(p["symbol"]) == "growth"}
+
+
+def _plain_stocks(positions: list[dict], accounts: list[dict], buckets: dict[tuple[str, str], str],
+                  any_account: bool = False) -> set[str]:
+    """Plain stocks (the satellite bucket) held in a trading account (in any account with ``any_account``)."""
+    trading = _trading(accounts)
+    return {p["symbol"] for p in positions if buckets.get((p["symbol"], p["account"])) == "satellite"
+            and (any_account or p["account"] in trading)}
+
+
+def _store_unreadable_flag(frozen: set[str]) -> dict:
+    held = f" ({', '.join(sorted(frozen))})" if frozen else ""
+    return {"code": "PICK_STORE_UNREADABLE",
+            "message": f"the pick store could not be read, so which picks are growth picks is unknown; every plain "
+                       f"stock{held} is held, not bought or sold, until the store is repaired"}
+
+
 def sleeve_positions(positions: list[dict], accounts: list[dict], keys: set[str], keep: set[str],
-                     buckets: dict[tuple[str, str], str]) -> list[dict]:
+                     buckets: dict[tuple[str, str], str], growth: set[str] = frozenset()) -> list[dict]:
     """Positions with ``key`` set to their sleeve, for the sleeve names in ``keys``: a plain stock in a
     trading account is PICKS, an EMPLOYER member is EMPLOYER. A symbol in ``keep`` (a target itself or
-    one with an explicit class) is left as it is."""
-    trading = {a["account_id"] for a in accounts if settings.account_role(a["account_id"], a.get("raw_type")) == "trading"}
+    one with an explicit class) is left as it is; a symbol in ``growth`` (a growth pick) gets no PICKS
+    key, so it is frozen."""
+    trading = _trading(accounts)
     out = []
     for p in positions:
         b = buckets.get((p["symbol"], p["account"]))
         key = None
         if p["symbol"] not in keep:
             if b == "satellite" and p["account"] in trading and "PICKS" in keys:
-                key = "PICKS"
+                key = None if p["symbol"] in growth else "PICKS"
             elif b == "employer" and "EMPLOYER" in keys:
                 key = "EMPLOYER"
         out.append({**p, "key": key} if key else p)
+    return out
+
+
+def _growth_value(positions: list[dict], accounts: list[dict], keep: set[str],
+                  buckets: dict[tuple[str, str], str], growth: set[str]) -> tuple[float, set[str]]:
+    """The trading-account value of the growth picks sleeve_positions left without a PICKS key, and
+    those symbols."""
+    trading = _trading(accounts)
+    counted = [p for p in positions
+               if p["symbol"] in growth and p["symbol"] not in keep and p["account"] in trading
+               and buckets.get((p["symbol"], p["account"])) == "satellite"]
+    return sum(p["units"] * p["price"] for p in counted), {p["symbol"] for p in counted}
+
+
+def _picks_line(targets: dict, classes: dict, positions: list[dict], cash_avail: float,
+                growth_value: float, growth: set[str], hold: bool = False) -> tuple[dict, dict | None, dict | None]:
+    """Targets with the PICKS line at max(T - G, min(V, T)) of the rebalanced universe U (the positions
+    rebalance.py maps, plus cash and the contribution), the other targets scaled to the rest, a
+    GROWTH_PICKS_OVER flag when V + G > T, and the ``picks_groups`` block (value picks V, growth picks
+    G, T and the weights). T is the PICKS weight of U + G, V the value picks' value. ``hold`` (an
+    unreadable pick store) keeps the line at V / U, so nothing is sold to fund a buy that cannot happen."""
+    def key_of(p: dict) -> str | None:
+        sym = p["symbol"]
+        if sym in targets:
+            return sym
+        if sym in classes and classes[sym] in targets:
+            return classes[sym]
+        return p.get("key") if p.get("key") in targets else None
+    mapped = [(key_of(p), p["units"] * p["price"]) for p in positions]
+    universe = sum(v for k, v in mapped if k is not None) + cash_avail
+    if universe <= 0:
+        return targets, None, None
+    value = sum(v for k, v in mapped if k == "PICKS")
+    weight = float(targets["PICKS"])
+    target = weight * (universe + growth_value)
+    line = min(max(max(target - growth_value, min(value, target)) / universe, 0.0), 1.0)
+    if hold:
+        line = min(value / universe, 1.0)
+    rest = 1.0 - weight
+    scale = (1.0 - line) / rest if rest > 0 else 0.0
+    out = {k: (line if k == "PICKS" else float(w) * scale) for k, w in targets.items()}
+    flag = None
+    if value + growth_value > target + 0.005:
+        flag = {"code": "GROWTH_PICKS_OVER",
+                "message": f"the picks sleeve is {value + growth_value:.2f} against its target {target:.2f}, with growth picks "
+                           f"({', '.join(sorted(growth))}) at {growth_value:.2f}; growth picks are left to run and value picks are "
+                           "not sold to make up for them"}
+    groups = {"value": {"value": round(value, 2), "symbols": sorted({p["symbol"] for p in positions if key_of(p) == "PICKS"})},
+              "growth": {"value": round(growth_value, 2), "symbols": sorted(growth)},
+              "target_value": round(target, 2), "target_weight": weight, "line_weight": line}
+    return out, flag, groups
+
+
+def _growth_over_cap(positions: list[dict], total: float, growth: set[str]) -> list[dict]:
+    """GROWTH_OVER_CAP (sleeves.py's flag) for each growth pick whose value in all accounts passes the
+    5% pick cap of ``total``; it makes no trade."""
+    import weights  # noqa: PLC0415 — the sleeve's pick cap
+    out = []
+    for sym in sorted(growth):
+        v = sum(p["units"] * p["price"] for p in positions if p["symbol"] == sym)
+        if total > 0 and v > weights.PICK_CAP * total + 0.005:
+            out.append({"code": "GROWTH_OVER_CAP",
+                        "message": f"{sym} (a growth pick) is {v / total:.1%} of total value, above the {weights.PICK_CAP:.0%} "
+                                   "pick cap; it is left to run and not trimmed, so selling it is your call"})
     return out
 
 
@@ -459,9 +576,20 @@ def run(args: list[str], *, overrides: dict | None = None) -> dict:
     derive = overrides.get("derive")
     sleeves = {k for k in SLEEVE_KEYS if k in targets or overrides.get("freeze_sleeves")}
     employer_flags: list[dict] = []
-    buckets = _buckets(positions, _employer(hub, accounts, employer_flags)) if sleeves or derive == "core" else {}
+    styles = _pick_styles() if sleeves or derive == "all" else {}
+    store_unreadable = styles is None and ("PICKS" in sleeves or derive == "all")
+    need_buckets = sleeves or derive == "core" or store_unreadable
+    buckets = _buckets(positions, _employer(hub, accounts, employer_flags)) if need_buckets else {}
+    if store_unreadable:                        # fail closed: every plain stock may be a growth pick
+        growth = _plain_stocks(positions, accounts, buckets, any_account=derive == "all")
+    else:                                       # a withdrawal with derived targets never sells one, in any account
+        growth = _growth_symbols(positions, accounts, styles or {}, any_account=derive == "all")
+    store_flags = [_store_unreadable_flag(growth)] if store_unreadable else []
+    growth_value, counted = 0.0, set()
     if sleeves:
-        positions = sleeve_positions(positions, accounts, sleeves, set(targets) | set(classes), buckets)
+        keep = set(targets) | set(classes)
+        growth_value, counted = _growth_value(positions, accounts, keep, buckets, growth)
+        positions = sleeve_positions(positions, accounts, sleeves, keep, buckets, growth)
     if derive == "core":
         core: dict[str, float] = {}
         for pos in positions:
@@ -473,6 +601,8 @@ def run(args: list[str], *, overrides: dict | None = None) -> dict:
     elif derive == "all":
         held_value: dict[str, float] = {}
         for pos in positions:
+            if pos["symbol"] in growth:                 # growth picks are left to run: frozen
+                continue
             held_value[pos["symbol"]] = held_value.get(pos["symbol"], 0.0) + pos["units"] * pos["price"]
         if cash > 0:
             held_value["CASH"] = cash
@@ -485,9 +615,19 @@ def run(args: list[str], *, overrides: dict | None = None) -> dict:
     for pos in positions:
         row = book.setdefault(pos["symbol"], {"units": 0.0, "price": pos["price"]})
         row["units"] += pos["units"]
+    contribution = float(overrides["contribution"]) if "contribution" in overrides else ns.contribute - ns.withdraw
+    plan_targets, growth_flags, picks_groups = targets, [], None
+    if "PICKS" in targets and (growth_value > 0 or store_unreadable):
+        plan_targets, over, picks_groups = _picks_line(targets, classes, positions, cash + contribution,
+                                                       growth_value, counted, hold=store_unreadable)
+        if store_unreadable:                    # PICK_STORE_UNREADABLE says why the plain stocks hold
+            picks_groups = None
+        else:
+            total = sum(p["units"] * p["price"] for p in held["positions"]) + sum(held["cash_by_account"].values())
+            growth_flags = ([over] if over else []) + _growth_over_cap(held["positions"], total, counted)
     params = {
-        "positions": positions, "cash": cash, "targets": targets, "classes": classes,
-        "contribution": float(overrides["contribution"]) if "contribution" in overrides else ns.contribute - ns.withdraw, "allow_sells": not ns.no_sells, "whole_shares": ns.whole_shares or settings.whole_shares(a["account_id"] for a in accounts),
+        "positions": positions, "cash": cash, "targets": plan_targets, "classes": classes,
+        "contribution": contribution, "allow_sells": not ns.no_sells, "whole_shares": ns.whole_shares or settings.whole_shares(a["account_id"] for a in accounts),
         "min_trade": ns.min_trade, "only_if_breached": ns.only_if_breached, "lots": plan_lots,
         "rates": {"short_term": ns.short_term, "long_term": ns.long_term},
         "accounts": {aid: {"taxable": not adv} for aid, adv in sorted(tax_adv.items())},
@@ -507,8 +647,10 @@ def run(args: list[str], *, overrides: dict | None = None) -> dict:
         result = rebalance.run_rebalance(params)
     except ValueError as exc:
         raise InvalidInput(str(exc)) from exc
-    result["flags"] = list(result.get("flags") or []) + employer_flags + hub.unavailable_flags()
+    result["flags"] = list(result.get("flags") or []) + growth_flags + store_flags + employer_flags + hub.unavailable_flags()
     out = {"sources": sources, "accounts": [a["account_id"] for a in accounts], "holdings_by_account": holdings_by_account, "lot_sources": lot_sources, **result}
+    if picks_groups:
+        out["picks_groups"] = picks_groups
     if overrides:
         out["targets_used"] = targets
     if ns.suggest_bands:

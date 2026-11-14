@@ -136,6 +136,19 @@ For each industry with meaningful size in your sectors (roughly the Yahoo indust
       | `price` | the free-cash-flow yield is at least 6%, or the trailing P/E is at most 15 | `pe`, `forward_pe`, `fcf_yield`, `change_12m`, `pct_of_52w_high` |
       | `overlooked` | at most 8 analysts, or institutions hold under 60%, or the 12-month price change is below −20% | `analyst_count`, `institutional_ownership`, `change_12m` |
 
+      When the run's profile is growth:
+      - Run `prospects.py SYM,SYM,… --profile growth` instead. The rows have the same shape, with these four tests in place of the table above (`pass` is true, false or null the same way):
+
+        | Test | `pass` is true when | `figures` |
+        |---|---|---|
+        | `trajectory` | revenue is above the same quarter a year earlier in at least 6 of the last 8 quarters, and trailing-twelve-month revenue growth is at least 15% | `quarters_up_of_8`, `ttm_revenue_growth` |
+        | `funded` | free cash flow is not negative in the latest year, or cash and short-term investments cover at least two years of the burn; and net debt is at most 4 times operating profit (net cash always passes) | `net_debt`, `net_debt_to_operating_income`, `free_cash_flow`, `runway_years` |
+        | `reinvestment` | R&D plus capital spending is at least 10% of revenue, or grew faster than revenue over the last three years | `reinvestment_to_revenue`, `reinvestment_growth_3y`, `revenue_growth_3y` |
+        | `scale` | gross margin is at least 40%, or has risen in each of the last three years | `gross_margin`, `gross_margin_rising_3y` |
+
+      - Look for companies whose largest opportunity is a business still small in the numbers, and name that business in `why`.
+      - Three of four tests and `size_ok` still decide entry (step 5).
+
    4. Judge what the script leaves open:
       - A `pass` of null means the script cannot decide from the figures it has. You judge that test from the figures and the filings.
       - `price.pass` is true or null, never false. When it is null, judge the price against the company's own history and its peers. It counts as passed only with the figure that shows it.
@@ -193,7 +206,7 @@ Fields of `cards/<TICKER>.data.json`:
 | `ticker`, `name`, `origin`, `held`, `industry`, `sector`, `industry_verdict`, `contrarian`, `why`, `health`, `failed_tests` | The pool row. `industry`, `industry_verdict` and `why` are null for a screen name no scan covers. |
 | `direction` | `quarters_up_of_8` (quarters with revenue above a year earlier) and `ttm_revenue_growth` |
 | `quick_value` | `basis`, `bear`, `base`, `bull`, `irr_5y`, `note`, `scenarios`, and the yardstick tests for a financial, REIT or utility |
-| `value_hint` | A starting point for the `value` score, 1 to 5, or null |
+| `value_hint` | A starting point for the `value` score, 1 to 5, or null. In a growth run the file carries `upside_hint` instead (see the card's fourth score). |
 | `leverage` | The balance-sheet check: `net_debt` (today's), `ebitda`, `net_debt_to_ebitda`, `interest_coverage`, `ok` (false over 2x or under 6x coverage; null for a financial, REIT or utility, or missing figures), `why`, and `flags` (`LEVERAGE_HIGH`, `DEBT_CHANGED_SINCE_ANNUAL`) |
 | `red_flags` | `inputs_flags` that fired, and `terms`: each red-flag term with its count of hits in the 10-K |
 | `analysts` | `target_mean` and `count` |
@@ -244,6 +257,8 @@ Fields of `cards/<TICKER>.data.json`:
    | `incomplete`, `not_found` | Whether the filings that exist show a going business with positive cash flow and a sound balance sheet. Say what could not be checked. |
    | `unchecked` | The health screen did not run: check revenue trend, free cash flow, share count and net debt in `edgar.json` |
 
+   In a growth run, negative free cash flow and a rising share count are not marks against the company; a cash runway under two years is.
+
 ### The card
 
 Score four parts from 1 to 5, each with a one-line reason:
@@ -254,6 +269,14 @@ Score four parts from 1 to 5, each with a one-line reason:
 | `direction` | revenue and margins falling, guidance cut | revenue and margins rising, guidance met or raised |
 | `tailwind` | the industry scan's unfavored verdict with no contrarian mark, company losing share | favored industry, company gaining share |
 | `value` | quick value well below the price | quick value well above the price, with a five-year return above 15% a year |
+
+In a growth run (`run.json` says `growth`; the data file has `upside_hint`, not `value_hint`) the fourth score is `upside`, not `value`, and the card's `scores` and `reasons` carry `upside` in its place (a card with `value` and no `upside` is rejected):
+
+| Score | 1 means | 5 means |
+|---|---|---|
+| `upside` | the bull case is below the price | the bull case is at least twice the price and the base case is above it |
+
+- `upside_hint` is a starting point for `upside`, from `quick_value`'s `bull` and `base` against the price (null with no DCF basis, `CURRENCY_MISMATCH`, or a latest annual free cash flow that is not positive). Move it for what steps 2 to 7 found, and give the reason. When it is null, score from the growth yardstick: the revenue the company needs for the price to double at a mature margin for its industry, against its current revenue, growth rate and market size, and EV/sales against growing peers. Name the yardstick and its figures in the reason.
 
 - When `industry_verdict` is null, no scan covers the company. Score `tailwind` from `context/macro.md` and the company's own filings, and say so in the reason.
 

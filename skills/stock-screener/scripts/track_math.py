@@ -67,7 +67,9 @@ the baseline's ``returns_input`` rerun through valuation's returns.py with the n
 ``level``, highest first: ``above_all`` (over the best scenario's value), ``above_central`` (over
 the central value), ``hurdle`` (over the price at which the central scenario earns exactly the
 hurdle a year), ``below_worst`` (under the worst value), else ``normal``; ``levels`` gives each
-threshold price. A light pick uses bear / base / bull as worst / central / best, with no hurdle.
+threshold price. A growth pick (input ``style`` "growth", with ``min_upside``, default 2.0) has ``upside``
+in place of ``hurdle``: the level ``upside`` is a price over the price at which the best scenario no longer
+reaches ``min_upside``, ranked after above_central. A light pick uses bear / base / bull as worst / central / best, with no hurdle.
 The level describes the price against the valuation; it never changes ``status``.
 
 ``watch`` lists what to look for evidence on: the central and nearest scenarios' ``must_be_true``
@@ -256,13 +258,20 @@ def _evidence(items: object) -> list[dict]:
 
 
 LEVELS = ("below_worst", "normal", "hurdle", "above_central", "above_all")  # lowest to highest
+GROWTH_LEVELS = ("below_worst", "normal", "upside", "above_central", "above_all")
+MIN_UPSIDE_DEFAULT = 2.0  # growth.MIN_UPSIDE_DEFAULT: the best case must reach this multiple of the price
 
 
-def price_levels(model: dict) -> dict:
+def price_levels(model: dict, style: str = "value", min_upside: float = MIN_UPSIDE_DEFAULT) -> dict:
     """The prices at which a deep pick's price level changes: the worst, central (first) and best
     scenario values per share, and ``hurdle``, the price at which the central scenario's annual
     return falls to the returns input's hurdle (its distributions and exit value discounted at the
-    hurdle; null without a returns input)."""
+    hurdle; null without a returns input). For ``style`` "growth" ``upside`` takes the place of
+    ``hurdle`` and ``best`` is the highest-value scenario other than the stress test (``"stress": true``
+    on a scenario after the first, which the gate does not test): ``upside`` is the price at which the
+    best scenario's distributions and exit value, discounted at the
+    yearly return that reaches ``min_upside`` over its horizon, are worth exactly the price (null without
+    a returns input); above it the best case no longer reaches ``min_upside``."""
     scen = model.get("scenarios") or []
     vals = [s["value_per_share"] for s in scen if isinstance(s.get("value_per_share"), (int, float))]
     if not vals:
@@ -275,17 +284,35 @@ def price_levels(model: dict) -> dict:
         dists = sc.get("distributions_per_share") or []
         exit_v = max(float(sc.get("exit_value_per_share") or 0.0), 0.0)
         out["hurdle"] = round(sum(d / (1 + h) ** t for t, d in enumerate(dists, start=1)) + exit_v / (1 + h) ** len(dists), 2)
+    if style == "growth":
+        del out["hurdle"]
+        out["upside"] = None
+        gated = [s for i, s in enumerate(scen) if isinstance(s.get("value_per_share"), (int, float))
+                 and not (s.get("stress") is True and i > 0)]          # the stress test is not gated (gate.py)
+        best = max(gated, key=lambda s: s["value_per_share"])
+        out["best"] = best["value_per_share"]
+        bs = next((x for x in ri.get("scenarios") or [] if x.get("name") == best.get("name")), None)
+        dists = (bs or {}).get("distributions_per_share") or []
+        if bs and dists:
+            r = min_upside ** (1 / len(dists)) - 1
+            exit_v = max(float(bs.get("exit_value_per_share") or 0.0), 0.0)
+            out["upside"] = round(sum(d / (1 + r) ** t for t, d in enumerate(dists, start=1)) + exit_v / (1 + r) ** len(dists), 2)
     return out
 
 
 def price_level(price: float, levels: dict) -> str:
     """The highest level the price has crossed: above_all (over the best value), above_central (over
     the central value), hurdle (over the hurdle price: the central return is under the hurdle),
-    below_worst (under the worst value), else normal."""
+    below_worst (under the worst value), else normal. Levels with an ``upside`` key (a growth pick)
+    use ``upside`` for hurdle, ranked after above_central and before below_worst."""
     if price > levels["best"]:
         return "above_all"
     if price > levels["central"]:
         return "above_central"
+    if "upside" in levels:
+        if levels["upside"] is not None and price > levels["upside"]:
+            return "upside"
+        return "below_worst" if price < levels["worst"] else "normal"
     if levels.get("hurdle") is not None and price > levels["hurdle"]:
         return "hurdle"
     if price < levels["worst"]:
@@ -512,7 +539,7 @@ def run_deep(params: dict) -> dict:
         "elapsed_years": round(f, 3), "metrics": metrics,
         "scenarios": [{"name": s["name"], "distance": round(dist[s["name"]], 2), "value_per_share": s.get("value_per_share"),
                        "irr": irr.get(s["name"]), "baseline_irr": base_irr.get(s["name"])} for s in scen],
-        "price": _price_block(scen, price, model.get("price"), price_levels(model)),
+        "price": _price_block(scen, price, model.get("price"), price_levels(model, params.get("style") or "value", float(params.get("min_upside") or MIN_UPSIDE_DEFAULT))),
         "watch": _watch(scen, [central, nearest], list(ledger.values())), "evidence": evidence, "flags": flags,
     }
 

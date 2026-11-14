@@ -338,6 +338,7 @@ Run with the Bash tool. All print JSON on stdout.
    4. Write three to five scenarios that differ in their story (what happens to the business), not just in a growth shift. Each has a `summary` and its `must_be_true` list. The first scenario is the central one.
       - The worst of them is the severest single story: the one risk that hurts most lands hard, at the worst dated evidence supports, while the rest of the business runs as in the central case. Size it from the company's own record (its worst past downturn) or the industry's, not by stacking risks. Do not soften it to make a return look better.
       - When two or more risks could plausibly land together, add one more scenario that stacks them, with `"stress": true`. It is the stress test: shown on the page, not judged by the deep picker's gate. It may be a sixth scenario.
+      - Include at least one scenario better than the central one (a higher `value_per_share`, not the stress test). Each of its `must_be_true` points to a ledger claim with a source and a date. `MARGIN_ABOVE_HISTORY` is expected in a best case: a margin above the segment's history needs that dated claim behind it. On `NO_BEST_CASE`, add the best case and rerun before the threads.
    5. Give a `discount_premium` only where a ledger entry is doubtful, contradicted or vague. Put the entry's id in the `premium_reason`.
    6. Take `claims` from the balance-sheet table in `research/segments.md`, in millions, not from `inputs.py`. Its net debt comes from Yahoo's total debt, which counts a finance arm's warehouse lines as corporate debt. Add `history` with each segment's best historical margin.
       - For a company valued only through `residual_income` segments, `claims` is empty, because debt and cash sit inside book value, and `base_discount_rate` is the cost of equity (in `_notes`).
@@ -355,6 +356,7 @@ Run with the Bash tool. All print JSON on stdout.
 7. Run `deep_run.py --case DIR/deep-SYMBOL --label baseline`. It replaces separate `model.py` and `returns.py` runs.
    - If it exits 2, fix `model.json` from the `error` and rerun.
    - If `position` is `all_above_price` or `all_below_price`, a scenario is probably missing. Read `implied`, write the scenario the price implies, and rerun before the threads.
+   - If `flags` has `NO_BEST_CASE`, no scenario is better than the central one. Add a best case whose `must_be_true` points to dated ledger claims, and rerun before the threads.
 8. Run one thread round:
    1. Take `threads_allowed` from the step 4 output. If it is 0, skip the threads, say so in the flags, and go to step 10.
    2. Pick up to `threads_allowed` `open` or contested beliefs with high or medium stakes, never more than four.

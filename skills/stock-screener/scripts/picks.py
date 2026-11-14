@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Usage: picks.py save-deep SYMBOL (--case DIR | --page FILE) [--thesis TEXT] [--source URL] [--added-price P] [--date YYYY-MM-DD] [--base-end YYYY-MM-DD]
+"""Usage: picks.py save-deep SYMBOL (--case DIR | --page FILE) [--thesis TEXT] [--source URL] [--added-price P] [--date YYYY-MM-DD] [--base-end YYYY-MM-DD] [--style value|growth] [--restyle]
        picks.py save-light SYMBOL --in FILE [--date YYYY-MM-DD]
        picks.py list
        picks.py remove SYMBOL
@@ -21,6 +21,17 @@ new valuation over an existing pick keeps its ``added`` date and ``added_price``
 growth and operating margin) from EDGAR. Saving again replaces the baseline and keeps the checks;
 ``baseline_checks_from`` is the index of the first check against the current baseline.
 Both saves fetch the next earnings date (best effort).
+
+Style: each pick carries ``style``, ``value`` or ``growth``; a pick stored without one is ``value``
+(``list`` shows that default; the store is not rewritten). ``save-deep --style`` sets it on a new
+pick (default ``value``). A saved pick never changes group silently: ``--style`` naming another style
+than the saved one saves the new valuation, keeps the old style and adds the flag STYLE_KEPT to the
+output's ``flags``; ``--restyle`` (only when the person asks) moves the pick to the named style.
+``save-deep`` prints {"pick", "baseline_path", "flags"}. ``list`` orders value picks first, then growth,
+keeping the stored order within each group. For a growth pick the price level ``hurdle`` is replaced by
+``upside`` (over the price at which the best case still reaches the setting ``picker.growth.min_upside``);
+``due`` and ``summary`` name growth picks. ``summary`` falls back to track_math.py's default minimum
+(2.0) when settings are unreadable; ``due`` and ``check`` exit 5 as they do for depth.
 
 ``check`` gathers the actuals from SEC EDGAR company facts (through the fundamental-research
 skill's fundamentals.py) and today's price, and runs track_math.py: every reported fiscal year
@@ -51,8 +62,8 @@ were added), or whose price moved ``--move`` (default 0.15) or more since then. 
 network; for the SessionStart hook) prints plain text: the picks whose stored earnings date has
 passed since their last check, those still awaiting the 10-Q, those whose price in the watchlist's
 last check moved 15% or more since their last check, and those whose price crossed into a new price
-level (track_math.py's ``price_level``: past the hurdle price, above the central value, above every
-scenario, or below every scenario) since their last check or, before any check, since the added
+level (track_math.py's ``price_level``: past the hurdle price (the upside price for a growth pick),
+above the central value, above every scenario, or below every scenario) since their last check or, before any check, since the added
 price. ``due`` adds the same crossing (PRICE_LEVEL) at live prices, and each recorded check keeps
 its ``price_level``. It prints nothing when no pick is
 saved, and always exits 0.
@@ -64,7 +75,7 @@ and ``check`` on a light pick exits 2 (DEEP_VALUATION_NEEDED). ``list`` marks ea
 reading EDGAR for them, and ``summary`` names them on one line. Unreadable settings exit 5, except in
 ``summary``, which reads as standard depth. Switching back to standard restores the light behaviour.
 
-Output (JSON, except summary): save-* {"pick", "baseline_path"}; list {"picks"}; check {"symbol",
+Output (JSON, except summary): save-* {"pick", "baseline_path"} (save-deep adds "flags"); list {"picks"}; check {"symbol",
 "kind", "pick", "since_added", "actuals", "result", "recorded"}; due {"due": [{"symbol",
 "reasons"}], "not_due", "flags", "needs_deep_valuation"}. Exit codes: 0, 2 (bad input, unknown pick, a page without
 window.DATA), 4 (SKILL_MISSING: fundamental-research not installed), 5 (EDGAR or Yahoo), 6.
@@ -154,22 +165,32 @@ def load_baseline(pick: dict) -> dict:
 LEVEL_TEXT = {
     "above_all": "price {p:.2f} is above every scenario (best {best:.2f})",
     "above_central": "price {p:.2f} is above the central value ({central:.2f})",
+    "upside": "price {p:.2f} is above {upside:.2f}, the price at which the best case still reaches the growth minimum",
     "hurdle": "price {p:.2f} is past {hurdle:.2f}, where the central case stops earning the hurdle a year",
     "below_worst": "price {p:.2f} is below every scenario (worst {worst:.2f})",
 }
 
 
-def pick_levels(baseline: dict) -> dict:
-    """The price thresholds of a pick's baseline (track_math.price_levels or light_levels)."""
+def pick_levels(baseline: dict, style: str = "value", min_upside: float | None = None) -> dict:
+    """The price thresholds of a pick's baseline (track_math.price_levels or light_levels). A growth
+    pick's carry ``upside`` for ``hurdle``; ``min_upside`` defaults to the saved setting."""
     if isinstance(baseline.get("model"), dict):
+        if style == "growth":
+            if min_upside is None:
+                min_upside = float(settings.get("picker.growth.min_upside"))
+            return track_math.price_levels(baseline["model"], "growth", min_upside)
         return track_math.price_levels(baseline["model"])
     return track_math.light_levels(baseline["fair_values"])
 
 
-def level_crossing(pick: dict, baseline: dict, price: float) -> tuple[str, str] | None:
+def pick_style(pick: dict) -> str:
+    return pick.get("style") or "value"
+
+
+def level_crossing(pick: dict, baseline: dict, price: float, min_upside: float | None = None) -> tuple[str, str] | None:
     """(level, text) when the price sits at a level other than normal and other than the one at the
     last check (or, before any check, the one at the added price); else None."""
-    levels = pick_levels(baseline)
+    levels = pick_levels(baseline, pick_style(pick), min_upside)
     now = track_math.price_level(price, levels)
     last = (pick.get("checks") or [None])[-1]
     if last and last.get("price_level"):
@@ -402,8 +423,18 @@ def _save_deep(ns: argparse.Namespace) -> dict:
     keep = existing is not None and existing.get("kind") == "deep" and ns.date is None and ns.added_price is None
     added = existing.get("added") if keep else ns.date or as_of
     added_price = existing.get("added_price") if keep else ns.added_price if ns.added_price is not None else data.get("price")
-    fields = {"added": added, "added_price": added_price, "thesis": ns.thesis, "source": ns.source or str(ns.case or ns.page)}
-    return _upsert(symbol, "deep", baseline, as_of, fields)
+    if ns.restyle and not ns.style:
+        raise InvalidInput("--restyle needs --style")
+    flags = []
+    saved = pick_style(existing) if existing is not None else None
+    if saved is None or ns.restyle:
+        style = ns.style or "value"
+    else:
+        style = saved
+        if ns.style and ns.style != saved:
+            flags.append({"code": "STYLE_KEPT", "message": f"{symbol} stays a {saved} pick; the new valuation was saved as asked for {ns.style}. Pass --restyle to move it."})
+    fields = {"added": added, "added_price": added_price, "thesis": ns.thesis, "source": ns.source or str(ns.case or ns.page), "style": style}
+    return {**_upsert(symbol, "deep", baseline, as_of, fields), "flags": flags}
 
 
 def _save_light(ns: argparse.Namespace) -> dict:
@@ -520,10 +551,12 @@ def _check(ns: argparse.Namespace) -> dict:
         actuals = edgar_actuals(symbol, baseline["as_of"])
         if release is not None:
             actuals["ttm"], release_flag = roll_release(actuals["ttm"], release)
-        params = {"mode": "deep", "as_of": today, "price": price, "baseline": baseline,
+        params = {"mode": "deep", "as_of": today, "price": price, "baseline": baseline, "style": pick_style(pick),
                   "actuals": {"annual": actuals["annual"], "ttm": actuals["ttm"], "known_at_baseline": actuals["known_at_baseline"],
                               "ttm_at_baseline": actuals.get("ttm_at_baseline")}}
         exclude = [x.strip() for x in ns.exclude.split(",") if x.strip()] if ns.exclude is not None else pick.get("exclude_segments") or []
+        if pick_style(pick) == "growth":
+            params["min_upside"] = float(settings.get("picker.growth.min_upside"))
         if exclude:
             params["exclude_segments"] = exclude
         if ns.record and ns.exclude is not None:
@@ -598,7 +631,7 @@ def _due(ns: argparse.Namespace) -> dict:
                 reasons.append({"code": "PRICE_LEVEL", "level": crossed[0], "message": crossed[1]})
         if p.get("awaiting_filing"):
             reasons.append({"code": "AWAITING_FILING", "message": f"earnings were {p.get('next_earnings')}; the quarter was not in EDGAR at the last check"})
-        (due if reasons else not_due).append({"symbol": p["symbol"], "kind": p["kind"], "since": since, "reasons": reasons})
+        (due if reasons else not_due).append({"symbol": p["symbol"], "kind": p["kind"], "style": pick_style(p), "since": since, "reasons": reasons})
     if refreshed:
         save(book)
     return {"due": due, "not_due": not_due, "flags": flags, "needs_deep_valuation": needs}
@@ -626,6 +659,10 @@ def summary_data(today: date | None = None) -> dict | None:
     except ApiError:  # unreadable settings: the hook reads as standard depth
         deep = False
     needs = sorted(p["symbol"] for p in book["picks"] if deep and p.get("kind") != "deep")
+    try:
+        min_upside = float(settings.get("picker.growth.min_upside"))
+    except Exception:  # noqa: BLE001 - the hook never fails on settings
+        min_upside = track_math.MIN_UPSIDE_DEFAULT
     due = []
     for p in book["picks"]:
         if p["symbol"] in needs:
@@ -646,13 +683,13 @@ def summary_data(today: date | None = None) -> dict | None:
                 why.append(f"price {move:+.1%} since {since}")
         if isinstance(price, (int, float)):
             try:
-                crossed = level_crossing(p, load_baseline(p), float(price))
+                crossed = level_crossing(p, load_baseline(p), float(price), min_upside)
             except Exception:  # noqa: BLE001 - the hook never fails on one pick
                 crossed = None
             if crossed:
                 why.append(crossed[1])
         if why:
-            due.append({"symbol": p["symbol"], "kind": p.get("kind"), "why": why, "awaiting_filing": bool(p.get("awaiting_filing"))})
+            due.append({"symbol": p["symbol"], "kind": p.get("kind"), "style": pick_style(p), "why": why, "awaiting_filing": bool(p.get("awaiting_filing"))})
     nxt = sorted((p["next_earnings"], p["symbol"]) for p in book["picks"] if p.get("next_earnings") and p["next_earnings"] > today_s)
     return {"n": len(book["picks"]), "due": due, "needs_deep_valuation": needs, "next_earnings": nxt[0] if nxt else None}
 
@@ -666,7 +703,7 @@ def summary_lines(today: date | None = None) -> list[str]:
     if data is None:
         return []
     n, needs = data["n"], data["needs_deep_valuation"]
-    lines = [f"  {d['symbol']} ({d['kind']}): {'; '.join(d['why'])}" for d in data["due"]]
+    lines = [f"  {d['symbol']} ({d['kind']}{', growth pick' if d.get('style') == 'growth' else ''}): {'; '.join(d['why'])}" for d in data["due"]]
     light = [f"  Light picks needing a deep valuation: {', '.join(needs)}"] if needs else []
     if not lines:
         nxt = data["next_earnings"]
@@ -699,6 +736,8 @@ def main(argv: list[str] | None = None) -> int:
         sd.add_argument("--added-price", type=float)
         sd.add_argument("--date")
         sd.add_argument("--base-end")
+        sd.add_argument("--style", choices=("value", "growth"))
+        sd.add_argument("--restyle", action="store_true")
         sl = sub.add_parser("save-light", add_help=False)
         sl.add_argument("symbol")
         sl.add_argument("--in", dest="input", required=True)
@@ -721,7 +760,8 @@ def main(argv: list[str] | None = None) -> int:
         if ns.cmd == "save-light":
             return _save_light(ns)
         if ns.cmd == "list":
-            listed = load()["picks"]
+            listed = [{**x, "style": pick_style(x)} for x in load()["picks"]]
+            listed.sort(key=lambda x: x["style"] == "growth")  # value first, then growth; stable within each
             if settings.is_deep():
                 listed = [{**x, "needs_deep_valuation": True} if x.get("kind") != "deep" else x for x in listed]
             return {"picks": listed, "picks_path": str(picks_path())}

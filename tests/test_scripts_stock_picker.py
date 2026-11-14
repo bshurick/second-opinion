@@ -85,6 +85,102 @@ def test_gate_validation(payload, needle, capsys, monkeypatch) -> None:
     assert rc == 2 and needle in out["error"]
 
 
+def gfinal(symbol, price, scen, horizon=5, stress=None):
+    """Growth finalist: scen [(name, value, irr)], first is central; stress is an optional (name, value, irr)."""
+    f = finalist(symbol, price, scen + ([stress] if stress else []))
+    if stress:
+        f["model"]["scenarios"][-1]["stress"] = True
+    if horizon is not None:
+        f["model"]["horizon"] = horizon
+    return f
+
+
+def _grow(finalists, capsys, monkeypatch, **extra):
+    return run_stdin(GATE, {"profile": "growth", "finalists": finalists, **extra}, capsys, monkeypatch)
+
+
+GROW = [("Central", 130, 0.06), ("Bull", 260, 0.21), ("Bear", 40, -0.17)]
+
+
+def test_growth_pass(capsys, monkeypatch) -> None:
+    out = _grow([gfinal("G", 100, GROW)], capsys, monkeypatch)
+    r = out["results"][0]
+    assert out["profile"] == "growth" and out["min_upside"] == 2.0 and "hurdle" not in out
+    assert r["verdict"] == "pass" and r["best"]["name"] == "Bull" and r["best_multiple"] == round(1.21 ** 5, 2)
+    assert r["worst"]["name"] == "Bear" and r["reasons"] == []
+    assert r["checks"] == {"best_ok": True, "central_above_price": True, "all_above_price": False}
+
+
+def test_growth_fails_low_best(capsys, monkeypatch) -> None:
+    r = _grow([gfinal("G", 100, [("Central", 130, 0.06), ("Bull", 200, 0.12)])], capsys, monkeypatch)["results"][0]
+    assert r["verdict"] == "fail" and r["checks"]["best_ok"] is False
+    assert r["reasons"][0] == "Best scenario 'Bull' earns 12.0% a year, below the 14.9% a year that doubles the money (2.0x) over 5 years."
+
+
+def test_growth_fails_central_below_price(capsys, monkeypatch) -> None:
+    r = _grow([gfinal("G", 100, [("Central", 95, 0.06), ("Bull", 260, 0.21)])], capsys, monkeypatch)["results"][0]
+    assert r["verdict"] == "fail" and r["checks"]["central_above_price"] is False
+
+
+def test_growth_best_irr_missing_fails(capsys, monkeypatch) -> None:
+    r = _grow([gfinal("G", 100, [("Central", 130, None), ("Bull", 260, None)])], capsys, monkeypatch)["results"][0]
+    assert r["verdict"] == "fail" and r["best"] is None and r["best_multiple"] is None and r["reasons"]
+
+
+def test_growth_central_irr_missing_fails(capsys, monkeypatch) -> None:
+    r = _grow([gfinal("G", 100, [("Central", 130, None), ("Bull", 260, 0.21)])], capsys, monkeypatch)["results"][0]
+    assert r["verdict"] == "fail" and "'Central' could not be computed" in " ".join(r["reasons"])
+
+
+def test_growth_other_scenario_irr_missing_fails(capsys, monkeypatch) -> None:
+    r = _grow([gfinal("G", 100, [("Central", 130, 0.06), ("Bull", 260, 0.21), ("Bear", 40, None)])], capsys, monkeypatch)["results"][0]
+    assert r["verdict"] == "fail" and r["reasons"] == ["The return for scenario 'Bear' could not be computed."]
+
+
+def test_growth_best_value_missing_fails(capsys, monkeypatch) -> None:
+    r = _grow([gfinal("G", 100, [("Central", 130, 0.06), ("Bull", None, 0.21)])], capsys, monkeypatch)["results"][0]
+    assert r["verdict"] == "fail" and any("no value per share" in x for x in r["reasons"])
+
+
+@pytest.mark.parametrize("horizon", [None, 0, 2.5, "5", True])
+def test_growth_no_horizon_fails(horizon, capsys, monkeypatch) -> None:
+    r = _grow([gfinal("G", 100, GROW, horizon=horizon)], capsys, monkeypatch)["results"][0]
+    assert r["verdict"] == "fail" and "horizon" in r["reasons"][0]
+
+
+def test_growth_stress_not_best(capsys, monkeypatch) -> None:
+    r = _grow([gfinal("G", 100, [("Central", 130, 0.06), ("Bull", 200, 0.12)], stress=("Storm", 900, 0.5))], capsys, monkeypatch)["results"][0]
+    assert r["best"]["name"] == "Bull" and r["stress"]["name"] == "Storm" and r["verdict"] == "fail"
+    assert r["value_range"] == [130, 900]
+
+
+def test_growth_order_by_best(capsys, monkeypatch) -> None:
+    out = _grow([gfinal("LO", 100, [("C", 130, 0.06), ("B", 230, 0.17)]), gfinal("HI", 100, GROW)], capsys, monkeypatch)
+    assert [r["symbol"] for r in out["results"]] == ["HI", "LO"]
+
+
+def test_growth_flagged(capsys, monkeypatch) -> None:
+    r = _grow([gfinal("G", 100, [("C", 130, 0.06), ("B", 260, 0.21), ("Low", 110, 0.02)])], capsys, monkeypatch)["results"][0]
+    assert r["verdict"] == "pass_flagged"
+
+
+@pytest.mark.parametrize("key", ["hurdle", "floor"])
+def test_growth_rejects_hurdle_floor(key, capsys, monkeypatch) -> None:
+    rc, out = run_stdin_error(GATE, {"profile": "growth", key: 0.1, "finalists": [gfinal("G", 100, GROW)]}, capsys, monkeypatch)
+    assert rc == 2 and key in out["error"]
+
+
+def test_min_upside_three(capsys, monkeypatch) -> None:
+    out = _grow([gfinal("G", 100, GROW)], capsys, monkeypatch, min_upside=3.0)
+    r = out["results"][0]
+    assert out["min_upside"] == 3.0 and r["verdict"] == "fail" and "(3.0x)" in r["reasons"][0]
+
+
+def test_value_output_has_no_profile_key(capsys, monkeypatch) -> None:
+    out = run_stdin(GATE, {"finalists": [finalist("S", 50, [("Base", 62, 0.11), ("Bear", 45, 0.03)])]}, capsys, monkeypatch)
+    assert "profile" not in out and "best" not in out["results"][0]
+
+
 RENDER = "stock-screener/scripts/render_pick.py"
 SAMPLE = PLUGIN_ROOT / "docs/samples/stock-picker.json"
 
@@ -311,3 +407,73 @@ def test_gate_never_treats_the_central_case_as_the_stress_test(capsys, monkeypat
     out = run_stdin(GATE, {"finalists": [_with_stress(finalist("C", 50, [("Base", 40, -0.02), ("Bear", 35, -0.04)]), "Base")]}, capsys, monkeypatch)
     r = out["results"][0]
     assert r["verdict"] == "fail" and r["stress"] is None and r["central"]["name"] == "Base"
+
+
+def _growth_pick_input(capsys, monkeypatch) -> dict:
+    gate = _grow([gfinal("GROW", 100, GROW), gfinal("MISS", 100, [("Central", 130, 0.06), ("Bull", 150, 0.08)])], capsys, monkeypatch)
+    data = pick_input()
+    data["profile"] = "growth"
+    data["gate"] = gate
+    data["picks"] = {"GROW": {"thesis": "A category leader early in its growth.", "bad_pick": "Growth stalls."}}
+    for c in data["candidates"]:
+        c["scores"] = {"quality": 4, "direction": 3, "tailwind": 4, "upside": 3}
+        c["reasons"] = {k: f"{k} reason" for k in c["scores"]}
+    return data
+
+
+def test_growth_page_source_words_the_best_case(tmp_path, capsys, monkeypatch) -> None:
+    rc, res = _render(_growth_pick_input(capsys, monkeypatch), tmp_path, capsys)
+    assert rc == 0, res
+    assert res["picks"] == ["GROW"] and res["near_misses"] == ["MISS"]
+    html = (tmp_path / "p.html").read_text()
+    assert "Best case" in html and "(not gated)" in html and "best case at least" in html and "growth gate" in html
+
+
+@requires_chrome
+def test_render_growth_page(tmp_path, capsys, monkeypatch) -> None:
+    text = _dom_text(_growth_pick_input(capsys, monkeypatch), tmp_path, capsys)
+    assert "As of 2026-10-05 · growth · best case at least 2x" in text
+    assert "1 of 2 finalists passed the growth gate" in text
+    assert "Best case 2.59x (Bull, +21.0% a year)" in text and "worst Bear -17.0% (not gated)" in text
+    assert "hurdle" not in text.lower() and "floor" not in text.lower()
+    assert "upside to the best case (U)" in text
+
+
+def test_value_page_keeps_the_original_candidate_text(tmp_path, capsys) -> None:
+    rc, res = _render(pick_input(), tmp_path, capsys)
+    assert rc == 0, res
+    html = (tmp_path / "p.html").read_text()
+    sub = "Every company in the merged pool, scored 1 to 5 on business quality (Q), direction (D), industry tailwind (T) and price against value (V).</p>"
+    lead = "T industry tailwind, V price against value. ★ marks a finalist. Open a row for the reasons."
+    assert sub in html and lead in html
+
+
+def test_growth_page_is_titled_growth_picks(tmp_path, capsys, monkeypatch) -> None:
+    rc, res = _render(_growth_pick_input(capsys, monkeypatch), tmp_path, capsys)
+    assert rc == 0 and res["title"] == "Deep Growth Picks", res
+    html = (tmp_path / "p.html").read_text()
+    assert "<title>Deep Growth Picks</title>" in html and "'Deep growth picks'" in html
+
+
+def test_value_page_title_is_unchanged(tmp_path, capsys) -> None:
+    rc, res = _render(pick_input(), tmp_path, capsys)
+    assert rc == 0 and res["title"] == "Deep Picks", res
+    html = (tmp_path / "p.html").read_text()
+    assert "<title>Deep Picks</title>" in html and '<h1 id="h1">Deep picks</h1>' in html
+
+
+def test_growth_profile_with_a_value_gate_renders_as_value(tmp_path, capsys) -> None:
+    data = pick_input()                       # an old folder: notes say growth, the gate is a value gate
+    data["profile"] = "growth"
+    rc, res = _render(data, tmp_path, capsys)
+    assert rc == 0 and res["title"] == "Deep Picks", res
+    assert "<title>Deep Picks</title>" in (tmp_path / "p.html").read_text()
+
+
+@requires_chrome
+def test_growth_profile_with_a_value_gate_page_is_the_value_page(tmp_path, capsys) -> None:
+    data = pick_input()
+    data["profile"] = "growth"
+    text = _dom_text(data, tmp_path, capsys)
+    assert "Deep picks" in text and "Deep growth picks" not in text
+    assert "price against value (V)" in text and "upside to the best case (U)" not in text

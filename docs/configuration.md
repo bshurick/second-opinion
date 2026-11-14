@@ -22,6 +22,7 @@ Nothing is written back to `.env` by the scripts. It is plaintext, the same trus
 | Accounts | `accounts.<id>.role` (trading, retirement or savings; `none` clears it so the account type decides) `margin` (recorded from `BROKER_ACCOUNT_TYPES`; brokerage scripts still read `.env` for now) and `whole_shares` (saved when the broker refuses a fractional order; plans that touch the account size in whole shares) |
 | Portfolio plan | `plan.targets` (keys are symbols, classes, `CASH` or the sleeves `PICKS` and `EMPLOYER`), `plan.classes`, `plan.cash_reserve`, `plan.bands`, `plan.sleeves.PICKS` (`target`, `glide` `{to, by}`, `weighting`, `include_light`), `plan.sleeves.EMPLOYER` (`members`, `policy` sell_on_arrival or hold) |
 | Taxes | `taxes.short_term_rate`, `taxes.long_term_rate`, `taxes.short_term_gain_policy` |
+| Picker | `picker.growth.min_upside` |
 | Guardrails | `guardrails.pre_buy_check` |
 | Replies | `replies.follow_ups`, `replies.pages` |
 | Lessons | `lessons` |
@@ -33,6 +34,10 @@ On first use after an upgrade (or the installer's first run, whichever comes fir
 The picks sleeve's size is a target weight: `plan.targets.PICKS` when targets are saved, else `plan.sleeves.PICKS.target`; none leaves its size unmanaged. A glide is a target with a date: new money goes to the sleeve first until it reaches `to`, and the portfolio plan's status shows the monthly pace to get there by `by`.
 
 Settings files are schema 2 since 1.3.0. A schema-1 file upgrades in place on first read and records `"schema 1"` in `meta.migrated_from`: a picks `ceiling` below 1 becomes the sleeve's `target` (a ceiling of 1 or none means no target), a step-up plan becomes a `glide`, and the old `ceiling`, `increases` and `step_up` values are kept under `meta.retired`.
+
+### Picker
+
+`picker.growth.min_upside` is the multiple of today's price a growth pick's best case must reach over its horizon: a number above 1, default 2.0 (double). Growth mode of the deep picker only; the value mode's hurdle is not a setting. `pick_assemble.py --min-upside` overrides it for one run.
 
 ### Depth
 

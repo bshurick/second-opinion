@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 """Usage: pick_assemble.py --run DIR --finalists SYM=URL[,SYM=URL...] [--cases DIR] [--hurdle R]
-                         [--floor R] [--notes FILE] [--as-of YYYY-MM-DD]
+                         [--floor R] [--min-upside R] [--notes FILE] [--as-of YYYY-MM-DD]
 
 The deep picker's last mechanical step: the downside gate, ``pick.json`` and the picks page, from
 the run folder and each finalist's deep-valuation folder. Nothing is fetched.
+
+``--min-upside`` (growth runs only) is the best-case multiple of today's price a pick must be able
+to reach; without it the setting ``picker.growth.min_upside`` (default 2.0) is used. The run's
+profile is ``run.json``'s (``value`` or ``growth``); only a run folder without ``run.json`` takes
+the notes file's free-text ``profile``, which then passes into ``pick.json`` unchanged and is a
+value run. A growth run passes ``{"profile": "growth", "min_upside"}`` to the gate and exits 2 on
+``--hurdle`` or ``--floor``; a value run exits 2 on ``--min-upside``.
 
 ``--finalists`` pairs each finalist with the https link of its published deep valuation
 (repeatable; the order given is kept in ``gate.json``). ``--cases`` is the folder holding the
@@ -17,7 +24,7 @@ is not a card), ``pool.json``, ``budget.json`` and the notes file (``--notes``, 
 
 Writes into the run folder, all four or none:
 
-    gate.json      gate.py's input: {"hurdle"?, "floor"?, "finalists": [{"symbol", "price", "page",
+    gate.json      gate.py's input: {"hurdle"?, "floor"? (value) or "profile": "growth", "min_upside" (growth), "finalists": [{"symbol", "price", "page",
                    "model", "returns"}]}; the price is the one returns.py used
     gate.out.json  gate.py's output (its own run_gate), unchanged
     pick.json      render_pick.py's input (see its docstring)
@@ -32,7 +39,8 @@ incomplete, not-found and judge-in-quick-read names. When the health screen did 
 name ``unchecked``) or nothing says who passed, the "Health check passed" stage is left out, and
 in the first case a note and the flag HEALTH_NOT_CHECKED say so); ``industries`` (every list in ``industries/*.json`` joined,
 by file name); ``candidates`` (each card, plus ``held`` from the pool and ``finalist``);
-``picks``, ``missing_roles``, ``notes`` and ``profile`` from the notes file; ``as_of`` (today
+``picks``, ``missing_roles`` and ``notes`` from the notes file; ``profile`` ("growth" or "value" from
+``run.json`` when it exists, else the notes file's); ``as_of`` (today
 unless ``--as-of``). A ``picks`` entry for a finalist that failed the gate, or for a symbol that
 is not a finalist, is dropped and named in ``notes``. One note is added with the searches used
 against ``budget.json``; when the finalists' case folders have their own ``budget.json``, their
@@ -41,7 +49,7 @@ unchanged.
 
 Prints {"out": <page.html>, "pick": <pick.json>, "gate": {"pass", "pass_flagged", "fail"},
 "picks": [symbols], "near_misses": [symbols], "save_commands": ["<python> <picks.py> save-deep
-SYM --case <deep-SYM> --thesis '<thesis>' --source URL", ...one per pick, shell-quoted...],
+SYM --case <deep-SYM> --thesis '<thesis>' --source URL --style growth|value", ...one per pick, shell-quoted...],
 "flags": [{"code", "message"}]}. Flags: HEALTH_NOT_CHECKED, PICK_NOTE_DROPPED, THESIS_MISSING (a pick with no
 thesis in the notes), POOL_MISSING, BUDGET_UNAVAILABLE, CARD_SKIPPED and INDUSTRY_FILE_SKIPPED
 (a file that is not JSON or not the expected shape), FINALIST_WITHOUT_CARD, CASE_PAGE_MISSING
@@ -69,7 +77,7 @@ from typing import Any
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE.parents[2] / "lib"))
 
-from second_opinion import brokerage, output, page  # noqa: E402
+from second_opinion import brokerage, output, page, settings  # noqa: E402
 from second_opinion.errors import InvalidInput  # noqa: E402
 
 BUDGET_SCRIPT = _HERE.parents[1] / "valuation" / "scripts" / "budget.py"
@@ -91,6 +99,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--cases")
     p.add_argument("--hurdle", type=float)
     p.add_argument("--floor", type=float)
+    p.add_argument("--min-upside", dest="min_upside", type=float)
     p.add_argument("--notes")
     p.add_argument("--as-of", dest="as_of")
     return p
@@ -135,7 +144,8 @@ def parse_finalists(items: list[str]) -> list[tuple[str, str]]:
     return out
 
 
-def gate_input(finalists: list[tuple[str, str]], cases: Path, hurdle: float | None, floor: float | None) -> dict:
+def gate_input(finalists: list[tuple[str, str]], cases: Path, hurdle: float | None, floor: float | None,
+               profile: str = "value", min_upside: float | None = None) -> dict:
     rows = []
     for symbol, url in finalists:
         case = cases / f"deep-{symbol}"
@@ -151,6 +161,8 @@ def gate_input(finalists: list[tuple[str, str]], cases: Path, hurdle: float | No
         price = rets.get("price") if rets.get("price") is not None else model.get("price")
         rows.append({"symbol": symbol, "price": price, "page": url, "model": model, "returns": rets})
     out: dict[str, Any] = {"finalists": rows}
+    if profile == "growth":
+        return {"profile": "growth", "min_upside": min_upside, **out}
     if hurdle is not None:
         out["hurdle"] = hurdle
     if floor is not None:
@@ -209,9 +221,20 @@ def run(args: list[str]) -> dict:
     notes_path = Path(ns.notes).expanduser() if ns.notes else (run_dir / NOTES_FILE if (run_dir / NOTES_FILE).is_file() else None)
     notes_in = read_notes(notes_path)
     flags: list[dict] = []
+    growth = _load(_HERE / "growth.py")
+    run_file = run_dir / growth.RUN_FILE
+    style = growth.run_profile(run_dir)  # value without run.json
+    if style == "growth":
+        if ns.hurdle is not None or ns.floor is not None:
+            raise InvalidInput("--hurdle and --floor apply to a value run; a growth run uses --min-upside")
+        min_upside = ns.min_upside if ns.min_upside is not None else settings.get("picker.growth.min_upside")
+    else:
+        if ns.min_upside is not None:
+            raise InvalidInput("--min-upside applies to a growth run; this run is a value run")
+        min_upside = None
 
     # 1. the gate, by gate.py's own function
-    gate_in = gate_input(finalists, cases, ns.hurdle, ns.floor)
+    gate_in = gate_input(finalists, cases, ns.hurdle, ns.floor, style, min_upside)
     try:
         gate_out = json.loads(json.dumps(_load(_HERE / "gate.py").run_gate(gate_in)))
     except (ValueError, TypeError, KeyError, AttributeError) as exc:
@@ -288,7 +311,7 @@ def run(args: list[str]) -> dict:
     if line:
         notes.append(line)
 
-    pick = {"as_of": as_of, "profile": notes_in.get("profile"), "gate": gate_out, "funnel": funnel, "industries": industries,
+    pick = {"as_of": as_of, "profile": style if run_file.is_file() else notes_in.get("profile"), "gate": gate_out, "funnel": funnel, "industries": industries,
             "candidates": candidates, "picks": picks, "missing_roles": list(notes_in.get("missing_roles") or []), "notes": notes}
 
     # 4. the page, by render_pick.py's own build (it validates pick.json); nothing is written before it accepts
@@ -306,7 +329,7 @@ def run(args: list[str]) -> dict:
         thesis = (picks.get(s) or {}).get("thesis")
         words = [sys.executable, str(PICKS_SCRIPT), "save-deep", s, "--case", str(case_of[s])]
         words += ["--thesis", str(thesis)] if thesis else []
-        commands.append(" ".join(shlex.quote(w) for w in [*words, "--source", url_of[s]]))
+        commands.append(" ".join(shlex.quote(w) for w in [*words, "--source", url_of[s], "--style", style]))
         if not (case_of[s] / "page.json").is_file():
             no_page.append(s)
     if no_page:

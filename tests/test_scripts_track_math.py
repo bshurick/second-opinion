@@ -469,3 +469,41 @@ def test_light_result_carries_the_price_level() -> None:
     assert light(price=75.0)["price"]["level"] == "above_all"
     assert light(price=60.0)["price"]["level"] == "above_central"
     assert light(price=35.0)["price"]["level"] == "below_worst"
+
+
+# --- growth price levels -------------------------------------------------------------------
+
+
+def growth_model(central_value: float = 200.0) -> dict:
+    def sc(name, value, exit_v):
+        return {"name": name, "value_per_share": value}, {"name": name, "distributions_per_share": [0, 0, 0, 0], "exit_value_per_share": exit_v}
+    (a, ra), (b, rb), (c, rc) = sc("Base", central_value, 200.0), sc("Bear", 100.0, 100.0), sc("Bull", 400.0, 300.0)
+    return {"scenarios": [a, b, c], "returns_input": {"hurdle": 0.10, "horizon": 5, "scenarios": [ra, rb, rc]}}
+
+
+def test_growth_upside_level() -> None:
+    lv = TM.price_levels(growth_model(), "growth", 2.0)
+    assert lv["upside"] == round(300 / 2.0, 2) and "hurdle" not in lv
+    assert TM.price_level(160.0, lv) == "upside"
+    assert TM.price_level(145.0, lv) == "normal"
+    assert TM.price_level(50.0, lv) == "below_worst"
+    lv = TM.price_levels(growth_model(central_value=140.0), "growth", 2.0)
+    assert TM.price_level(160.0, lv) == "above_central"
+
+
+def test_growth_upside_follows_min_upside() -> None:
+    assert TM.price_levels(growth_model(), "growth", 3.0)["upside"] == 100.0
+
+
+def test_value_levels_unchanged_by_default_style() -> None:
+    lv = TM.price_levels(growth_model())
+    assert "hurdle" in lv and "upside" not in lv
+
+
+def test_growth_best_and_upside_exclude_the_stress_test() -> None:
+    m = growth_model()
+    m["scenarios"].append({"name": "Squeeze", "value_per_share": 600.0, "stress": True})
+    m["returns_input"]["scenarios"].append({"name": "Squeeze", "distributions_per_share": [0, 0, 0, 0], "exit_value_per_share": 900.0})
+    lv = TM.price_levels(m, "growth", 2.0)
+    assert lv["best"] == 400.0 and lv["upside"] == round(300 / 2.0, 2)     # Bull, as the gate sees it
+    assert TM.price_levels(m)["best"] == 600.0                               # value levels as before

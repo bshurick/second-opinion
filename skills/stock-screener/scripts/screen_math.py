@@ -69,6 +69,13 @@ applied (``net_debt``, ``interest_cover``, ``none_reported``). Debt with no posi
 service it fails. ``debt_to_equity`` (``debt / equity``, null when equity is not positive) is
 kept for ``max_debt_to_equity``.
 
+Runway. ``runway_years`` is ``cash / -fcf_latest`` (cash includes short-term investments) when
+last year's free cash flow is negative, else null. ``min_runway_years`` passes when latest free
+cash flow is not negative, or runway is at least the limit; it fails on a missing free cash flow
+figure, or on a burn with no cash figure. Not in ``LENIENT``. Preset ``health_growth`` is
+``health`` for funded cash-burning growers: revenue and growth floors, f-score 3, net debt cap,
+and two years of runway instead of the cash-margin and dilution tests.
+
 ``roce`` is ebit over capital employed (``assets - current_liabilities``). ``current_ratio`` is
 current assets over current liabilities. ``f_score`` is Piotroski's nine year-over-year checks
 (profit, cash flow, rising return on assets, cash above profit, falling debt/assets, rising
@@ -90,8 +97,8 @@ Criteria (``None`` or absent = not applied), fundamental first, then price: ``mi
 ``min_operating_margin``, ``min_roce``, ``min_fcf_margin``, ``fcf_positive_latest``,
 ``fcf_positive_all_years``, ``net_income_positive_all_years``, ``pays_dividend_all_years``,
 ``max_share_growth``, ``max_sbc_pct``, ``max_debt_to_equity``, ``max_net_debt_to_ebit``,
-``min_current_ratio``, ``max_debt_to_working_capital``, ``min_f_score``, ``max_payout_to_fcf``;
-then ``min_market_cap``, ``min_fcf_yield``, ``min_earnings_yield``, ``min_shareholder_yield``,
+``min_current_ratio``, ``max_debt_to_working_capital``, ``min_f_score``, ``max_payout_to_fcf``,
+``min_runway_years``; then ``min_market_cap``, ``min_fcf_yield``, ``min_earnings_yield``, ``min_shareholder_yield``,
 ``max_pe``, ``max_ps``, ``max_pe_times_pb``, ``max_implied_growth``, ``min_growth_gap``,
 ``min_momentum``. A criterion whose metric is missing fails, except the ones companies often do
 not tag -- ``min_gross_margin``, ``max_debt_to_equity``, ``min_latest_quarter_growth``,
@@ -171,6 +178,7 @@ FUNDAMENTAL = (
     "max_debt_to_working_capital",
     "min_f_score",
     "max_payout_to_fcf",
+    "min_runway_years",
 )
 PRICE = (
     "min_market_cap",
@@ -344,6 +352,16 @@ PRESETS = {
         "max_share_growth": 0.05,
         "max_net_debt_to_ebit": 4.0,
         "min_fcf_margin": 0.0,
+        "rank_by": "f_score",
+    },
+    # The health floor for growers that burn cash on purpose: still growing, funded for two
+    # years at the current burn, not over-borrowed; dilution and cash margin are not tested.
+    "health_growth": {
+        "min_revenue": 100e6,
+        "min_revenue_cagr": 0.10,
+        "min_f_score": 3,
+        "max_net_debt_to_ebit": 4.0,
+        "min_runway_years": 2.0,
         "rank_by": "f_score",
     },
 }
@@ -536,6 +554,7 @@ def metrics(company: dict, years: list[int]) -> dict | None:
         "ebit_basis": ebit_basis if ebit is not None else None,
         "capex_reported": capex[-1] is not None,
         "fcf_latest": fcf[-1],
+        "runway_years": _r4(cash / -fcf[-1]) if fcf[-1] is not None and fcf[-1] < 0 and cash is not None else None,
         "fcf_margin": _r4(fcf[-1] / last) if fcf[-1] is not None else None,
         "fcf_after_sbc_latest": after[-1],
         "fcf_after_sbc_margin": _r4(after[-1] / last) if after[-1] is not None else None,
@@ -637,6 +656,10 @@ def _fundamental_test(name: str, m: dict, want, n_years: int):
         return None if wc is None else (m["debt"] or 0) <= want * wc
     if name == "min_f_score":
         return m["f_score"] >= want
+    if name == "min_runway_years":
+        if m["fcf_latest"] is None:
+            return False
+        return True if m["fcf_latest"] >= 0 else (None if m["runway_years"] is None else m["runway_years"] >= want)
     if name == "max_payout_to_fcf":
         # Paying nothing passes; a payout with no positive free cash flow behind it does not.
         if not m["payout_latest"]:

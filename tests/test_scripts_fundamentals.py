@@ -228,6 +228,25 @@ def test_fundamentals_balance_sheet_liquidity_and_da_columns() -> None:
     assert (bare["current_assets"], bare["current_ratio"], bare["depreciation_amortization"]) == (None, None, None)
 
 
+def test_annual_row_has_rd_and_short_term_investments() -> None:
+    facts = {
+        "entityName": "X",
+        "facts": {
+            "us-gaap": {
+                "Revenues": {"units": {"USD": [_fact(2024, 100.0), _fact(2025, 110.0)]}},
+                "NetIncomeLoss": {"units": {"USD": [_fact(2024, 10.0), _fact(2025, 12.0)]}},
+                "ResearchAndDevelopmentExpense": {"units": {"USD": [_fact(2024, 100e6), _fact(2025, 120e6)]}},
+                "ShortTermInvestments": {"units": {"USD": [_fact(2024, 250e6), _fact(2025, 300e6)]}},
+            }
+        },
+    }
+    mod = load_script("fundamental-research/scripts/fundamentals.py")
+    latest = mod.run_fundamentals({"facts": facts, "years": 2})["annual"][-1]
+    assert (latest["research_and_development"], latest["short_term_investments"]) == (120e6, 300e6)
+    bare = mod.run_fundamentals({"facts": FACTS, "years": 2})["annual"][-1]
+    assert (bare["research_and_development"], bare["short_term_investments"]) == (None, None)
+
+
 def test_total_liabilities_derived_from_assets_minus_equity_when_untagged() -> None:
     """Many filers (Coca-Cola among them) never tag `Liabilities`; assets minus equity is the standard derivation."""
     facts = {

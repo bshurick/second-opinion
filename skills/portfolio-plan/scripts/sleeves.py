@@ -24,15 +24,23 @@ Input JSON contract (stdin)::
       "lots": {SYM: [{units, cost_per_unit, term, account?, acquired?}]},
       "rates": {"short_term", "long_term"}, "today": "YYYY-MM-DD",
       "amount": float,                       # add: money into picks
-      "new_pick": {"symbol", "price", "amount"?},   # new-pick: a symbol not held
+      "group": "value" | "growth",           # optional, default value: the picks an add's money goes to
+                                             # (bad input with group_amounts, and growth in rebalance
+                                             # or new-pick)
+      "group_amounts": {"value": float, "growth": float},   # add only: a mix, each group's part;
+                                             # amount must equal their sum within 0.01
+      "new_pick": {"symbol", "price", "amount"?, "style"?},   # new-pick: a symbol not held;
+                                             # style value (the default) or growth
       "excluded_symbols": [SYM],             # new-pick: held symbols left out of positions
       "core_rank": {SYM: int},               # core sale order: 0 US equity, 1 international,
                                              # 2 other or unknown (the default), 3 bonds
       "sell_first": [SYM],                   # optional: core funds sold first, in this order
       "weighting": "equal" | "market_cap" | "valuation" | "size",   # optional; wins over settings.weighting
       "market_caps": {SYM: float | null},    # market_cap: each pick's company market cap
-      "unreadable_picks": [SYM],             # picks whose saved data could not be read: they take no money
-      "pick_store_unreadable": bool,         # rebalance: bad input when true, the holds cannot be known
+      "unreadable_picks": [SYM],             # picks whose saved data could not be read: they take no money;
+                                             # only the ``style`` of a picks entry for one is read
+      "pick_store_unreadable": bool,         # rebalance: bad input when true, the holds cannot be known;
+                                             # add and new-pick: every held pick holds (PICK_STORE_UNREADABLE)
       "include_light": bool,                 # optional; wins over settings.include_light; refused at deep depth
       "allocation": "fill" | "split",        # optional, default fill: how added money is split (see below)
       "depth": "standard" | "deep",          # optional, default standard; deep holds light picks
@@ -42,7 +50,8 @@ Input JSON contract (stdin)::
     }
 
     picks[SYM] = {"kind": "deep" | "light", "central_value", "expected_return",
-                  "age_days", "recheck_due", "needs_valuation"?}
+                  "age_days", "recheck_due", "needs_valuation"?,
+                  "style"?: "value" | "growth"}      # absent: value
 
 Output JSON contract (stdout)::
 
@@ -50,14 +59,19 @@ Output JSON contract (stdout)::
       "mode", "mix": {total, core, satellite, employer, cash: {value, weight},
                       trading_value, trading_cash, retirement_value, n_eff, tracking_error, ceiling,
                       ceiling_source: "target" | "none", proposed_size,
-                      room_under_ceiling, single_stock_total},
+                      room_under_ceiling, single_stock_total,
+                      groups: {"value": {value, weight, count}, "growth": {...}}},
+                                      # satellite value in every account by style; weight of total
       "weighting_used": "equal" | "market_cap" | "valuation" | "size",
-                                      # the strategy applied; equal when valuation found no eligible pick
-      "splits": [{symbol, current, target, delta, account, flags}],
+                                      # the strategy applied (the growth group's in a growth add, the
+                                      # value group's in a mix); equal when valuation found no eligible pick
+      "splits": [{symbol, current, target, delta, account, flags, style?}],
+                                      # style ("value" | "growth") on every row when any row is growth
                                       # split flags: PICK_CAP, NO_MARKET_CAP, PICK_BASELINE_MISSING,
                                       # LIGHT_VALUATION, NO_SAVED_VALUATION, RECHECK_DUE,
                                       # HELD_FOR_RECHECK, DEEP_VALUATION_NEEDED,
-                                      # IN_BAND, TRIM_HELD_BACK, TRIM_UNPLACEABLE (rebalance)
+                                      # IN_BAND, TRIM_HELD_BACK, TRIM_UNPLACEABLE (rebalance),
+                                      # GROWTH_HELD, GROWTH_OVER_CAP
       "held_back": [{symbol, value, account, long_term_date}],
       "accounts": [{account, funding: {cash, core_sells}, rebalance}],
       "trades": [every account's rebalance trades, each with account],
@@ -67,7 +81,9 @@ Output JSON contract (stdout)::
                                       # down by ACCOUNT_SHORT, whole-share rebalance remainder
       "satellite_net",                # satellite-pick BUY values less SELL values in trades
       "settings_used": {ceiling, weighting, allocation, include_light, short_term_gain_policy,
-                        employer_symbol, depth},
+                        employer_symbol, depth, group: "value" | "growth" | "mix"},
+                                   # group: an add's group ("mix" with group_amounts), a new pick's
+                                   # style, value in rebalance; weighting and allocation as applied
       "flags": [{code, message}]   # STANDING_DEFAULT, PICK_IN_RETIREMENT,
                                    # EMPLOYER_CONCENTRATION, LOW_N_EFF, SECTOR_HEAVY,
                                    # ABOVE_CEILING, NO_SATELLITE, ACCOUNT_SHORT,
@@ -75,7 +91,9 @@ Output JSON contract (stdout)::
                                    # NO_SAVED_VALUATION, RECHECK_DUE, HELD_FOR_RECHECK,
                                    # DEEP_VALUATION_NEEDED, NO_MARKET_CAP,
                                    # CORE_HELD_BACK, TRIM_HELD_BACK, TRIM_UNPLACEABLE,
-                                   # BOND_FUND_SOLD
+                                   # BOND_FUND_SOLD, GROWTH_HELD, GROWTH_BY_REQUEST_ONLY,
+                                   # NO_GROWTH_PICKS, GROWTH_OVER_CAP,
+                                   # PICK_CAP (a growth new pick's amount above the cap)
     }
 
 Method: total is every position in every account plus all cash. Satellite
@@ -106,8 +124,9 @@ whatever the picks hold. The strategy's raw weights
 weights.tilt_factor and ``size`` the current value, whatever else the picks hold; ``equal`` is used
 when nothing is saved. A pick takes no money when it is due for a recheck or of unknown age
 (HELD_FOR_RECHECK, or DEEP_VALUATION_NEEDED when ``needs_valuation``), is in ``unreadable_picks``
-(PICK_BASELINE_MISSING), or under ``market_cap`` has no finite market cap above 0 (NO_MARKET_CAP); no
-market cap for any other pick is bad input.
+(PICK_BASELINE_MISSING), is held while ``pick_store_unreadable`` (every held pick then holds:
+PICK_STORE_UNREADABLE; a new pick still opens), or under ``market_cap`` has no finite market cap above 0
+(NO_MARKET_CAP); no market cap for any other pick is bad input.
 The 5% pick cap limits buys under every strategy but ``size``: the overflow goes to the other picks by
 their shares, and what no pick can take stays as cash (UNALLOCATED). The employer symbol can be a new
 pick when ``picks`` has a deep entry for it, and EMPLOYER_CONCENTRATION counts it in every bucket.
@@ -163,7 +182,28 @@ short-term-gain policy keeps from a buy that could take it, TRIM_UNPLACEABLE for
 in its account can take.
 Bad input: ``size``, ``sell_first``, ``over_ceiling``, ``pick_store_unreadable``, valuation with no
 eligible pick of confidence above 0, or negative cash in an account with trades. With fewer than two
-trading-account picks there are no trades.
+trading-account value picks there are no trades (and no valuation check); growth picks still get
+GROWTH_HELD.
+
+Growth picks (``style`` growth; a pick with no style, or no saved pick, is value) are left to run:
+nothing here sells or trims one. Money goes to one group: ``group`` (value when absent) or each part
+of ``group_amounts``, which runs as its own add under its group's rules (the target's limit scales
+the parts alike) and merges into one plan. Picks outside the group hold like a recheck hold (value
+kept, no money, not traded); a growth pick held because the group is value gets GROWTH_HELD (not in a
+mix). The value group uses the saved strategy and allocation. The growth group splits equally (the
+same dollars of new money to each, whatever they hold: equal weights, allocation split); an explicit
+``weighting`` applies its normal rule, with allocation fill unless ``allocation`` is given. The 5%
+pick cap always limits a growth pick's buys, under size too: overflow goes to the other growth
+picks, the rest stays as cash (PICK_CAP). Group value with no value pick able to take money while
+growth picks are held: the amount stays as cash (GROWTH_BY_REQUEST_ONLY). Group growth with no
+growth pick held in a trading account: NO_GROWTH_PICKS, the amount stays as cash. ``rebalance``
+holds every growth pick (GROWTH_HELD) and moves value picks among themselves. GROWTH_OVER_CAP, in
+every mode, marks each growth pick whose value in all accounts passes the 5% pick cap; it makes no
+trade. A new pick with ``style`` growth takes min(amount, the pick cap) with ``amount`` and spreads
+nothing to other picks (the rest stays as cash, PICK_CAP); without ``amount`` ``needed`` is the
+median trading value of the held growth picks (of all picks when none is held), capped at the pick
+cap. A value new pick is sized as above, its median taken over the held value picks (all picks when
+none is held); the rest of its ``amount`` goes to value picks only.
 
 Money 2 dp, weights 4 dp. This produces a plan, not orders.
 """
@@ -184,6 +224,7 @@ from rebalance import run_rebalance  # noqa: E402
 _BUCKETS = ("core", "satellite", "employer", "cash")
 _ROLES = ("trading", "retirement", "savings")
 _MODES = ("mix", "add", "new-pick", "rebalance")
+_GROUPS = ("value", "growth")
 _RANK_UNKNOWN = 2
 _RANK_BONDS = 3
 _EMPLOYER_LIMIT = 0.10
@@ -209,6 +250,26 @@ def _num(v: object, field: str) -> float | None:
 
 def _flag(flags: list[dict], code: str, message: str) -> None:
     flags.append({"code": code, "message": message})
+
+
+def _style(picks: dict, sym: str) -> str:
+    """A pick's group: its saved ``style``, value when absent (or when it has no saved pick)."""
+    pick = picks.get(sym)
+    style = (pick.get("style") if isinstance(pick, dict) else None) or "value"
+    if style not in _GROUPS:
+        raise ValueError(f"picks.{sym}.style must be value or growth")
+    return style
+
+
+def _group_used(used: dict, params: dict, group: str) -> dict:
+    """The settings one group's money follows: the growth group defaults to equal weights split
+    (the same dollars each); an explicit ``weighting`` applies its normal rule (allocation fill
+    unless ``allocation`` is given). The value group uses ``used`` as it is."""
+    if group != "growth":
+        return {**used, "group": group}
+    explicit = params.get("weighting")
+    return {**used, "group": "growth", "weighting": explicit or "equal",
+            "allocation": params.get("allocation") or ("fill" if explicit else "split")}
 
 
 # --- input --------------------------------------------------------------------------------------
@@ -482,7 +543,8 @@ def _plan_accounts(positions, cash, alloc, core, params, lot_override=None,
 
 
 def _splits(sat: dict[str, dict[str, float]], alloc: dict[str, dict[str, float]],
-            targets: dict[str, float] | None = None, pick_flags: dict[str, list[str]] | None = None) -> list[dict]:
+            targets: dict[str, float] | None = None, pick_flags: dict[str, list[str]] | None = None,
+            picks: dict | None = None) -> list[dict]:
     rows = []
     for sym in sorted(sat):
         current = sum(sat[sym].values())
@@ -491,7 +553,11 @@ def _splits(sat: dict[str, dict[str, float]], alloc: dict[str, dict[str, float]]
             "symbol": sym, "current": _r2(current),
             "target": _r2(targets[sym] if targets else current + delta), "delta": _r2(delta),
             "account": _route(sat[sym]), "flags": sorted(set((pick_flags or {}).get(sym, []))),
+            "style": _style(picks or {}, sym),
         })
+    if all(r["style"] == "value" for r in rows):   # no growth pick: the rows are as before styles
+        for r in rows:
+            del r["style"]
     return rows
 
 
@@ -510,7 +576,7 @@ def _pick_inputs(sat: dict[str, dict[str, float]], positions: list[dict], picks:
     price = {p["symbol"]: p["price"] for p in positions if p["bucket"] == "satellite" and p["role"] == "trading"}
     out = []
     for sym in sorted(sat):
-        pick = picks.get(sym)
+        pick = None if sym in unreadable else picks.get(sym)   # an unreadable pick's entry carries only its style
         if pick is not None and not isinstance(pick, dict):
             raise ValueError(f"picks.{sym} must be an object")
         row = {"symbol": sym, "value": sum(sat[sym].values()), "price": price[sym],
@@ -700,31 +766,44 @@ def _trims_held_back(rows: list[dict], policy: str | None, flags: list[dict], pi
         _policy_needed(flags)
 
 
+def _growth_held(sym: str, value: float, flags: list[dict], pick_flags: dict[str, list[str]]) -> None:
+    """GROWTH_HELD for a growth pick that holds because the money is not for the growth group."""
+    pick_flags.setdefault(sym, []).append("GROWTH_HELD")
+    _flag(flags, "GROWTH_HELD", f"{sym} is a growth pick: it holds at its current value ({value:.2f}), takes new money only when the growth group is asked for, and is never trimmed")
+
+
 def _participants(sat: dict[str, dict[str, float]], positions: list[dict], params: dict, used: dict,
                   flags: list[dict], pick_flags: dict[str, list[str]]) -> tuple[list[dict], dict[str, float], set[str]]:
     """Each trading-account pick's row, the strategy's raw weights and the picks that hold.
 
-    Returns (rows, raw, held). A held pick takes no money and does not move: it is due for a
-    recheck (``_hold``), in ``unreadable_picks`` (PICK_BASELINE_MISSING), or under market_cap has
-    no finite cap above 0 (NO_MARKET_CAP). ``raw`` covers only the others. Under market_cap, no
-    cap at all among them is bad input.
+    Returns (rows, raw, held). A held pick takes no money and does not move: it is outside
+    ``used["group"]`` (a growth pick in the value group: GROWTH_HELD, unless ``used["_mixed"]``),
+    due for a recheck (``_hold``), in ``unreadable_picks`` (PICK_BASELINE_MISSING), or under
+    market_cap has no finite cap above 0 (NO_MARKET_CAP). ``raw`` covers only the others. Under
+    market_cap, no cap at all among them is bad input. Only the group's own picks raise flags
+    about their valuations.
     """
     strategy = used["weighting"]
     picks = params.get("picks") or {}
+    group = used.get("group", "value")
+    outside = {sym: sum(a.values()) for sym, a in sat.items() if _style(picks, sym) != group}
+    sat = {sym: a for sym, a in sat.items() if sym not in outside}
     given_unreadable = params.get("unreadable_picks") or []
     if not isinstance(given_unreadable, list):
         raise ValueError("unreadable_picks must be a list")
     if not isinstance(params.get("market_caps") or {}, dict):
         raise ValueError("market_caps must be an object")
-    unreadable = {str(s).upper() for s in given_unreadable}
+    store_held = set(sat) if params.get("pick_store_unreadable") else set()   # growth or value is unknown
+    unreadable = {str(s).upper() for s in given_unreadable} | store_held
     if strategy == "valuation":
         rows = _pick_inputs(sat, positions, picks, used["include_light"], flags, pick_flags, unreadable)
     else:
         price = {p["symbol"]: p["price"] for p in positions if p["bucket"] == "satellite" and p["role"] == "trading"}
         rows = [{"symbol": sym, "value": sum(sat[sym].values()), "price": price[sym]} for sym in sorted(sat)]
-    held = {r["symbol"] for r in rows if _hold(r["symbol"], r["value"], picks.get(r["symbol"]), flags, pick_flags)} | (unreadable & set(sat))
+    held = {r["symbol"] for r in rows if r["symbol"] not in unreadable
+            and _hold(r["symbol"], r["value"], picks.get(r["symbol"]), flags, pick_flags)} | (unreadable & set(sat))
     for sym in unreadable & set(sat):
-        pick_flags.setdefault(sym, []).append("PICK_BASELINE_MISSING")
+        pick_flags.setdefault(sym, []).append("PICK_STORE_UNREADABLE" if sym in store_held else "PICK_BASELINE_MISSING")
     caps = None
     if strategy == "market_cap":
         given = params.get("market_caps") or {}
@@ -737,6 +816,15 @@ def _participants(sat: dict[str, dict[str, float]], positions: list[dict], param
             pick_flags.setdefault(sym, []).append("NO_MARKET_CAP")
             _flag(flags, "NO_MARKET_CAP", f"{sym} has no market cap; it gets no new money and holds its value")
     raw = weights.strategy_weights([r for r in rows if r["symbol"] not in held], strategy, caps)
+    if outside:
+        price = {p["symbol"]: p["price"] for p in positions if p["bucket"] == "satellite" and p["role"] == "trading"}
+        rows = sorted(rows + [{"symbol": sym, "value": v, "price": price[sym], "central_value": None,
+                               "expected_return": None, "eligible": False, "confidence": 0.0}
+                              for sym, v in outside.items()], key=lambda r: r["symbol"])
+        held |= set(outside)
+        for sym in sorted(outside):
+            if group == "value" and not used.get("_mixed") and "GROWTH_HELD" not in pick_flags.get(sym, []):
+                _growth_held(sym, outside[sym], flags, pick_flags)
     return rows, raw, held
 
 
@@ -773,8 +861,12 @@ def _strategy_deltas(amount: float, ctx: dict, positions: list[dict], params: di
     rows, raw, held = _participants(sat, positions, params, used, flags, pick_flags)
     if used["weighting"] == "valuation" and not any(r["eligible"] and r["confidence"] > 0 for r in rows if r["symbol"] not in held):
         _flag(flags, "VALUATION_FALLBACK", "no trading-account pick has an eligible valuation with confidence above 0; the weights are neutral, so the split is equal")
+    group = used.get("group", "value")
+    if (new is None and not raw and group == "value" and amount > _EPS
+            and any(_style(params.get("picks") or {}, sym) == "growth" for sym in sat)):
+        _flag(flags, "GROWTH_BY_REQUEST_ONLY", f"no value pick can take money, so {amount:.2f} stays as cash: growth picks take money only when the growth group is asked for")
     room = None
-    if used["weighting"] != "size":
+    if used["weighting"] != "size" or group == "growth":   # the cap always limits a growth pick's buys
         room = {sym: max(0.0, weights.PICK_CAP * ctx["total"] - sum(sat[sym].values())) for sym in raw}
     fill = used["allocation"] == "fill" and used["weighting"] != "size"
     new_w = _new_pick_weight(new, params, used, flags) if new is not None and fill else None
@@ -798,6 +890,9 @@ def _strategy_add(amount: float, ctx: dict, positions: list[dict], spare: dict[s
                   shorts: dict[str, float] | None = None) -> dict:
     """Plan ``amount`` into the trading-account picks (``_strategy_deltas``) and place it per account. It never sells."""
     sat = _holdings(positions, "satellite")
+    if used.get("group") == "growth" and not any(_style(params.get("picks") or {}, sym) == "growth" for sym in sat):
+        _flag(flags, "NO_GROWTH_PICKS", f"no growth pick is held in a trading account, so {amount:.2f} for the growth group stays as cash")
+        return {"alloc": {}, "unplaced": amount}
     if not sat:
         return {"alloc": {}, "unplaced": amount}
     deltas, _ = _strategy_deltas(amount, ctx, positions, params, used, flags, pick_flags)
@@ -1145,6 +1240,28 @@ def run_sleeves(params: dict) -> dict:
                                       for sym, p in params["picks"].items()}}
     if params.get("today"):
         _day(params["today"], "today")
+    picks_in = params.get("picks") if isinstance(params.get("picks"), dict) else {}
+    for sym in picks_in:
+        _style(picks_in, sym)
+    group_in = params.get("group")
+    if group_in is not None and group_in not in _GROUPS:
+        raise ValueError("group must be value or growth")
+    group_amounts = params.get("group_amounts")
+    if group_amounts is not None:
+        if mode != "add":
+            raise ValueError("group_amounts is only for add")
+        if group_in is not None:
+            raise ValueError("give group or group_amounts, not both")
+        if not isinstance(group_amounts, dict) or not set(group_amounts) <= set(_GROUPS):
+            raise ValueError("group_amounts must be an object with value and growth amounts")
+        group_amounts = {g: _num(group_amounts.get(g), f"group_amounts.{g}") or 0.0 for g in _GROUPS}
+        if any(v < 0 for v in group_amounts.values()):
+            raise ValueError("group_amounts must not be negative")
+    if group_in == "growth" and mode == "rebalance":
+        raise ValueError("rebalance moves money between value picks only; growth picks are never trimmed, so group growth does not apply")
+    if group_in == "growth" and mode == "new-pick":
+        raise ValueError("new-pick takes its group from new_pick.style; group does not apply")
+    used = {**used, "group": group_in or "value"}
     flags: list[dict] = []
     ctx = _classify(positions, cash, roles, used["ceiling"], source,
                     params.get("sectors") or {}, params.get("employer_sector"), flags,
@@ -1169,13 +1286,27 @@ def run_sleeves(params: dict) -> dict:
     shorts: dict[str, float] = {}
     pick_flags: dict[str, list[str]] = {}
     targets: dict[str, float] | None = None
+    groups = {g: {"value": 0.0, "symbols": set()} for g in _GROUPS}
+    for p in positions:
+        if p["bucket"] == "satellite":
+            g = groups[_style(picks_in, p["symbol"])]
+            g["value"] += p["value"]
+            g["symbols"].add(p["symbol"])
+    ctx["mix"]["groups"] = {name: {"value": _r2(g["value"]), "weight": _r4(g["value"] / ctx["total"]),
+                                   "count": len(g["symbols"])} for name, g in groups.items()}
+    cap_value = weights.PICK_CAP * ctx["total"]
+    for sym in sorted(groups["growth"]["symbols"]):      # flagged only: a growth pick is never trimmed
+        v = sum(p["value"] for p in positions if p["bucket"] == "satellite" and p["symbol"] == sym)
+        if v > cap_value + _EPS:
+            pick_flags.setdefault(sym, []).append("GROWTH_OVER_CAP")
+            _flag(flags, "GROWTH_OVER_CAP", f"{sym} (a growth pick) is {v / ctx['total']:.1%} of total value, above the {weights.PICK_CAP:.0%} pick cap; it is left to run and not trimmed, so selling it is your call")
 
-    def satellite(amount: float, left_out: float | None = None) -> tuple[dict, float]:
+    def satellite(amount: float, left_out: float | None = None, group_used: dict | None = None) -> tuple[dict, float]:
         """Plan ``amount`` into the picks by the strategy; returns (alloc, the part left out)."""
         nonlocal unplaced
         if left_out is None:
             amount, left_out = _limit(amount, ctx, params, flags)
-        res = _strategy_add(amount, ctx, positions, spare, params, used, flags, pick_flags, shorts)
+        res = _strategy_add(amount, ctx, positions, spare, params, group_used or used, flags, pick_flags, shorts)
         unplaced += res["unplaced"]
         return res["alloc"], left_out
 
@@ -1206,6 +1337,9 @@ def run_sleeves(params: dict) -> dict:
         if rest is not None:
             alloc = _fund(rest, _holdings(positions, "satellite"), spare, flags, shorts)
             unplaced += max(0.0, amount - _placed(alloc))
+        elif amount > _EPS and new is not None and new.get("alone"):
+            unplaced += amount       # a growth pick's amount is never spread to other picks
+            _flag(flags, "PICK_CAP", f"{new['symbol']} opens at {want:.2f}, the 5% pick cap; the other {amount:.2f} is not spread to other picks and stays as cash")
         elif amount > _EPS:
             alloc, _ = satellite(amount, 0.0)
         if got > _EPS:
@@ -1221,7 +1355,30 @@ def run_sleeves(params: dict) -> dict:
         return v
 
     if mode == "add":
-        alloc, over = satellite(need_amount("amount"))
+        amount = need_amount("amount")
+        if group_amounts is None:
+            used = _group_used(used, params, used["group"])
+            alloc, over = satellite(amount)
+        else:
+            parts = sum(group_amounts.values())
+            if abs(parts - amount) > 0.01:
+                raise ValueError(f"amount {amount:.2f} must equal the sum of group_amounts, {parts:.2f}")
+            limited, over = _limit(amount, ctx, params, flags)
+            for g in _GROUPS:            # each part as its own add; the target's limit scales both
+                part = group_amounts[g] * limited / amount
+                if part > _EPS:
+                    got, _ = satellite(part, 0.0, {**_group_used(used, params, g), "_mixed": True})
+                    for aid, by_sym in got.items():
+                        for sym, d in by_sym.items():
+                            alloc.setdefault(aid, {})[sym] = alloc.get(aid, {}).get(sym, 0.0) + d
+            used = {**used, "group": "mix"}
+            seen: set = set()
+            unique: list[dict] = []
+            for f in flags:
+                if (f["code"], f["message"]) not in seen:
+                    seen.add((f["code"], f["message"]))
+                    unique.append(f)
+            flags[:] = unique
     elif mode == "new-pick":
         np_in = params.get("new_pick")
         if not isinstance(np_in, dict) or not np_in.get("symbol"):
@@ -1244,12 +1401,20 @@ def run_sleeves(params: dict) -> dict:
         amount = _num(np_in.get("amount"), "new_pick.amount")
         if amount is not None and amount <= 0:
             raise ValueError("new_pick.amount must be a positive number")
+        style = np_in.get("style") or "value"
+        if style not in _GROUPS:
+            raise ValueError("new_pick.style must be value or growth")
+        used = _group_used(used, params, "value")
         current = {s: sum(a.values()) for s, a in _holdings(positions, "satellite").items()}
+        # sized by the held picks of its own group, else by all picks
+        current = {s: v for s, v in current.items() if _style(picks_in, s) == style} or current
         needed = min(weights.median_pick_value(current), weights.PICK_CAP * ctx["total"])
         if not current:
             if amount is None:
                 raise ValueError("no trading-account picks to size the new pick by; pass new_pick.amount")
             needed = amount
+        if style == "growth" and amount is not None:
+            needed = min(amount, weights.PICK_CAP * ctx["total"])
         accts = sorted(a for a, r in roles.items() if r == "trading")
         if not accts:
             raise ValueError("a new pick needs a trading account")
@@ -1268,7 +1433,9 @@ def run_sleeves(params: dict) -> dict:
         new_pick = {"symbol": sym, "needed": _r2(needed), "allocated": 0.0, "account": account}
         new_positions = [{"symbol": sym, "price": price, "account": account}]
         funded(needed if amount is None else amount, True,
-               {"symbol": sym, "needed": needed, "account": account, "price": price, "fill": amount is not None})
+               {"symbol": sym, "needed": needed, "account": account, "price": price,
+                "fill": amount is not None and style == "value", "alone": style == "growth"})
+        used = {**used, "group": style}
         new_pick["allocated"] = _r2(sum(a.get(sym, 0.0) for a in alloc.values()))
     elif mode == "rebalance":
         if used["weighting"] == "size":
@@ -1279,7 +1446,12 @@ def run_sleeves(params: dict) -> dict:
             raise ValueError("rebalance does not take over_ceiling: it keeps the sleeve total and does not consult the ceiling")
         if params.get("pick_store_unreadable"):
             raise ValueError("the pick store could not be read, so the picks that must hold are unknown; rebalance stops")
-        if len(_holdings(positions, "satellite")) >= 2:
+        rb_sat = _holdings(positions, "satellite")
+        growth_held = {sym: sum(a.values()) for sym, a in rb_sat.items() if _style(picks_in, sym) == "growth"}
+        if len(rb_sat) - len(growth_held) < 2:   # fewer than two value picks: nothing to move
+            for sym in sorted(growth_held):
+                _growth_held(sym, growth_held[sym], flags, pick_flags)
+        else:
             res = _rebalance(ctx, positions, {a: 0.0 for a in spare}, params, used, flags, pick_flags)
             alloc, held_back, lot_override, targets = res["alloc"], res["held_back"], res["lot_override"], res["targets"]
             unplaced += res["unplaced"]
@@ -1299,7 +1471,7 @@ def run_sleeves(params: dict) -> dict:
         "mode": mode,
         "mix": ctx["mix"],
         "weighting_used": "equal" if any(f["code"] == "VALUATION_FALLBACK" for f in flags) else used["weighting"],
-        "splits": _splits(_holdings(positions, "satellite"), alloc, targets, pick_flags),
+        "splits": _splits(_holdings(positions, "satellite"), alloc, targets, pick_flags, picks_in),
         "held_back": held_back,
         "accounts": accounts,
         "trades": [t for a in accounts for t in a["rebalance"]["trades"]],

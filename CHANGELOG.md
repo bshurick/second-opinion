@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.9.0
+
+- deep picker: a growth mode. Ask for growth stocks, or companies that could double, and the picker runs `--profile growth`; otherwise it runs the value mode as before. Growth runs screen on the `growth` preset without its cash and dilution tests, test each industry's prospects on revenue trajectory (6 of 8 quarters up and 15% over the year), funding, reinvestment and scale, and health-check the pool with `health_growth`, which fails a burning company only when its cash covers under two years of the burn.
+- deep picker: growth quick reads score `quality`, `direction`, `tailwind` and `upside` in place of `value`. `cards.py` gives each data file an `upside_hint` from the quick value's bull and base against the price.
+- deep picker gate: a growth finalist passes when its best case reaches `picker.growth.min_upside` (default 2.0, double) times today's price over the horizon and the central scenario is worth more than the price. The worst case is shown and not gated, so a growth pick can lose money in its bear case. `pick_assemble.py --min-upside` sets the multiple for one run, and the page is titled Deep Growth Picks.
+- valuation: every deep valuation carries a best case, a scenario better than the central one with its `must_be_true` points tied to dated ledger claims. `deep_run.py` raises `NO_BEST_CASE` when there is none, and the Red team attacks the best case.
+- picks: each saved pick has a style, `value` or `growth` (`picks.py save-deep --style`, a pick saved before 1.9.0 is value). A saved pick never changes group on its own: `STYLE_KEPT` says the new valuation was saved under the old style, and `--restyle` moves it. A growth pick's re-check watches the upside price in place of the hurdle price.
+- portfolio-plan: the picks sleeve keeps growth picks apart. Money reaches value picks unless you name a group: `--group growth` or `--mix VALUE,GROWTH` (dollars or percentages) on `sleeve_run.py add` and `plan.py contribute --sleeve PICKS`. Nothing sells or trims a growth pick: a rebalance holds them (`GROWTH_HELD`), `GROWTH_OVER_CAP` marks one past the 5% pick cap, and the global plan never sells one. `GROWTH_BY_REQUEST_ONLY`, `NO_GROWTH_PICKS` and `GROWTH_PICKS_OVER` explain why money stayed as cash or the sleeve was left over its target.
+- settings: `picker.growth.min_upside`, a number above 1, default 2.0.
+
 ## 1.8.0
 
 - portfolio-plan: adding money to the picks fills toward target by default. Each pick's target is its strategy share of the sleeve after the deposit, and the money goes to the picks below target, in proportion to how far below they are; a pick above target gets nothing and nothing is sold. Before, the money was split by the strategy's shares whatever each pick held, so a pick that had drifted low never caught up without a selling rebalance.

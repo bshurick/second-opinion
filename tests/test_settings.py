@@ -229,3 +229,14 @@ def test_glide_rejects_bad_shapes(tmp_data, bad):
 
 def test_schema_is_2():
     assert settings.SCHEMA == 2 and settings.DEFAULTS["schema"] == 2
+
+
+def test_min_upside_setting(tmp_data):
+    assert settings.get("picker.growth.min_upside") == 2.0
+    settings.set_value("picker.growth.min_upside", "3")
+    assert settings.get("picker.growth.min_upside") == 3.0
+    assert json.loads((tmp_data / "settings.json").read_text())["picker"]["growth"]["min_upside"] == 3.0
+    for bad in ("1", "0.5", "abc", "nan"):
+        with pytest.raises(InvalidInput):
+            settings.set_value("picker.growth.min_upside", bad)
+    assert settings.get("picker.growth.min_upside") == 3.0

@@ -284,3 +284,113 @@ def test_a_card_written_with_a_dotted_ticker_finds_its_pool_row(tmp_path, capsys
     rc, out = run_json(assemble, ["--run", str(run), "--finalists", finalists_arg(), "--as-of", "2026-11-10"], capsys)
     assert rc == 0, out
     assert {c["ticker"]: c["held"] for c in json.loads((run / "pick.json").read_text())["candidates"]}["BRK.B"] is True
+
+
+def _growth_card(ticker, scores):
+    return card(ticker, scores=scores, reasons={k: f"{k}: a $2.9B backlog" for k in scores})
+
+
+def test_assemble_accepts_upside_score(tmp_path, capsys) -> None:
+    run = _growth_run(tmp_path)                                    # run.json growth: the gate is a growth gate
+    rc, out = run_json(assemble, ["--run", str(run), "--finalists", finalists_arg()], capsys)
+    assert rc == 0, out
+    (run / "cards" / "OTHER.json").write_text(json.dumps(_growth_card("OTHER", {"quality": 4, "direction": 3, "tailwind": 4, "value": 3})))
+    rc, out = run_json(assemble, ["--run", str(run), "--finalists", finalists_arg()], capsys)
+    assert rc == 2 and "OTHER" in out["error"] and "upside" in out["error"]
+
+
+def test_old_folder_with_growth_notes_and_a_value_gate_scores_value(tmp_path, capsys) -> None:
+    run = make_run(tmp_path)                                       # no run.json: a value run, whatever the notes say
+    notes = json.loads((run / "picks-notes.json").read_text())
+    notes["profile"] = "growth"
+    (run / "picks-notes.json").write_text(json.dumps(notes))
+    rc, out = run_json(assemble, ["--run", str(run), "--finalists", finalists_arg()], capsys)
+    assert rc == 0, out
+    assert "<title>Deep Picks</title>" in (run / "page.html").read_text()
+
+
+def _growth_run(tmp_path, with_run_json=True, notes_profile=None):
+    run = make_run(tmp_path, symbols=())
+    scen = {"SAFE": [("Base", 70, 0.07), ("Bull", 140, 0.20)], "ABOVE": [("Base", 70, 0.07), ("Bull", 90, 0.12)], "LOSS": [("Base", 40, -0.04), ("Bull", 150, 0.25)]}
+    for s, rows in scen.items():
+        case = write_case(tmp_path, s, rows)
+        model = json.loads((case / "model.out.json").read_text())
+        model["horizon"] = 5
+        (case / "model.out.json").write_text(json.dumps(model))
+    if with_run_json:
+        (run / "run.json").write_text(json.dumps({"profile": "growth"}))
+    if notes_profile:
+        notes = json.loads((run / "picks-notes.json").read_text())
+        notes["profile"] = notes_profile
+        (run / "picks-notes.json").write_text(json.dumps(notes))
+    for t in ("SAFE", "ABOVE", "LOSS", "OTHER"):
+        (run / "cards" / f"{t}.json").write_text(json.dumps(_growth_card(t, {"quality": 4, "direction": 3, "tailwind": 4, "upside": 3})))
+    return run
+
+
+@pytest.fixture
+def data_dir(tmp_path, monkeypatch):
+    d = tmp_path / "data"
+    d.mkdir()
+    monkeypatch.setenv("SECOND_OPINION_DATA", str(d))
+    return d
+
+
+def test_assemble_growth_passes_profile(tmp_path, data_dir, capsys) -> None:
+    run = _growth_run(tmp_path, notes_profile="value · years · moderate risk")
+    rc, out = run_json(assemble, ["--run", str(run), "--finalists", finalists_arg(), "--as-of", "2026-11-10"], capsys)
+    assert rc == 0, out
+    gate_in = json.loads((run / "gate.json").read_text())
+    assert gate_in["profile"] == "growth" and gate_in["min_upside"] == 2.0 and "hurdle" not in gate_in and "floor" not in gate_in
+    gate_out = json.loads((run / "gate.out.json").read_text())
+    assert gate_out["profile"] == "growth" and gate_out["min_upside"] == 2.0
+    # the run's profile wins over the notes file's free text
+    assert json.loads((run / "pick.json").read_text())["profile"] == "growth"
+    assert out["picks"] == ["SAFE"] and sorted(out["near_misses"]) == ["ABOVE", "LOSS"]
+
+    (data_dir / "settings.json").write_text(json.dumps({"schema": 2, "picker": {"growth": {"min_upside": 1.5}}}))
+    rc, out = run_json(assemble, ["--run", str(run), "--finalists", finalists_arg()], capsys)
+    assert rc == 0, out
+    assert json.loads((run / "gate.json").read_text())["min_upside"] == 1.5
+    rc, out = run_json(assemble, ["--run", str(run), "--finalists", finalists_arg(), "--min-upside", "2.5"], capsys)
+    assert rc == 0, out
+    assert json.loads((run / "gate.json").read_text())["min_upside"] == 2.5
+    assert json.loads((run / "pick.json").read_text())["gate"]["min_upside"] == 2.5
+
+
+def test_assemble_growth_rejects_hurdle(tmp_path, data_dir, capsys) -> None:
+    run = _growth_run(tmp_path)
+    for flag in ("--hurdle", "--floor"):
+        rc, out = run_json(assemble, ["--run", str(run), "--finalists", finalists_arg(), flag, "0.12"], capsys)
+        assert rc == 2 and "growth" in out["error"], out
+        assert not any((run / n).exists() for n in ("gate.json", "gate.out.json", "pick.json", "page.html"))
+
+
+def test_assemble_value_run_rejects_min_upside(tmp_path, data_dir, capsys) -> None:
+    run = make_run(tmp_path)
+    rc, out = run_json(assemble, ["--run", str(run), "--finalists", finalists_arg(), "--min-upside", "2"], capsys)
+    assert rc == 2 and "value run" in out["error"]
+    assert not (run / "gate.json").exists()
+
+
+def test_run_json_value_profile_overrides_notes_text(tmp_path, data_dir, capsys) -> None:
+    run = make_run(tmp_path)
+    (run / "run.json").write_text(json.dumps({"profile": "value"}))
+    rc, out = run_json(assemble, ["--run", str(run), "--finalists", finalists_arg()], capsys)
+    assert rc == 0, out
+    assert json.loads((run / "pick.json").read_text())["profile"] == "value"
+    assert "profile" not in json.loads((run / "gate.out.json").read_text())
+
+
+def test_save_commands_carry_style(tmp_path, data_dir, capsys) -> None:
+    run = _growth_run(tmp_path)
+    rc, out = run_json(assemble, ["--run", str(run), "--finalists", finalists_arg()], capsys)
+    assert rc == 0, out
+    assert out["save_commands"] and all(shlex.split(c)[-2:] == ["--style", "growth"] for c in out["save_commands"])
+
+    value_tmp = tmp_path / "v"
+    value_tmp.mkdir()
+    vrun = make_run(value_tmp)
+    rc, out = run_json(assemble, ["--run", str(vrun), "--finalists", finalists_arg()], capsys)
+    assert rc == 0, out
+    assert out["save_commands"] and all(shlex.split(c)[-2:] == ["--style", "value"] for c in out["save_commands"])

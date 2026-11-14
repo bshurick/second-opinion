@@ -9,6 +9,7 @@ from datetime import date
 import pytest
 from scripts_util import PLUGIN_ROOT, load_script, run_json
 from second_opinion import edgar, market
+from second_opinion.errors import ApiError
 
 PICKS = load_script("stock-screener/scripts/picks.py")
 MODEL = load_script("valuation/scripts/model.py")
@@ -554,3 +555,93 @@ def test_corrupt_settings_save_light_exits_5_summary_still_prints(env, capsys, t
     rc, out = run(["save-light", "ACME", "--in", str(spec)], capsys)
     assert rc == 5 and out["code"] == "SETTINGS_CORRUPT"
     assert PICKS.summary_lines()
+
+
+# --- style ---------------------------------------------------------------------------------
+
+
+def _save(env, capsys, tmp_path, *extra):
+    case, _ = case_folder(tmp_path) if not (tmp_path / "deep-ACME").exists() else (tmp_path / "deep-ACME", None)
+    return run(["save-deep", "ACME", "--case", str(case), *extra], capsys)
+
+
+def test_old_pick_is_value(env, capsys, tmp_path) -> None:
+    _save(env, capsys, tmp_path)
+    book = json.loads((env["dir"] / "picks.json").read_text())
+    book["picks"][0].pop("style", None)
+    (env["dir"] / "picks.json").write_text(json.dumps(book))
+    rc, out = run(["list"], capsys)
+    assert out["picks"][0]["style"] == "value"
+    assert "style" not in json.loads((env["dir"] / "picks.json").read_text())["picks"][0]
+
+
+def test_save_deep_style_growth(env, capsys, tmp_path) -> None:
+    rc, out = _save(env, capsys, tmp_path, "--style", "growth")
+    assert rc == 0 and out["pick"]["style"] == "growth" and out["flags"] == []
+
+
+def test_style_kept_without_restyle(env, capsys, tmp_path) -> None:
+    _save(env, capsys, tmp_path, "--style", "value")
+    rc, out = _save(env, capsys, tmp_path, "--style", "growth")
+    assert rc == 0 and out["pick"]["style"] == "value" and out["pick"]["baseline_checks_from"] == 0
+    assert [f["code"] for f in out["flags"]] == ["STYLE_KEPT"]
+    rc, out = _save(env, capsys, tmp_path, "--style", "growth", "--restyle")
+    assert out["pick"]["style"] == "growth" and out["flags"] == []
+
+
+def test_list_groups_by_style(env, capsys, tmp_path) -> None:
+    book = {"picks": [{"symbol": "G1", "style": "growth", "checks": []}, {"symbol": "V1", "checks": []},
+                      {"symbol": "G2", "style": "growth", "checks": []}, {"symbol": "V2", "style": "value", "checks": []}]}
+    (env["dir"] / "picks.json").write_text(json.dumps(book))
+    rc, out = run(["list"], capsys)
+    assert [(p["symbol"], p["style"]) for p in out["picks"]] == [("V1", "value"), ("V2", "value"), ("G1", "growth"), ("G2", "growth")]
+
+
+def test_growth_pick_levels_use_upside_and_the_setting(env, capsys, tmp_path) -> None:
+    _save(env, capsys, tmp_path, "--style", "growth")
+    pick = json.loads((env["dir"] / "picks.json").read_text())["picks"][0]
+    base = PICKS.load_baseline(pick)
+    lv = PICKS.pick_levels(base, "growth")
+    assert "upside" in lv and "hurdle" not in lv
+    assert PICKS.pick_levels(base, "growth", 3.0)["upside"] < lv["upside"]
+    assert "hurdle" in PICKS.pick_levels(base)
+    price = lv["upside"] + 0.01
+    assert price <= lv["central"]
+    assert PICKS.level_crossing({**pick, "added_price": None}, base, price)[0] == "upside"
+
+
+def test_summary_falls_back_when_settings_are_unreadable(env, capsys, tmp_path, monkeypatch) -> None:
+    _save(env, capsys, tmp_path, "--style", "growth")
+    def boom(*_a):
+        raise ApiError("settings unreadable", code="SETTINGS_CORRUPT")
+    monkeypatch.setattr(PICKS.settings, "get", boom)
+    monkeypatch.setattr(PICKS.settings, "is_deep", boom)
+    pick = json.loads((env["dir"] / "picks.json").read_text())["picks"][0]
+    lv = PICKS.pick_levels(PICKS.load_baseline(pick), "growth", 2.0)
+    (env["dir"] / PICKS.WATCHLIST_LAST_CHECK).write_text(json.dumps({"watchlist": [{"symbol": "ACME", "price": lv["upside"] + 0.01}]}))
+    due = PICKS.summary_data(date(2026, 9, 15))["due"]
+    assert due and due[0]["style"] == "growth" and "growth minimum" in " ".join(due[0]["why"])
+    assert "growth pick" in PICKS.summary_lines(date(2026, 9, 15))[1]
+
+
+def test_due_rows_carry_style(env, capsys, tmp_path) -> None:
+    _save(env, capsys, tmp_path, "--style", "growth")
+    out = run(["due"], capsys)[1]
+    assert [(d["symbol"], d["style"]) for d in out["due"] + out["not_due"]] == [("ACME", "growth")]
+    _save(env, capsys, tmp_path, "--style", "value", "--restyle")
+    out = run(["due"], capsys)[1]
+    assert [d["style"] for d in out["due"] + out["not_due"]] == ["value"]
+
+
+def test_check_passes_the_min_upside_setting_to_track_math(env, capsys, tmp_path, monkeypatch) -> None:
+    _save(env, capsys, tmp_path, "--style", "growth")
+    PICKS.settings.set_value("picker.growth.min_upside", 3.0)
+    seen: list[dict] = []
+    real = PICKS.track_math.run_track
+    monkeypatch.setattr(PICKS.track_math, "run_track", lambda params: (seen.append(params), real(params))[1])
+    rc, _ = run(["check", "ACME"], capsys)
+    assert rc == 0 and seen[0]["style"] == "growth" and seen[0]["min_upside"] == 3.0
+    _save(env, capsys, tmp_path, "--style", "value", "--restyle")
+    seen.clear()
+    run(["check", "ACME"], capsys)
+    assert "min_upside" not in seen[0] and seen[0]["style"] == "value"

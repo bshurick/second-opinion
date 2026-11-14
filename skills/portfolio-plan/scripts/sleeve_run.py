@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Usage: sleeve_run.py mix
-       sleeve_run.py add AMOUNT
+       sleeve_run.py add AMOUNT [--group value|growth | --mix VALUE,GROWTH]
        sleeve_run.py new-pick SYMBOL [--amount A]
        sleeve_run.py rebalance
        common: [--weighting equal|market_cap|valuation|size] [--include-light] [--split] [--over-ceiling]
@@ -41,10 +41,12 @@ age as due too. needs_valuation marks the last two, which a re-check cannot clea
 The saved depth (settings.json) goes to sleeves.py as ``depth``: at deep depth light picks hold
 (DEEP_VALUATION_NEEDED) and --include-light exits 2.
 A baseline that cannot be read
-(or a deep model with no scenarios) leaves the symbol out of picks (PICK_BASELINE_MISSING) and
-puts it in ``unreadable_picks``, so it holds; without the stock-screener skill there are no picks
+(or a deep model with no scenarios) leaves the symbol out of picks (PICK_BASELINE_MISSING; a growth
+pick keeps a picks entry of only its style, so it still counts as growth) and puts it in
+``unreadable_picks``, so it holds; without the stock-screener skill there are no picks
 (NO_PICK_STORE), and an unreadable pick store gives no picks (PICK_STORE_UNREADABLE) and sets
-``pick_store_unreadable``, which stops ``rebalance``. The effective strategy is ``--weighting``,
+``pick_store_unreadable``, which stops ``rebalance`` and holds every held pick in ``add`` and
+``new-pick`` (the new pick itself still opens). The effective strategy is ``--weighting``,
 else the saved one, else equal; under market_cap the held picks' company market caps are read
 (``market_caps``, null for one that fails) only for a mode that trades: add, grow, plan-step,
 rebalance, new-pick with --amount, deposit with --satellite. A holding with no price is left out (NO_PRICE). The grow values
@@ -69,6 +71,15 @@ its tilt sizes it in the fill; without ``--amount`` it opens at the median. ``--
 allocation "split" (adding money splits by the strategy's shares instead of filling toward target).
 Market caps are read only for a trading run under market_cap: the held picks, plus the new symbol
 for ``new-pick`` without ``--split``.
+
+Each saved pick's style (picks.pick_style: "value" or "growth", absent is value) goes to sleeves.py
+as ``picks[SYM]["style"]``; ``new-pick`` of a symbol saved in the pick store passes its style as
+``new_pick["style"]``, so a saved growth pick opens as growth. ``--group`` and ``--mix`` are only
+for ``add`` (bad input elsewhere, and together): ``--group`` names the picks the money goes to
+(value, the default, or growth); ``--mix VALUE,GROWTH`` splits AMOUNT between the groups
+(``group_amounts``), as two dollar amounts that sum to AMOUNT within $0.01 (``3000,2000``) or two
+percentages that sum to 100% within 0.01 (``70%,30%``); a bad sum is bad input naming it, and a
+dollar part mixed with a percent part is bad input.
 
 Output: sleeves.py's contract plus ``sources`` (holdings, prices, lots), ``no_price`` and
 ``employer_candidate`` (null when employer_symbol is saved or no vest deposit is found). This is a
@@ -153,6 +164,46 @@ def _check_new_pick(sym: str, entry: dict | None) -> None:
         raise InvalidInput(f"{sym} is not a plain stock (quote type {qt or 'unknown'}); new-pick takes a single stock")
     if _fund_marked(entry):
         raise InvalidInput(f"{sym} is a fund (quote type EQUITY with fund holdings, a proxy or a fund name); new-pick takes a single stock")
+
+
+def _pick_styles() -> dict[str, str] | None:
+    """Each saved pick's style (picks.pick_style), by upper-case symbol; empty when the stock-screener
+    skill is missing, None when the pick store cannot be read (which picks are growth is then unknown,
+    so callers hold them). global_plan reads growth picks here."""
+    pk = _screener()
+    if pk is None:
+        return {}
+    try:
+        store = pk.load()
+    except ApiError:
+        return None
+    return {str(p.get("symbol") or "").upper(): pk.pick_style(p) for p in store.get("picks") or []
+            if isinstance(p, dict) and p.get("symbol")}
+
+
+def _group_amounts(raw: str, amount: float) -> dict[str, float]:
+    """``--mix VALUE,GROWTH`` as group_amounts: two dollar amounts summing to ``amount`` within $0.01,
+    or two percentages (both with %) summing to 100 within 0.01."""
+    parts = [x.strip() for x in raw.split(",")]
+    if len(parts) != 2 or not all(parts):
+        raise InvalidInput(f"--mix takes two parts, VALUE,GROWTH (3000,2000 or 70%,30%), not {raw!r}")
+    pct = [x.endswith("%") for x in parts]
+    if any(pct) and not all(pct):
+        raise InvalidInput(f"--mix takes two dollar amounts or two percentages, not one of each ({raw!r})")
+    try:
+        nums = [float(x.rstrip("%")) for x in parts]
+    except ValueError as exc:
+        raise InvalidInput(f"--mix parts must be numbers, not {raw!r}") from exc
+    if any(not (n >= 0) or n == float("inf") for n in nums):
+        raise InvalidInput(f"--mix parts must not be negative ({raw!r})")
+    if all(pct):
+        if abs(sum(nums) - 100) > 0.01:
+            raise InvalidInput(f"--mix percentages sum to {sum(nums):g}%, not 100%")
+        value = round(amount * nums[0] / 100, 2)
+        return {"value": value, "growth": round(amount - value, 2)}
+    if abs(sum(nums) - amount) > 0.01:
+        raise InvalidInput(f"--mix parts sum to {sum(nums):.2f}, not AMOUNT {amount:.2f}")
+    return {"value": nums[0], "growth": nums[1]}
 
 
 def _store(today: str) -> dict:
@@ -245,7 +296,7 @@ def _picks(satellite: dict[str, float], today: str, flags: list[dict], unreadabl
     try:
         store = pk.load()
     except ApiError as exc:
-        flags.append(_flag("PICK_STORE_UNREADABLE", f"the pick store could not be read ({exc}); no saved valuations are used"))
+        flags.append(_flag("PICK_STORE_UNREADABLE", f"the pick store could not be read ({exc}); which picks are growth picks is unknown, so every held pick holds (no money in, nothing sold) until the store is repaired"))
         return {}
     out = {}
     for pick in store.get("picks") or []:
@@ -258,7 +309,7 @@ def _picks(satellite: dict[str, float], today: str, flags: list[dict], unreadabl
                 model = baseline["model"]
                 if not model.get("scenarios"):
                     raise ValueError("the model has no scenarios")
-                central = pk.pick_levels(baseline)["central"]
+                central = pk.pick_levels(baseline, pk.pick_style(pick))["central"]
                 irr_flags: list[dict] = []
                 irrs = pk.track_math._irrs(model, satellite[sym], irr_flags)
                 expected = irrs.get((model.get("scenarios") or [{}])[0].get("name"))
@@ -270,11 +321,13 @@ def _picks(satellite: dict[str, float], today: str, flags: list[dict], unreadabl
         except (InvalidInput, ValueError, KeyError, TypeError, IndexError, OSError) as exc:
             flags.append(_flag("PICK_BASELINE_MISSING", f"{sym}: the saved valuation could not be read ({exc})"))
             unreadable.append(sym)
+            if pk.pick_style(pick) == "growth":   # the style is the store's, not the baseline's
+                out[sym] = {"style": "growth"}
             continue
         age = _age_days(pick.get("baseline_as_of"), today)
         out[sym] = {"kind": pick.get("kind"), "central_value": central, "expected_return": expected,
                     "age_days": age, "recheck_due": _recheck_due(pick, today, age),
-                    "needs_valuation": _needs_valuation(pick, today, age)}
+                    "needs_valuation": _needs_valuation(pick, today, age), "style": pk.pick_style(pick)}
     return out
 
 
@@ -297,6 +350,8 @@ def _parser() -> _Parser:
     common.add_argument("--short-term", type=float, default=0.24)
     common.add_argument("--long-term", type=float, default=0.15)
     common.add_argument("--partial", action="store_true")
+    common.add_argument("--group", choices=("value", "growth"), default=None)
+    common.add_argument("--mix", default=None)
     common.add_argument("--today", help=argparse.SUPPRESS)
     p = _Parser(prog="sleeve_run.py", add_help=False)
     sub = p.add_subparsers(dest="mode", required=True, parser_class=_Parser)
@@ -319,6 +374,11 @@ def run(args: list[str]) -> dict:
             raise InvalidInput("--today must be YYYY-MM-DD") from exc
     else:
         today = date.today().isoformat()
+    if (ns.group or ns.mix) and ns.mode != "add":
+        raise InvalidInput(f"--group and --mix are only for add, not {ns.mode}")
+    if ns.group and ns.mix:
+        raise InvalidInput("give --group or --mix, not both")
+    group_amounts = _group_amounts(ns.mix, ns.amount) if ns.mix else None
     store = _store(today)
 
     hub = router.load()
@@ -378,10 +438,17 @@ def run(args: list[str]) -> dict:
     params["depth"] = settings.depth()
     if ns.mode == "add":
         params["amount"] = ns.amount
+        if ns.group:
+            params["group"] = ns.group
+        if group_amounts is not None:
+            params["group_amounts"] = group_amounts
     if ns.mode == "new-pick":
         params["new_pick"] = {"symbol": new_sym, "price": new_price}
         if ns.amount is not None:
             params["new_pick"]["amount"] = ns.amount
+        style = (_pick_styles() or {}).get(new_sym)
+        if style is not None:
+            params["new_pick"]["style"] = style
         params["excluded_symbols"] = sorted(set(unclassified) | set(book["no_price"]))
     trades = ns.mode in ("add", "rebalance") or (ns.mode == "new-pick" and ns.amount is not None)
     if trades and (ns.weighting or store.get("weighting") or "equal") == "market_cap":

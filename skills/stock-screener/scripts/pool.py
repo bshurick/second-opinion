@@ -28,7 +28,8 @@ prospects and screen survivors alternately, each in its own order (prospects one
 another in turn, survivors one screen after another in turn by rank). Never on the verdict. The
 names cut are listed in ``trimmed`` and flagged ``POOL_TRIMMED``.
 
-Health. ``screen.py --symbols <the pool> --preset health --no-price [--held ...]`` once, then
+Health. ``screen.py --symbols <the pool> --preset health --no-price [--held ...]`` once (``health_growth``
+when the run's ``run.json`` says ``growth``: ``growth.run_profile``, ``value`` without a ``run.json``), then
 per name ``health`` is ``passed``, ``financial`` (a bank, lender or insurer the screen sets
 aside), ``not_found`` (no SEC filer), ``incomplete`` (no four years of US-GAAP history),
 ``judge_in_quick_read`` (failed, but its sector is Financials: the cash tests misread an asset
@@ -39,13 +40,13 @@ flagged ``HEALTH_CHECK_FAILED``.
 Batches. The kept names five at a time for the quick readers, an industry's names together
 (names no scan covers sit by sector, after the others).
 
-``pool.json``: {"as_of", "names": [kept rows], "dropped": [rows with health "failed"],
+``pool.json``: {"as_of", "profile": "value"|"growth", "names": [kept rows], "dropped": [rows with health "failed"],
 "trimmed": [tickers], "counts", "batches": [[tickers]]}. ``counts``: {"industries", "prospects",
 "screen_survivors" (distinct), "candidates" (distinct names before the trim), "trimmed",
 "merged" (names health-checked), "kept", "dropped", "held", "origin": {"industry", "screen",
 "both"} and "health": {status: n} (both over the merged names)}.
 
-Prints {"run", "pool": <path>, "counts", "batches", "dropped": [{"ticker", "failed_tests"}],
+Prints {"run", "profile", "pool": <path>, "counts", "batches", "dropped": [{"ticker", "failed_tests"}],
 "flags": [{"code", "message"}]}. Other flags: PRICING_INCOMPLETE (a screen file carries
 screen.py's flag of that name: Yahoo rate-limited it, so its survivors were not put through the
 price stage; ``screens`` names them), INDUSTRY_FILE_SKIPPED, SCREEN_FILE_SKIPPED (not JSON, or
@@ -65,9 +66,12 @@ from typing import Any
 
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE.parents[2] / "lib"))
+sys.path.insert(0, str(_HERE))
 
 from second_opinion import brokerage, output  # noqa: E402
 from second_opinion.errors import InvalidInput  # noqa: E402
+
+import growth  # noqa: E402
 
 SCREEN_SCRIPT = _HERE / "screen.py"
 HEALTH_FILE = "health.json"
@@ -91,9 +95,9 @@ def parser() -> argparse.ArgumentParser:
     return p
 
 
-def run_health(symbols: list[str], held: list[str]) -> tuple[int, dict]:
-    """The health screen on a hand-picked list, as its own process: ``(exit code, its JSON)``."""
-    cmd = [sys.executable, str(SCREEN_SCRIPT), "--symbols", ",".join(symbols), "--preset", "health", "--no-price"]
+def run_health(symbols: list[str], held: list[str], preset: str = "health") -> tuple[int, dict]:
+    """The health screen (``preset``) on a hand-picked list, as its own process: ``(exit code, its JSON)``."""
+    cmd = [sys.executable, str(SCREEN_SCRIPT), "--symbols", ",".join(symbols), "--preset", preset, "--no-price"]
     if held:
         cmd += ["--held", ",".join(held)]
     try:
@@ -275,6 +279,7 @@ def run(args: list[str]) -> dict:
     run_dir = Path(ns.run).expanduser()
     if not run_dir.is_dir():
         raise InvalidInput(f"{run_dir} is not a run folder; run pick_prep.py --run first")
+    profile = growth.run_profile(run_dir)
     flags: list[dict] = []
     rows, prospect_queues, screen_queues, counts = merge(run_dir, held, flags)
     if not rows:
@@ -285,7 +290,7 @@ def run(args: list[str]) -> dict:
     names = [rows[t] for t in kept]
 
     try:
-        rc, data = run_health(kept, held)
+        rc, data = run_health(kept, held, preset="health_growth") if profile == "growth" else run_health(kept, held)
     except Exception as exc:  # noqa: BLE001 — a health screen that cannot run is a flag, not an exit
         rc, data = 5, {"error": f"{exc.__class__.__name__}: {exc}"}
     if rc != 0 or not isinstance(data.get("checked"), list):
@@ -301,10 +306,10 @@ def run(args: list[str]) -> dict:
     counts.update(candidates=len(rows), trimmed=len(cut), merged=len(names), kept=len(keep), dropped=len(dropped), held=sum(1 for r in names if r["held"]),
                   origin={o: sum(1 for r in names if r["origin"] == o) for o in ("industry", "screen", "both")},
                   health={h: n for h in HEALTH_ORDER if (n := sum(1 for r in names if r["health"] == h))})
-    result = {"as_of": dt.date.today().isoformat(), "names": keep, "dropped": dropped, "trimmed": cut, "counts": counts, "batches": batches(keep)}
+    result = {"as_of": dt.date.today().isoformat(), "profile": profile, "names": keep, "dropped": dropped, "trimmed": cut, "counts": counts, "batches": batches(keep)}
     dest = run_dir / "pool.json"
     dest.write_text(json.dumps(result, indent=2, ensure_ascii=False, default=str) + "\n", encoding="utf-8")
-    return {"run": str(run_dir), "pool": str(dest), "counts": counts, "batches": result["batches"],
+    return {"run": str(run_dir), "profile": profile, "pool": str(dest), "counts": counts, "batches": result["batches"],
             "dropped": [{"ticker": d["ticker"], "failed_tests": d["failed_tests"]} for d in dropped], "flags": flags}
 
 

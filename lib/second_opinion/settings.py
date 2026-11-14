@@ -1,6 +1,6 @@
 """The user's settings: one ``settings.json`` under the plugin data directory.
 
-    {"schema": 1, "depth", "deep", "accounts", "plan", "taxes", "guardrails",
+    {"schema": 1, "depth", "deep", "picker", "accounts", "plan", "taxes", "guardrails",
      "replies", "lessons", "meta", "history": [{"date", "key", "value"}]}
 
 ``load`` fills ``DEFAULTS`` under the file's values (the file wins; unknown keys
@@ -49,6 +49,7 @@ DEFAULTS: dict[str, Any] = {
     "schema": SCHEMA,
     "depth": "standard",
     "deep": {"ask_above": 3},
+    "picker": {"growth": {"min_upside": 2.0}},
     "accounts": {},
     "plan": {
         "targets": {}, "classes": {}, "cash_reserve": None,
@@ -103,6 +104,13 @@ def _number(raw: Any) -> float:
     except (ValueError, TypeError, OverflowError):
         pass
     raise InvalidInput(f"expected a finite number, got {raw!r}")
+
+
+def _min_upside(raw: Any) -> float:
+    num = _number(raw)
+    if num <= 1:
+        raise InvalidInput(f"expected a multiple above 1 (2 means double), got {raw!r}")
+    return float(num)
 
 
 def _choice(options: tuple[str, ...], *, nullable: bool = False) -> Callable[[Any], Any]:
@@ -248,6 +256,7 @@ def _d(*path: str) -> Any:
 KEYS: dict[str, Key] = {
     "depth": Key(_d("depth"), "Depth", "standard answers once; deep runs the heavy multi-step research", _choice(DEPTHS)),
     "deep.ask_above": Key(_d("deep", "ask_above"), "Deep: ask above", "ask before a deep run touching more than this many items", _ask_above),
+    "picker.growth.min_upside": Key(_d("picker", "growth", "min_upside"), "Growth picks: minimum upside", "a growth pick's best case must reach this multiple of today's price over the horizon (2 means double)", _min_upside),
     "plan.targets": Key(_d("plan", "targets"), "Targets", "target weights by key, summing to 1", _targets),
     "plan.classes": Key(_d("plan", "classes"), "Classes", "symbol to target key", _classes),
     "plan.cash_reserve": Key(None, "Cash reserve", "cash to keep out of the plan", _cash_reserve),
@@ -322,7 +331,7 @@ def _walk(doc: dict[str, Any], dotted: str) -> Any:
 
 def _validate(doc: dict[str, Any]) -> None:
     """Raise InvalidInput when a stored value fails its key's validation or the document's shape is wrong."""
-    for dotted in ("deep", "plan", "plan.bands", "plan.sleeves", "taxes", "guardrails", "replies", "meta", "accounts"):
+    for dotted in ("deep", "picker", "picker.growth", "plan", "plan.bands", "plan.sleeves", "taxes", "guardrails", "replies", "meta", "accounts"):
         if not isinstance(_walk(doc, dotted), dict):
             raise InvalidInput(f"{dotted} must be an object")
     if not isinstance(doc["history"], list):

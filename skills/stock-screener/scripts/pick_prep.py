@@ -4,7 +4,9 @@
 The deep picker's mechanical first step: the run folder, a dated macro snapshot from FRED, the
 preset screens and the search budget, in one call.
 
-Makes ``DIR`` with ``context/``, ``screen/``, ``industries/`` and ``cards/``.
+Makes ``DIR`` with ``context/``, ``screen/``, ``industries/`` and ``cards/``, and writes
+``DIR/run.json`` = ``{"profile": <profile>}`` (overwritten on a rerun), which the later picker
+scripts read through ``growth.py``.
 
 Macro. ``context/macro.json`` and ``context/macro.md`` (the run date on the first line, then one
 dated line per series). Latest values: DGS10, DGS2, FEDFUNDS, BAMLC0A4CBBBEY, MORTGAGE30US,
@@ -13,9 +15,10 @@ the year-earlier month: CPIAUCSL, RSAFS, IPMAN (for the newest month that has a 
 earlier; a newer month without one is named on the line). A series FRED does not return is left out of
 both files, named in ``macro.missing`` and flagged ``MACRO_SERIES_UNAVAILABLE``.
 
-Screens. ``--profile value`` runs the ``value`` and ``quality`` presets, ``growth`` runs
-``garp``; both add ``smallcap``, the profile's first preset with ``--set min_revenue=1.5e8
---set min_market_cap=3e8``. Each is a ``screen.py`` subprocess whose whole output is written to
+Screens. ``--profile value`` runs the ``value`` and ``quality`` presets; ``growth`` runs the
+``growth`` preset with ``--set fcf_positive_latest=none --set max_share_growth=none`` (no cash
+or dilution test). Both add ``smallcap``, the profile's first preset (with its overrides) plus
+``--set min_revenue=1.5e8 --set min_market_cap=3e8``. Each is a ``screen.py`` subprocess whose whole output is written to
 ``screen/<name>.json``. They run strictly one after another, in that order (the macro fetch,
 which is FRED only, runs beside them). The first fills the on-disk EDGAR frames cache every
 preset reads, so the rest do not touch the SEC; and each prices up to 400 names from Yahoo,
@@ -30,7 +33,7 @@ Budget. ``budget.py DIR init --plan picker-N`` (N = ``--finalists``, default 3).
 that already has a budget keeps it (``BUDGET_KEPT``); a missing or failing ``budget.py`` is
 flagged ``BUDGET_UNAVAILABLE`` and ``budget`` is null.
 
-Output: {"run", "macro": {"as_of", "path", "lines": [the dated lines of macro.md],
+Output: {"run", "profile", "macro": {"as_of", "path", "lines": [the dated lines of macro.md],
 "missing": [series]}, "screens": {name: {"survivors": count or null, "top": [first 15 tickers],
 "flags": [codes], "path", "error"?}}, "budget": <budget.py output or null>,
 "flags": [{"code", "message"}]}.
@@ -53,10 +56,15 @@ sys.path.insert(0, str(_HERE.parents[2] / "lib"))
 from second_opinion import brokerage, edgar, fred, output  # noqa: E402
 from second_opinion.errors import ConfigError, InvalidInput  # noqa: E402
 
+sys.path.insert(0, str(_HERE))
+import growth  # noqa: E402
+
 SCREEN_SCRIPT = _HERE / "screen.py"
 BUDGET_SCRIPT = _HERE.parents[1] / "valuation" / "scripts" / "budget.py"
 FOLDERS = ("context", "screen", "industries", "cards")
-PROFILES = {"value": ("value", "quality"), "growth": ("garp",)}
+GROWTH_OFF = ("--set", "fcf_positive_latest=none", "--set", "max_share_growth=none")
+# profile -> ((preset, its --set overrides), ...)
+PROFILES = {"value": (("value", ()), ("quality", ())), "growth": (("growth", GROWTH_OFF),)}
 SMALLCAP = ("--set", "min_revenue=1.5e8", "--set", "min_market_cap=3e8")
 # series -> (unit shown after the value, unit shown before it)
 LATEST_SERIES = {
@@ -172,8 +180,9 @@ def macro_markdown(snapshot: dict) -> str:
 def screen_plan(profile: str, held: list[str]) -> list[tuple[str, list[str]]]:
     presets = PROFILES[profile]
     extra = ["--held", ",".join(held)] if held else []
-    plan = [(p, ["--preset", p, *extra]) for p in presets]
-    plan.append(("smallcap", ["--preset", presets[0], *SMALLCAP, *extra]))
+    plan = [(p, ["--preset", p, *over, *extra]) for p, over in presets]
+    first, first_over = presets[0]
+    plan.append(("smallcap", ["--preset", first, *first_over, *SMALLCAP, *extra]))
     return plan
 
 
@@ -227,6 +236,7 @@ def run(args: list[str], today: dt.date | None = None) -> dict:
     run_dir = Path(ns.run).expanduser().resolve()
     for sub in FOLDERS:
         (run_dir / sub).mkdir(parents=True, exist_ok=True)
+    growth.write_profile(run_dir, ns.profile)
     flags: list[dict] = []
     plan = screen_plan(ns.profile, held)
     screens: dict[str, dict] = {}
@@ -253,6 +263,7 @@ def run(args: list[str], today: dt.date | None = None) -> dict:
     budget = _budget(run_dir, f"picker-{ns.finalists}", flags)
     return {
         "run": str(run_dir),
+        "profile": ns.profile,
         "macro": {"as_of": snapshot["as_of"], "path": str(md), "lines": [s["line"][2:] for s in snapshot["series"]], "missing": snapshot["missing"]},
         "screens": {name: screens[name] for name, _ in plan},
         "budget": budget,

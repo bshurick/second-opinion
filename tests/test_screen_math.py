@@ -361,3 +361,53 @@ def test_no_corporate_action_flag_when_a_split_was_already_detected() -> None:
     split = company(shares=(100e6, 100e6, 50e6, 50e6), market={"market_cap": 2e9, "enterprise_value": 2e9, "shares": 100e6})
     flags = one(split)["flags"]
     assert "SPLIT_OR_LISTING_YEAR_SKIPPED" in flags and "CORPORATE_ACTION" not in flags
+
+
+# --- growth health: cash runway ---------------------------------------------------------------
+
+BAL = {"equity": 800e6, "debt": 0.0, "cash": 120e6, "assets": 1500e6, "current_assets": 600e6, "current_liabilities": 300e6}
+
+
+def _burner(cash=120e6, **kw):
+    """Latest free cash flow is -50e6 (ocf -40e6, capex 10e6)."""
+    bal = {k: v for k, v in BAL.items() if k != "cash"} if cash is None else {**BAL, "cash": cash}
+    return company(ocf=[-40e6] * 4, capex=[10e6] * 4, balance=bal, **kw)
+
+
+def test_runway_passes_with_positive_fcf() -> None:
+    c = one(company(), min_runway_years=2)
+    assert not c["failed"] and c["metrics"]["runway_years"] is None
+
+
+def test_runway_from_cash_over_burn() -> None:
+    c = one(_burner(120e6), min_runway_years=2)
+    assert c["metrics"]["runway_years"] == 2.4 and not c["failed"]
+    c = one(_burner(80e6), min_runway_years=2)
+    assert c["metrics"]["runway_years"] == 1.6 and "min_runway_years" in c["failed"]
+
+
+def test_runway_missing_cash_fails() -> None:
+    c = one(_burner(None), min_runway_years=2)
+    assert c["metrics"]["runway_years"] is None and "min_runway_years" in c["failed"]
+
+
+def test_health_growth_preset() -> None:
+    assert MATH.PRESETS["health_growth"] == {
+        "min_revenue": 100e6, "min_revenue_cagr": 0.10, "min_f_score": 3,
+        "max_net_debt_to_ebit": 4.0, "min_runway_years": 2.0, "rank_by": "f_score",
+    }
+
+
+def test_health_growth_keeps_cash_burner() -> None:
+    c = company(revenue=(150e6, 190e6, 240e6, 300e6), op=-0.10, ni=-0.10, ocf=-0.10, capex=0.02,
+                shares=(100e6, 108e6, 116.64e6, 125.97e6),
+                balance={"equity": 400e6, "debt": 0.0, "cash": 100e6, "assets": 600e6, "current_assets": 400e6, "current_liabilities": 100e6})
+    # latest fcf = -0.12 * 300e6 = -36e6; runway = 100/36 = 2.78 years
+    kept = screen([c], "health_growth")
+    assert [s["ticker"] for s in kept["survivors"]] == ["AAA"] and kept["survivors"][0]["metrics"]["f_score"] >= 3
+    assert screen([c], "health")["survivors"] == []
+
+
+def test_health_growth_drops_levered_loss_maker() -> None:
+    c = company(op=-0.05, ni=-0.08, ocf=0.0, capex=0.02, balance={**BAL, "debt": 500e6, "cash": 100e6})
+    assert "max_net_debt_to_ebit" in one(c, "health_growth")["failed"]

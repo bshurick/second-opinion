@@ -38,8 +38,8 @@ sys.path.insert(0, str(_HERE))
 from second_opinion import config, output, settings  # noqa: E402
 from second_opinion.errors import InvalidInput  # noqa: E402
 
-GROUPS = ("Depth", "Accounts", "Portfolio plan", "Taxes", "Guardrails", "Replies", "Lessons")
-_GROUP_OF = {"depth": "Depth", "deep": "Depth", "accounts": "Accounts", "plan": "Portfolio plan", "taxes": "Taxes",
+GROUPS = ("Depth", "Picker", "Accounts", "Portfolio plan", "Taxes", "Guardrails", "Replies", "Lessons")
+_GROUP_OF = {"depth": "Depth", "deep": "Depth", "picker": "Picker", "accounts": "Accounts", "plan": "Portfolio plan", "taxes": "Taxes",
              "guardrails": "Guardrails", "replies": "Replies", "lessons": "Lessons"}
 MARKETPLACE_UPDATE = ("claude plugin marketplace update second-opinion && "
                       "claude plugin update second-opinion@second-opinion, then restart Claude Code")

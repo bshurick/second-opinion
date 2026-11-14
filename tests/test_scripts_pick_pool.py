@@ -228,3 +228,36 @@ def test_health_rows_in_the_dotted_form_still_match(monkeypatch, capsys, tmp_pat
     rc, out = run_json(pool, ["--run", str(run)], capsys)
     assert rc == 0, out
     assert out["counts"]["health"] == {"passed": 1, "not_found": 1, "failed": 1} and out["dropped"] == [{"ticker": "BRK-B", "failed_tests": ["fcf_positive"]}]
+
+
+def test_growth_run_uses_health_growth(monkeypatch, capsys, tmp_path):
+    run = make_run(tmp_path, {"a": [industry("Software", "Technology", ["AAA"])]}, {})
+    (run / "run.json").write_text(json.dumps({"profile": "growth"}))
+    presets = []
+
+    def run_health(symbols, held, preset="health"):
+        presets.append(preset)
+        return 0, {"preset": preset, "checked": [{"ticker": s, "passed": True, "failed": [], "financial": False} for s in symbols],
+                   "not_found": [], "incomplete": [], "survivors": [], "flags": []}
+
+    monkeypatch.setattr(pool, "run_health", run_health)
+    rc, out = run_json(pool, ["--run", str(run)], capsys)
+    assert rc == 0, out
+    assert presets == ["health_growth"] and out["profile"] == "growth"
+    assert json.loads((run / "pool.json").read_text())["profile"] == "growth"
+
+
+def test_value_run_uses_health(monkeypatch, capsys, tmp_path):
+    run = make_run(tmp_path, {"a": [industry("Software", "Technology", ["AAA"])]}, {})
+    presets = []
+
+    def run_health(symbols, held, preset="health"):
+        presets.append(preset)
+        return 0, {"preset": preset, "checked": [{"ticker": s, "passed": True, "failed": [], "financial": False} for s in symbols],
+                   "not_found": [], "incomplete": [], "survivors": [], "flags": []}
+
+    monkeypatch.setattr(pool, "run_health", run_health)
+    rc, out = run_json(pool, ["--run", str(run)], capsys)
+    assert rc == 0, out
+    assert presets == ["health"] and out["profile"] == "value"
+    assert json.loads((run / "pool.json").read_text())["profile"] == "value"

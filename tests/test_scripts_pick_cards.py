@@ -283,3 +283,37 @@ def test_a_levered_name_starts_from_value_hint_3_and_is_flagged(monkeypatch, cap
     assert lev_flag["tickers"] == ["AAA"]
     data = json.loads((run / "cards" / "AAA.data.json").read_text())
     assert data["leverage"]["ok"] is False and data["value_hint"] == 3
+
+
+def test_growth_card_has_upside_hint(monkeypatch, capsys, tmp_path):
+    run = make_run(tmp_path, tickers=("AAA",))
+    (run / "run.json").write_text(json.dumps({"profile": "growth"}))
+    monkeypatch.setattr(cards.pack, "build", fake_build(irr={"AAA": 0.17}))
+    rc, out = run_json(cards, ["--run", str(run)], capsys)
+    assert rc == 0, out
+    data = json.loads((run / "cards" / "AAA.data.json").read_text())
+    assert "value_hint" not in data and data["upside_hint"] == 4  # bull 80 / price 50 = 1.6, base 62.5 above the price
+    assert "value_hint" not in out["cards"][0] and out["cards"][0]["upside_hint"] == 4
+
+
+def test_growth_upside_hint_is_null_on_negative_free_cash_flow(monkeypatch, capsys, tmp_path):
+    run = make_run(tmp_path, tickers=("AAA",))
+    (run / "run.json").write_text(json.dumps({"profile": "growth"}))
+    build = fake_build(irr={"AAA": 0.17})
+
+    def burning(symbol, out_dir, level="card", workers=4):
+        built = build(symbol, out_dir, level=level, workers=workers)
+        (Path(out_dir) / "edgar.json").write_text(json.dumps({"annual": [{"free_cash_flow": 5.0}, {"free_cash_flow": -5.0}]}))
+        return built
+
+    monkeypatch.setattr(cards.pack, "build", burning)
+    rc, out = run_json(cards, ["--run", str(run)], capsys)
+    assert rc == 0 and not out["failed"], out
+    assert out["cards"][0]["upside_hint"] is None
+
+
+def test_value_run_keeps_value_hint_and_no_upside_hint(monkeypatch, capsys, tmp_path):
+    run = make_run(tmp_path, tickers=("AAA",))
+    monkeypatch.setattr(cards.pack, "build", fake_build(irr={"AAA": 0.17}))
+    rc, out = run_json(cards, ["--run", str(run)], capsys)
+    assert "upside_hint" not in out["cards"][0] and "upside_hint" not in json.loads((run / "cards" / "AAA.data.json").read_text())

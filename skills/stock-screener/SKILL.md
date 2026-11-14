@@ -92,6 +92,10 @@ The saved depth decides the default; when it is deep, the session's depth rule s
   - A finalist passes when no gated deep-valuation scenario loses money over five years, dividends included (`floor`, default 0%), and the central (first) scenario earns at least the hurdle (`hurdle`, default 10%) a year at today's price.
   - The worst scenario judged is the severest single story. The one scenario marked `"stress": true` (several risks at once) is reported as `stress` and named in `reasons` when it loses money, but it is not gated.
   - `pass_flagged` means it passed while every gated scenario sits above the price, so a downside case may be missing.
+  - **Growth runs (`--profile growth`)** use the best-case rule instead:
+    - A finalist passes when its best scenario earns at least the yearly return that reaches `min_upside` times today's price over the horizon (2.0 by default: 14.9% a year at five years), and the central scenario is worth more than the price.
+    - The worst case is reported and is not a test, so a growth pick can lose money in its bear case.
+    - `hurdle` and `floor` do not apply, and `pick_assemble.py` rejects them. The multiple comes from `--min-upside`, else the setting `picker.growth.min_upside`.
 - **The balance-sheet check (`cards.py`).**
   - Each data file's `leverage` holds net debt today (Yahoo's total debt less cash, the latest quarter) against the latest annual EBITDA, and EBIT against interest.
   - `ok` is false over 2x net debt to EBITDA or under 6x interest coverage. A name that fails starts its `value_hint` at 3 at most, and is not a finalist.
@@ -115,7 +119,7 @@ The saved depth decides the default; when it is deep, the session's depth rule s
   | Path | Written by | Holds |
   |---|---|---|
   | `context/macro.md`, `context/macro.json` | `pick_prep.py` | The run date, then one dated line per FRED series: rates, unemployment, oil and gas prices, and the change over a year in CPI, retail sales and manufacturing output |
-  | `screen/<name>.json` | `pick_prep.py` | `screen.py`'s output per screen: `value`, `quality` and `smallcap` for the value profile, `garp` and `smallcap` for growth |
+  | `screen/<name>.json` | `pick_prep.py` | `screen.py`'s output per screen: `value`, `quality` and `smallcap` for the value profile, `growth` (without its cash and dilution tests) and `smallcap` for growth |
   | `budget.json` | `budget.py` | The search plan and what each stage has used |
   | `industries/group<N>.json`, `.md` | Industry scanners | The industry objects, and the notes behind them |
   | `screen/health.json` | `pool.py` | `screen.py`'s health check of the pool |
@@ -197,6 +201,10 @@ The saved depth decides the default; when it is deep, the session's depth rule s
   | `below_worst` | Below the worst scenario's value |
 
   A light pick uses its bear / base / bull values as worst / central / best, with no hurdle level.
+  A growth pick (`style` growth in `picks.py list`) has no `hurdle` level; `upside` takes its place.
+  - `upside`: above the price at which the best scenario no longer reaches the growth minimum (`picker.growth.min_upside`, default 2x). It ranks below `above_central`.
+  - `normal` is then between the worst scenario's value and that price.
+  - Name the style on a growth pick's line ("growth pick"): the picker admitted it on its best case, not its central one.
 - **What `check` measures (light).** Growth and margin now against the day of the pick, and the price against the fair values. `weakening` (growth down over 5 points or margin over 2) sets `deep_review`: a deep valuation is the next step.
 - **Before the 10-Q.** The earnings release (8-K Exhibit 99.1) comes out days to weeks before the 10-Q reaches EDGAR.
   - `check --release FILE` rolls the TTM forward one quarter with the release's GAAP income statement, and the result carries `PRESS_RELEASE_FIGURES`.
@@ -246,7 +254,7 @@ Run with the Bash tool. Scripts print JSON.
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/pool.py" --run DIR/pick-DATE [--held SYM,SYM] [--max 40]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/cards.py" --run DIR/pick-DATE [--symbols SYM,SYM] [--workers 3] [--force]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/valuation/scripts/deep_prep.py" SYMBOL --case DIR/deep-SYMBOL --plan valuation-picker [--industry FILE ...]
-"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/pick_assemble.py" --run DIR/pick-DATE --finalists SYM=URL[,SYM=URL...] [--cases DIR] [--hurdle R] [--floor R] [--notes FILE] [--as-of YYYY-MM-DD]
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/pick_assemble.py" --run DIR/pick-DATE --finalists SYM=URL[,SYM=URL...] [--cases DIR] [--hurdle R] [--floor R] [--min-upside R] [--notes FILE] [--as-of YYYY-MM-DD]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/gate.py" < DIR/pick-DATE/gate.json
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/render_pick.py" --in DIR/pick-DATE/pick.json --out DIR/pick-DATE/page.html
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/sentiment.py" SYM[,SYM...] [--days 20] [--news-days 30] [--news 10]
@@ -270,7 +278,7 @@ Run with the Bash tool. Scripts print JSON.
 | `cards.py` | Builds each pool name's research pack in `cards/<TICKER>/` and writes `cards/<TICKER>.data.json`. Prints `cards`, `failed`, `counts` and `flags`. A second run fetches only names without a pack from today; `--symbols SYM --force` rebuilds one. |
 | `deep_prep.py` | The valuation skill's prep script, in the form the picker uses for a finalist: the plan `valuation-picker` and one `--industry` flag per industry file. |
 | `pick_assemble.py` | The gate, `pick.json` and `page.html` from the run folder and each finalist's `deep-SYMBOL` folder. Prints `out`, `pick`, `gate` (counts), `picks`, `near_misses`, `save_commands` and `flags`. It writes all four files or none. |
-| `gate.py` | The deep picker's downside gate: `pass`, `pass_flagged` or `fail` per finalist, with reasons. `pick_assemble.py` runs it. |
+| `gate.py` | The deep picker's gate: `pass`, `pass_flagged` or `fail` per finalist, with reasons. The downside rule for a value run, the best-case rule for a growth run (`profile`, `min_upside`). `pick_assemble.py` runs it. |
 | `render_pick.py` | The deep picker's page: picks, near misses, funnel, industry map, candidates. `pick_assemble.py` runs it. |
 | `sentiment.py` | Per symbol, FINRA daily short-sale volume (not short interest), dated Yahoo headlines and `analysts` (Yahoo's price targets, rating counts, rating actions and estimates), with flags when a part is missing. `cards.py` runs it into each pack. |
 | `picks.py` | The saved picks: save a deep or light baseline, list, remove, `check` one against its baseline (`--record` keeps the result; `--release` uses an earnings release before the 10-Q), and `due`. |
@@ -335,7 +343,7 @@ The scripts do the fetching and the file assembly. Do not write `macro.md`, `poo
 1. Run `edgar.py` from the fundamental-research skill on any ticker. If it exits 4, stop, say the deep picker needs SEC EDGAR, and in standard depth offer the funnel.
 2. Gather what the run needs from the person:
    - When a brokerage is connected, take held symbols and sector weights from a portfolio-analysis read taken today (`brief.py --no-headlines` when there is none yet). The person buys outside these sessions, so the pick store and the watchlist are not a list of holdings.
-   - Note the profile (`value` or `growth`), and any theme or sector limit the person gives.
+   - Note the profile and any theme or sector limit the person gives. Growth words ("growth picks", "high upside", "2x", "the next NVDA", "moonshot") choose `growth`; anything else is `value`, the default. A multiple the person names ("3x") is the `--min-upside` of step 14.
    - The run has three finalists unless the person asks for four or five.
 3. Tell the person the run has started, and its size from Background: the subagent count and the planned searches of its plan.
    - Run the picker in a session that has not spent its searches on other work.
@@ -384,14 +392,14 @@ The scripts do the fetching and the file assembly. Do not write `macro.md`, `poo
     - `picks`: for every finalist, `{"SYM": {"thesis": "...", "bad_pick": "..."}}`, both from its deep valuation. Write one for each finalist: the gate has not run yet, and `pick_assemble.py` drops the entry of a finalist that fails it.
     - `missing_roles`: a list of the scanners, quick readers and valuation roles that failed
     - `notes`: a list of anything cut to stay within the plan, and the finalists left out
-    - `profile`: the profile from step 2
-14. Run `pick_assemble.py --run DIR/pick-DATE --finalists SYM=URL,SYM=URL`, pairing each finalist with its deep-valuation page link. Add `--hurdle R` or `--floor R` when the person changed them.
+    - `profile`: the profile from step 2. The run's own `run.json` decides the page's profile; this field is only read for a run folder that has none.
+14. Run `pick_assemble.py --run DIR/pick-DATE --finalists SYM=URL,SYM=URL`, pairing each finalist with its deep-valuation page link. In a value run add `--hurdle R` or `--floor R` when the person changed them; in a growth run add `--min-upside R` when the person gave a multiple (`--hurdle` and `--floor` exit 2 there).
     - It runs the gate, and writes `gate.json`, `gate.out.json`, `pick.json` and `page.html`.
     - If it exits 2, fix what the `error` names (a finalist without a finished valuation, or a card it rejects) and rerun. Nothing was written.
     - If `flags` is not empty, do what the Picker flags table says.
-15. Publish `DIR/pick-DATE/page.html` (the `out` path) with the Artifact tool: icon search, description "Deep picks as of DATE".
-16. Run each command in `save_commands` exactly as printed. Each saves one pick for re-checks.
-17. Reply in the deep-picker format. Take the picks from `picks`, the near misses from `near_misses`, and each one's returns and failed test from `gate.out.json` (`central.irr`, `worst.irr`, `reasons`).
+15. Publish `DIR/pick-DATE/page.html` (the `out` path) with the Artifact tool: icon search, description "Deep picks as of DATE" ("Deep growth picks as of DATE" for a growth run).
+16. Run each command in `save_commands` exactly as printed. Each saves one pick for re-checks and carries `--style growth` or `--style value`.
+17. Reply in the deep-picker format. Take the picks from `picks`, the near misses from `near_misses`, and each one's returns and failed test from `gate.out.json` (`central.irr`, `worst.irr`, `reasons`; for a growth run also `best_multiple` and `best.irr`).
 
 **The person asks how their picks are doing, or the session says a pick is due**
 
@@ -414,7 +422,8 @@ The scripts do the fetching and the file assembly. Do not write `macro.md`, `poo
 6. Run `picks.py check SYM --record`, adding `--release`, `--evidence` and `--segments` when step 3, 4 or 5 wrote them.
 7. If `rerun_deep` is true, say the deep valuation is due again and why, from `reasons`. Offer to run the valuation skill's Deep steps, which replace the baseline when saved. For a light pick with `deep_review`, offer a deep valuation the same way.
    - In deep depth a light pick gets no light re-check: `check` exits 2 with `DEEP_VALUATION_NEEDED`, and `list` and `due` mark it `needs_deep_valuation`. Say it needs a deep valuation and run the Deep steps under the session's depth rule (its size line and ask threshold).
-8. Reply with the re-check format below.
+8. A saved pick keeps its style. When a `save-deep` carries the flag `STYLE_KEPT`, say the pick stays in its old group and the new valuation was saved. Run `save-deep --style X --restyle` only when the person asks to move it between value and growth.
+9. Reply with the re-check format below.
 
 **The user asks whether a screen works, or you are about to lean on a ranking**
 
@@ -444,6 +453,7 @@ The scripts do the fetching and the file assembly. Do not write `macro.md`, `poo
 **For the deep picker:** the artifact link on its own line, then these parts in this order.
 
 1. A table of the picks: ticker, central and worst return a year at today's price, the stress test's return when there is one, a one-line thesis, and the deep-valuation link. Put the `pass_flagged` warning beside any flagged pick. When nothing passed, say so plainly.
+   - **Growth run:** the table's columns are ticker · best-case multiple and return a year (`best_multiple`, `best.irr`) · central value against the price · worst return a year, labelled not gated · thesis · link.
 2. The near misses, each with the test it failed, and the stress test's return when a finalist has one (`stress.irr` in `gate.out.json`), labelled not gated.
 3. One line on the industry picture: the favored and contrarian industries.
 4. **Flags**: missing roles, the searches line from `pick.json`'s `notes` and anything cut to stay within the plan, script flags the Picker flags table says to name, names the health check could not cover, and concentration against the person's portfolio. Or "None".

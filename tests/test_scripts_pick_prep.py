@@ -91,9 +91,37 @@ def test_growth_profile_and_finalists_plan(monkeypatch, capsys, tmp_path):
     _patch(monkeypatch, calls=calls)
     rc, out = run_json(prep, ["--run", str(tmp_path / "r"), "--profile", "growth", "--finalists", "5"], capsys)
     assert rc == 0
-    assert [c[0] for c in calls] == ["garp", "smallcap"]
-    assert calls[1][1][calls[1][1].index("--preset") + 1] == "garp"
+    assert [c[0] for c in calls] == ["growth", "smallcap"]
+    assert calls[1][1][calls[1][1].index("--preset") + 1] == "growth"
     assert out["budget"]["plan"] == "picker-5"
+
+
+GROWTH_OFF = ["--set", "fcf_positive_latest=none", "--set", "max_share_growth=none"]
+
+
+def test_growth_screen_plan():
+    assert prep.screen_plan("growth", []) == [
+        ("growth", ["--preset", "growth", *GROWTH_OFF]),
+        ("smallcap", ["--preset", "growth", *GROWTH_OFF, "--set", "min_revenue=1.5e8", "--set", "min_market_cap=3e8"]),
+    ]
+
+
+def test_value_screen_plan_unchanged():
+    assert prep.screen_plan("value", ["AAA"]) == [
+        ("value", ["--preset", "value", "--held", "AAA"]),
+        ("quality", ["--preset", "quality", "--held", "AAA"]),
+        ("smallcap", ["--preset", "value", "--set", "min_revenue=1.5e8", "--set", "min_market_cap=3e8", "--held", "AAA"]),
+    ]
+
+
+def test_pick_prep_writes_run_json(monkeypatch, capsys, tmp_path):
+    _patch(monkeypatch)
+    run = tmp_path / "r"
+    rc, out = run_json(prep, ["--run", str(run), "--profile", "growth"], capsys)
+    assert rc == 0 and out["profile"] == "growth"
+    assert json.loads((run / "run.json").read_text()) == {"profile": "growth"}
+    rc, out = run_json(prep, ["--run", str(run), "--profile", "value"], capsys)  # a rerun overwrites
+    assert json.loads((run / "run.json").read_text()) == {"profile": "value"}
 
 
 def test_failed_series_is_flagged_and_absent(monkeypatch, capsys, tmp_path):

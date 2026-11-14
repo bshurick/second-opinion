@@ -251,6 +251,11 @@ Attack the central scenario (the one the orchestrator names):
    - each row of the structural-threats table in `research/industry.md` that no scenario reflects
    - each threat marked as gone that could come back
    - the strongest argument against the story the research leans on
-8. The price. `implied` in `model.out.json` gives the margin or ROE shift that makes the first scenario worth today's price. Explain the gap: name the beliefs the market would have to hold to pay this price, and say whether any scenario covers them. When every scenario sits above the price, or every one below, treat that as a sign a scenario is missing.
+8. The best case. Attack the scenario better than the central one the way you attacked the central one:
+   - each `must_be_true` is backed by a dated record in the ledger or the filings
+   - its margins and reinvestment are consistent with the segment history and with comparable companies
+   - it is one story, not several good things stacked
+   A best case you cannot support is cut back, and the model is rerun.
+9. The price. `implied` in `model.out.json` gives the margin or ROE shift that makes the first scenario worth today's price. Explain the gap: name the beliefs the market would have to hold to pay this price, and say whether any scenario covers them. When every scenario sits above the price, or every one below, treat that as a sign a scenario is missing.
 
 List the concrete changes you propose, each with its reason and the file and field it touches. List anything you checked and found sound, so the orchestrator knows it was covered.

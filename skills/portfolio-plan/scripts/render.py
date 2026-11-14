@@ -9,7 +9,9 @@ edges marked and breaches coloured, a sortable target-vs-current allocation tabl
 a sortable table (account, reason, estimated gain and tax when the script priced the lots; lots on
 hover), the contribution or withdrawal routing when the plan moves cash, the post-trade allocation,
 tax-aware routing versus pro-rata, suggested bands when present, the flags, and the "a plan, not
-orders" note. Prints ``{"out": path, "title": ..., "trades": n, "breaches": n, "flags": n}``.
+orders" note. With ``picks_groups`` (growth picks held) the allocation card adds the PICKS line as two
+groups, value picks and growth picks (each labelled "growth pick, left to run"), each with its total,
+and says when the PICKS target shown is adjusted for growth picks; growth picks leave the frozen line. Prints ``{"out": path, "title": ..., "trades": n, "breaches": n, "flags": n}``.
 Exit 2 on a missing or malformed input, or a ``plan.py`` result with no global plan.
 
 The page is a fragment (no html/head/body tags): the Artifact host wraps it. Every number shown comes
@@ -50,7 +52,7 @@ BODY = """
   <div class="card" id="cash-card" hidden><h2 id="cash-title">Cash routing</h2><p class="sub" id="cash-line"></p><div id="cash-bars"></div></div>
   <div class="card" id="post-card"><h2>After trades</h2><p class="sub">How the portfolio would be split once every trade in the list is done.</p><div class="twrap" id="post"></div></div>
 </div>
-<section class="card"><h2 id="alloc-h">Allocation</h2><p class="sub" id="alloc-sub">Each key is a group of holdings (an asset class, or one symbol) with its own target weight. Drift is how far the group sits from that target today.</p><div class="twrap" id="allocation"></div></section>
+<section class="card"><h2 id="alloc-h">Allocation</h2><p class="sub" id="alloc-sub">Each key is a group of holdings (an asset class, or one symbol) with its own target weight. Drift is how far the group sits from that target today.</p><div class="twrap" id="allocation"></div><p class="note" id="picks-groups" hidden></p></section>
 <section class="card" id="trades-card"><h2>Trades</h2><p class="sub" id="trades-sub">Sells first, largest first. Hover a sell for the tax lots it would take.</p>
   <div class="controls"><input id="q" type="search" placeholder="Search symbol, account or reason" aria-label="Search trades"><span class="muted" id="count"></span></div>
   <div class="twrap" id="trades"></div>
@@ -126,8 +128,11 @@ SCRIPT = r"""
     root.appendChild(row);
   }
   if (!A.length) root.innerHTML = '<span class="muted">no allocation</span>';
-  const fz = D.frozen || [];
-  g('frozen').textContent = fz.length ? 'Frozen (not in any group, left untouched): ' + fz.map(f => `${f.symbol} ${F.money(f.value, 0)}`).join(' · ') : '';
+  // growth picks (picks_groups, only when one is held) are left to run: named as such, not as frozen holdings
+  const PG = D.picks_groups, growthSet = new Set(PG && PG.growth ? PG.growth.symbols || [] : []);
+  const fz = (D.frozen || []).filter(f => !growthSet.has(f.symbol)), fg = (D.frozen || []).filter(f => growthSet.has(f.symbol));
+  g('frozen').textContent = [fz.length ? 'Frozen (not in any group, left untouched): ' + fz.map(f => `${f.symbol} ${F.money(f.value, 0)}`).join(' · ') : '',
+    fg.length ? 'Growth picks, left to run (not traded): ' + fg.map(f => `${f.symbol} ${F.money(f.value, 0)}`).join(' · ') : ''].filter(Boolean).join(' ');
   // contribution / withdrawal routing
   const contrib = F.isNum(D.contribution) && D.contribution > 0, withdraw = F.isNum(D.withdrawal) && D.withdrawal > 0;
   if (contrib || withdraw || D.mode === 'contribution') { g('cash-card').hidden = false;
@@ -152,6 +157,14 @@ SCRIPT = r"""
     {key: 'delta_value', label: 'To target', fmt: v => F.moneyS(v)},
   ], A.map(a => ({...a, breach: !!a.breach})), {sortKey: 'value'});
   termHeads(g('allocation'), {target: FA.term('target weight', 'Target'), drift: FA.term('drift', 'Drift'), relative_drift: FA.term('relative drift', 'Relative'), breach: FA.term('rebalancing band', 'Breach')});
+  // the PICKS line as two groups, each with its total, and why its target differs from the saved one
+  if (PG && PG.value && PG.growth) { const pgEl = g('picks-groups'); pgEl.hidden = false;
+    const val = (PG.value.symbols || []).join(', ');
+    const fzv = Object.fromEntries((D.frozen || []).map(f => [f.symbol, f.value]));
+    const gro = (PG.growth.symbols || []).map(s => `${F.esc(s)}${F.isNum(fzv[s]) ? ' ' + F.money(fzv[s], 0) : ''} (growth pick, left to run)`).join(', ');
+    const adjusted = F.isNum(PG.line_weight) && F.isNum(PG.target_weight) && Math.abs(PG.line_weight - PG.target_weight) > 1e-6;
+    pgEl.innerHTML = `<b>PICKS in two groups.</b> Value picks ${F.money(PG.value.value, 0)}${val ? ` (${F.esc(val)})` : ''} · growth picks ${F.money(PG.growth.value, 0)}: ${gro} · together ${F.money(PG.value.value + PG.growth.value, 0)} against the saved PICKS target of ${pct1(PG.target_weight)} (${F.money(PG.target_value, 0)}).` +
+      (adjusted ? ` The PICKS target shown, ${pct1(PG.line_weight)}, is adjusted for growth picks: they are never sold, so value picks aim at the saved target less the growth picks, and sell only when they alone are over it.` : ''); }
   // trades table (tax columns only when the script priced the lots)
   const cols = [
     {key: 'symbol', label: 'Symbol', left: true, fmt: v => `<span style="border-left:3px solid ${colorOf(v)};padding-left:6px"><b>${F.esc(v)}</b></span>`},

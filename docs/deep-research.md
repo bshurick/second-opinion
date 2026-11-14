@@ -16,9 +16,19 @@ Six modes go beyond the scripted answers. Research subagents work through primar
 ## What to know
 
 - **The numbers.** Scripts do the math, and each claim or rule carries a source and date. Scenarios and assumptions are the model's judgment, so read the sources behind them.
-- **The deep picker's test.** A finalist becomes a pick only if no scenario loses money over five years, dividends included, and the central scenario earns at least 10% a year at today's price. Passing means it clears the test on those scenarios, not that the return will happen.
+- **The deep picker's test.** In value mode a finalist becomes a pick only if no scenario loses money over five years, dividends included, and the central scenario earns at least 10% a year at today's price. Passing means it clears the test on those scenarios, not that the return will happen.
 - **No calls.** The portfolio, property and tax modes make no buy, sell or plan calls. The property review is not an appraisal or inspection, and the tax comparison is not a return or tax advice.
 - **Your details.** Holding values, income, account names and your name stay out of every search.
+
+## Growth mode
+
+The deep picker has a second mode for growth stocks. Ask for *"growth picks"* or companies that could double, and the picker runs in growth mode; any other request runs the value mode above.
+
+- **Where candidates come from.** The growth screen drops the cash and dilution tests. Each industry's prospects are tested on revenue trajectory (up year over year in 6 of the last 8 quarters and 15% over twelve months), whether the company is funded, reinvestment (R&D plus capex) and scale (gross margin). The health check fails a company only when it burns cash and holds under two years of it.
+- **The quick-read score.** Growth quick reads score quality, direction, tailwind and upside, where upside is how far the best case could carry the price. It replaces the value score.
+- **The gate.** A finalist becomes a pick when its best case reaches 2x today's price over the horizon (about 15% a year over five years) and the central scenario is worth more than the price. The worst case is shown on the page and is not a test, so a growth pick can lose money in its bear case. Change the multiple with `picker.growth.min_upside`, see [Configuration](configuration.md#picker).
+- **The best case.** Every deep valuation, in either mode, carries a scenario better than the central one with its conditions tied to dated sources. Without one, `deep_run.py` raises `NO_BEST_CASE` and the valuation adds one before its research threads, and the Red team attacks it.
+- **Kept apart.** Saved growth picks carry the style `growth`. The portfolio plan sends money to them only when you ask and never sells them. A re-check places the price against the upside price, where the best case stops reaching the multiple.
 
 ## Re-checks
 

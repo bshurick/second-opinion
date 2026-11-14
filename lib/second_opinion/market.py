@@ -664,13 +664,17 @@ def option_chain(symbol: str, expiry: str | None = None) -> dict[str, Any]:
 
 
 def _search_news(symbol: str, count: int) -> list[Any]:
-    """Yahoo's search endpoint's stories for ``symbol``, less those tagged for other tickers only."""
+    """Yahoo's search endpoint's stories for ``symbol``, less those not tagged with it.
+
+    The search matches the ticker as a word, so "DECK" also returns stories about roof decks and
+    Upper Deck cards, which Yahoo tags with an empty ``relatedTickers`` list. A story is kept when
+    its list names the symbol, or when it carries no ``relatedTickers`` field at all."""
     sym = symbol.upper()
     rows = getattr(_yf().Search(sym, news_count=count), "news", None) or []
     out = []
     for item in rows:
         related = item.get("relatedTickers") if isinstance(item, dict) else None
-        if isinstance(related, list) and related and sym not in {str(r).upper() for r in related}:
+        if isinstance(related, list) and sym not in {str(r).upper() for r in related}:
             continue
         out.append(item)
     return out
@@ -685,7 +689,8 @@ def recent_news(symbol: str, days: int = 7, limit: int = 3) -> list[dict[str, An
 
     Source: ``Ticker.news``; when that raises or returns nothing (yfinance 1.7's endpoint answers
     HTTP 404 for every symbol), Yahoo's search endpoint (``Search(symbol).news``), whose stories are
-    kept when tagged with the symbol or not tagged at all; its items carry no summary. Raises
+    kept when tagged with the symbol or carrying no ticker field at all (an empty ticker list is a
+    word match on the symbol and is dropped); its items carry no summary. Raises
     ``Ticker.news``'s error only when the search fails too.
     """
     try:

@@ -146,3 +146,96 @@ def test_dotted_class_is_looked_up_with_a_dash(monkeypatch, capsys):
     p = out["prospects"][0]
     assert p["ticker"] == "BRK.B" and p["tests_passed"] == 4 and "1 analyst;" not in p["why"] and p["why"].endswith("1 analyst")
     assert p["flags"] == ["BANK_REVENUE_PROXY"]
+
+
+def _growth(ups=6, ttm=0.15, annual=None):
+    """A report for the growth tests: ``annual`` rows (oldest first) replace the default four."""
+    r = _edgar(ups=ups)
+    r["ttm"]["revenue_ttm_yoy"] = ttm
+    if annual is not None:
+        r["annual"] = annual
+    return r
+
+
+def _rows(*overrides, revenue=(500e6, 600e6, 700e6, 800e6)):
+    return [{"fiscal_year": 2022 + i, "revenue": revenue[i], **o} for i, o in enumerate(overrides)]
+
+
+def _growth_test(report, name):
+    return prospects.prospect("AAA", report, _info(), 0.0, profile="growth")["tests"][name]
+
+
+def test_growth_trajectory():
+    assert _growth_test(_growth(ups=6, ttm=0.15), "trajectory")["pass"] is True
+    assert _growth_test(_growth(ups=5, ttm=0.30), "trajectory")["pass"] is False
+    assert _growth_test(_growth(ups=7, ttm=0.12), "trajectory")["pass"] is False
+    t = _growth_test(_growth(ups=6, ttm=0.15), "trajectory")
+    assert t["figures"] == {"quarters_up_of_8": 6, "ttm_revenue_growth": 0.15}
+    r = _growth(ups=6)
+    r["ttm"].pop("revenue_ttm_yoy")
+    assert _growth_test(r, "trajectory")["pass"] is None
+
+
+def test_growth_funded():
+    def funded(**last):
+        base = {"free_cash_flow": 10e6, "operating_income": 50e6}
+        return _growth_test(_growth(annual=_rows({}, {}, {}, {**base, **last})), "funded")
+
+    assert funded(cash=20e6)["pass"] is True
+    t = funded(free_cash_flow=-40e6, cash=60e6, short_term_investments=40e6, operating_income=-30e6)
+    assert t["pass"] is True and t["figures"]["runway_years"] == 2.5
+    assert funded(free_cash_flow=-60e6, cash=60e6, short_term_investments=40e6)["pass"] is False
+    assert funded(long_term_debt=250e6, cash=0)["pass"] is False  # net debt 5x operating income
+    assert funded(long_term_debt=200e6, cash=0)["pass"] is True  # exactly 4x
+    assert funded(long_term_debt=100e6, operating_income=-5e6, cash=10e6)["pass"] is False
+    assert funded(long_term_debt=100e6, operating_income=-5e6, cash=150e6)["pass"] is True  # net cash
+    assert funded(free_cash_flow=None)["pass"] is None
+
+
+def test_growth_reinvestment():
+    def reinv(*rows, revenue=(500e6, 600e6, 700e6, 800e6)):
+        return _growth_test(_growth(annual=_rows(*rows, revenue=revenue)), "reinvestment")
+
+    rich = reinv({}, {}, {}, {"research_and_development": 66e6, "capex": 30e6})  # 12% of 800M
+    assert rich["pass"] is True and rich["figures"]["reinvestment_to_revenue"] == 0.12
+    # 6% of revenue (48M of 800M); revenue is up 60% over the three years
+    assert reinv({"research_and_development": 20e6, "capex": 5e6}, {}, {}, {"research_and_development": 30e6, "capex": 18e6})["pass"] is True  # spending +92%
+    assert reinv({"research_and_development": 40e6, "capex": 20e6}, {}, {}, {"research_and_development": 30e6, "capex": 18e6})["pass"] is False  # spending -20%
+    assert reinv({}, {}, {}, {"capex": 20e6})["pass"] is None  # 2.5% and no earlier figures
+    assert reinv({}, {}, {}, {})["pass"] is None
+    assert reinv({}, {}, {}, {})["figures"]["reinvestment_to_revenue"] is None
+
+
+def test_growth_scale():
+    def scale(*margins):
+        rows = [{"gross_profit": None if m is None else m * 100e6} for m in margins]
+        annual = [{"fiscal_year": 2021 + i, "revenue": 100e6, **row} for i, row in enumerate(rows)]
+        return _growth_test(_growth(annual=annual), "scale")
+
+    assert scale(0.40, 0.41, 0.42, 0.45)["pass"] is True
+    assert scale(0.25, 0.27, 0.28, 0.30)["pass"] is True
+    assert scale(0.30, 0.30, 0.30, 0.30)["pass"] is False
+    assert scale(0.25, 0.28, 0.27, 0.30)["pass"] is False
+    assert scale(None, None, None, None)["pass"] is None
+    assert scale(0.30, 0.31)["pass"] is None  # too few years to call it falling or rising
+    assert scale(0.30, 0.31)["figures"]["gross_margin"] == 0.31
+
+
+def test_growth_rows_keep_the_row_shape():
+    row = prospects.prospect("AAA", _growth(), _info(), 0.0, profile="growth")
+    assert set(row["tests"]) == {"trajectory", "funded", "reinvestment", "scale"}
+    assert {"ticker", "name", "market_cap", "tests_passed", "size_ok", "why", "flags"} <= set(row)
+    assert row["tests_passed"] == sum(1 for t in row["tests"].values() if t["pass"] is True)
+
+
+def test_value_profile_rows_unchanged():
+    row = prospects.prospect("AAA", _edgar(), _info(), 0.0)
+    assert set(row["tests"]) == {"trajectory", "cash", "price", "overlooked"}
+    assert row == prospects.prospect("AAA", _edgar(), _info(), 0.0, profile="value")
+
+
+def test_profile_flag_reaches_the_rows(monkeypatch, capsys):
+    _patch(monkeypatch, {"AAA": _growth()})
+    rc, out = run_json(prospects, ["AAA", "--profile", "growth"], capsys)
+    assert rc == 0 and set(out["prospects"][0]["tests"]) == {"trajectory", "funded", "reinvestment", "scale"}
+    assert run_json(prospects, ["AAA", "--profile", "bogus"], capsys)[0] == 2

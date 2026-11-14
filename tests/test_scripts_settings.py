@@ -6,7 +6,7 @@ import pytest
 
 from scripts_util import load_script, run_json
 
-GROUPS = ["Depth", "Accounts", "Portfolio plan", "Taxes", "Guardrails", "Replies", "Lessons"]
+GROUPS = ["Depth", "Picker", "Accounts", "Portfolio plan", "Taxes", "Guardrails", "Replies", "Lessons"]
 
 
 @pytest.fixture

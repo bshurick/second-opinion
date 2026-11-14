@@ -1897,3 +1897,273 @@ def test_deep_mode_new_pick_refuses_a_light_pick() -> None:
         load_script(SL).run_sleeves({**p, "depth": "deep"})
     out = load_script(SL).run_sleeves(p)                # standard depth: opens as before
     assert any(t["symbol"] == "NEW" and t["side"] == "BUY" for t in out["trades"])
+
+
+# --- growth picks: held apart, money only by request -----------------------------------------------
+
+def _gr(base: dict | None = None) -> dict:
+    return {**(base or _FAIR), "style": "growth"}
+
+
+def _split(out: dict, sym: str) -> dict:
+    return next(r for r in out["splits"] if r["symbol"] == sym)
+
+
+def test_add_defaults_to_value_picks() -> None:
+    out = load_script(SL).run_sleeves(_rb_params({"A": 2000, "B": 2000, "G": 2000}, {"A": _FAIR, "B": _FAIR, "G": _gr()},
+                                                 cash=3000, amount=3000))
+    assert _rb_trades(out) == pytest.approx({"A": 1500.0, "B": 1500.0}, abs=0.02)
+    assert "GROWTH_HELD" in _split(out, "G")["flags"] and _split(out, "G")["style"] == "growth"
+    assert _split(out, "A")["style"] == "value"
+    assert any(f["code"] == "GROWTH_HELD" and f["message"].startswith("G ") for f in out["flags"])
+    assert out["settings_used"]["group"] == "value"
+
+
+def test_add_growth_group_equal() -> None:
+    picks = {"V": _FAIR, "G1": _gr(_GOOD), "G2": _gr(_FAIR)}
+    out = load_script(SL).run_sleeves(_rb_params({"V": 3000, "G1": 1000, "G2": 5000}, picks, cash=3000, amount=3000, group="growth"))
+    assert _rb_trades(out) == pytest.approx({"G1": 1500.0, "G2": 1500.0}, abs=0.02)   # same dollars each, saved valuation ignored
+    used = out["settings_used"]
+    assert (used["group"], used["weighting"], used["allocation"]) == ("growth", "equal", "split")
+    assert "GROWTH_HELD" not in {f["code"] for f in out["flags"]}
+
+
+def test_add_growth_group_weighting_override() -> None:
+    picks = {"V": _FAIR, "G1": _gr(), "G2": _gr()}
+    p = _rb_params({"V": 3000, "G1": 1000, "G2": 5000}, picks, cash=4000, amount=4000, group="growth",
+                   weighting="market_cap", market_caps={"V": 1e11, "G1": 3e11, "G2": 1e11})
+    out = load_script(SL).run_sleeves(p)              # fill: targets 7500 and 2500, so G1 takes it all
+    assert _rb_trades(out) == pytest.approx({"G1": 4000.0}, abs=0.02)
+    assert out["settings_used"]["allocation"] == "fill"
+    out = load_script(SL).run_sleeves({**p, "allocation": "split"})
+    assert _rb_trades(out) == pytest.approx({"G1": 3000.0, "G2": 1000.0}, abs=0.02)
+
+
+def _mix_params(**over) -> dict:
+    picks = {"V1": _FAIR, "V2": _FAIR, "G1": _gr(), "G2": _gr()}
+    return _rb_params({"V1": 2000, "V2": 4000, "G1": 1000, "G2": 5000}, picks, cash=5000,
+                      settings={**_RB_SETTINGS, "weighting": "equal"}, **over)
+
+
+def test_add_mix() -> None:
+    out = load_script(SL).run_sleeves(_mix_params(amount=5000, group_amounts={"value": 3000, "growth": 2000}))
+    # value fills toward 4500 each by the saved rule; growth splits 2000 equally
+    assert _rb_trades(out) == pytest.approx({"V1": 2500.0, "V2": 500.0, "G1": 1000.0, "G2": 1000.0}, abs=0.02)
+    assert out["settings_used"]["group"] == "mix" and out["unallocated_amount"] == 0.0
+    assert "GROWTH_HELD" not in {f["code"] for f in out["flags"]}
+
+
+def test_add_mix_sum_mismatch() -> None:
+    sl = load_script(SL)
+    with pytest.raises(ValueError, match=r"5000\.00.*4000\.00|4000\.00.*5000\.00"):
+        sl.run_sleeves(_mix_params(amount=5000, group_amounts={"value": 3000, "growth": 1000}))
+    with pytest.raises(ValueError, match="group"):
+        sl.run_sleeves(_mix_params(amount=5000, group="growth", group_amounts={"value": 3000, "growth": 2000}))
+    with pytest.raises(ValueError, match="group_amounts"):
+        sl.run_sleeves(_mix_params(mode="rebalance", group_amounts={"value": 3000, "growth": 2000}))
+    with pytest.raises(ValueError, match="group must be value or growth"):
+        sl.run_sleeves(_mix_params(amount=5000, group="momentum"))
+
+
+def test_add_value_only_growth_held_unallocated() -> None:
+    out = load_script(SL).run_sleeves(_rb_params({"G1": 2000, "G2": 3000}, {"G1": _gr(), "G2": _gr()}, cash=2000, amount=2000))
+    assert out["trades"] == [] and out["unallocated_amount"] == 2000.0
+    assert "GROWTH_BY_REQUEST_ONLY" in {f["code"] for f in out["flags"]}
+
+
+def test_add_growth_none_held() -> None:
+    out = load_script(SL).run_sleeves(_rb_params({"V1": 2000}, {"V1": _FAIR}, cash=2000, amount=2000, group="growth"))
+    assert out["trades"] == [] and out["unallocated_amount"] == 2000.0
+    assert "NO_GROWTH_PICKS" in {f["code"] for f in out["flags"]}
+
+
+def test_growth_pick_cap_limits_buys() -> None:
+    # total 100000: core 90000, G 4900 (4.9%), V 2000, cash 3100; cap 5000
+    out = load_script(SL).run_sleeves(_rb_params({"G": 4900, "V": 2000}, {"G": _gr(), "V": _FAIR}, cash=3100, core=90000,
+                                                 amount=3000, group="growth"))
+    assert _rb_trades(out) == pytest.approx({"G": 100.0}, abs=0.02)
+    assert out["unallocated_amount"] == pytest.approx(2900.0, abs=0.01)
+    assert "PICK_CAP" in _split(out, "G")["flags"]
+
+
+def test_rebalance_never_trims_growth() -> None:
+    # total 100000: G 9000 (9%, above the 5% cap), A 1000, B 7000
+    picks = {"G": _gr(), "A": _FAIR, "B": _FAIR}
+    out = _rb_mode({"G": 9000, "A": 1000, "B": 7000}, picks, core=83000)
+    assert _rb_trades(out) == pytest.approx({"A": 3000.0, "B": -3000.0}, abs=0.02)
+    assert {"GROWTH_HELD", "GROWTH_OVER_CAP"} <= set(_split(out, "G")["flags"])
+    assert [f["code"] for f in out["flags"]].count("GROWTH_OVER_CAP") == 1
+    assert out["settings_used"]["group"] == "value"
+    with pytest.raises(ValueError, match="value picks only"):
+        _rb_mode({"G": 9000, "A": 1000, "B": 7000}, picks, core=83000, group="growth")
+
+
+def test_growth_over_cap_flag_in_mix() -> None:
+    out = load_script(SL).run_sleeves(_rb_params({"G": 9000, "A": 1000}, {"G": _gr(), "A": _FAIR}, core=90000, mode="mix"))
+    assert [f["code"] for f in out["flags"]].count("GROWTH_OVER_CAP") == 1 and out["trades"] == []
+
+
+def test_new_growth_pick_with_amount() -> None:
+    sat, picks = {"V1": 2000, "V2": 2000, "G1": 2000}, {"V1": _FAIR, "V2": _FAIR, "G1": _gr()}
+    new = {"symbol": "G3", "price": 50.0, "style": "growth", "amount": 4000}
+    out = load_script(SL).run_sleeves(_rb_params(sat, picks, cash=4000, mode="new-pick", weighting="equal", new_pick=new))
+    assert _rb_trades(out) == pytest.approx({"G3": 4000.0}, abs=0.02) and out["new_pick"]["allocated"] == 4000.0
+    assert out["settings_used"]["group"] == "growth"
+    # total 70000, cap 3500: the rest stays as cash, nothing spreads to the other picks
+    out = load_script(SL).run_sleeves(_rb_params(sat, picks, cash=4000, core=60000, mode="new-pick", weighting="equal", new_pick=new))
+    assert _rb_trades(out) == pytest.approx({"G3": 3500.0}, abs=0.02)
+    assert out["unallocated_amount"] == pytest.approx(500.0, abs=0.01)
+
+
+def test_new_growth_pick_no_amount() -> None:
+    new = {"symbol": "G3", "price": 50.0, "style": "growth"}
+    picks = {"V1": _FAIR, "G1": _gr(), "G2": _gr()}
+    out = load_script(SL).run_sleeves(_rb_params({"V1": 1000, "G1": 2000, "G2": 6000}, picks, cash=5000, mode="new-pick", new_pick=new))
+    assert out["new_pick"]["needed"] == 4000.0
+    picks = {"V1": _FAIR, "V2": _FAIR, "V3": _FAIR}
+    out = load_script(SL).run_sleeves(_rb_params({"V1": 1000, "V2": 3000, "V3": 8000}, picks, cash=5000, mode="new-pick", new_pick=new))
+    assert out["new_pick"]["needed"] == 3000.0
+
+
+def test_new_value_pick_sized_by_value_picks() -> None:
+    new = {"symbol": "NEW", "price": 25.0}
+    picks = {"V1": _FAIR, "V2": _FAIR, "G1": _gr(), "G2": _gr()}
+    sat = {"V1": 1000, "V2": 3000, "G1": 8000, "G2": 9000}      # value median 2000; all picks 5500
+    out = load_script(SL).run_sleeves(_rb_params(sat, picks, cash=5000, mode="new-pick", new_pick=new))
+    assert out["new_pick"]["needed"] == 2000.0
+    picks = {"G1": _gr(), "G2": _gr()}                            # no value pick held: all picks
+    out = load_script(SL).run_sleeves(_rb_params({"G1": 1000, "G2": 3000}, picks, cash=5000, mode="new-pick", new_pick=new))
+    assert out["new_pick"]["needed"] == 2000.0
+
+
+def test_growth_over_cap_flag_in_add_and_new_pick() -> None:
+    sat, picks = {"G": 9000, "A": 1000, "B": 1000}, {"G": _gr(), "A": _FAIR, "B": _FAIR}
+    for over in ({"mode": "add", "amount": 1000},
+                 {"mode": "new-pick", "new_pick": {"symbol": "NEW", "price": 25.0, "amount": 1000}}):
+        out = load_script(SL).run_sleeves(_rb_params(sat, picks, cash=1000, core=89000, weighting="equal", **over))
+        assert [f["code"] for f in out["flags"]].count("GROWTH_OVER_CAP") == 1, over
+        assert "GROWTH_OVER_CAP" in _split(out, "G")["flags"] and not _rb_trades(out).get("G"), over
+
+
+def test_new_value_pick_unchanged() -> None:
+    sat, picks = {"V1": 2000, "V2": 2000, "G1": 2000}, {"V1": _FAIR, "V2": _FAIR, "G1": _gr()}
+    out = load_script(SL).run_sleeves(_rb_params(sat, picks, cash=2400, mode="new-pick", weighting="equal",
+                                                 new_pick={"symbol": "NEW", "price": 25.0, "amount": 2400}))
+    third = 6400 / 3                                                   # V1 2000, V2 2000, NEW 0, plus 2400
+    assert _rb_trades(out) == pytest.approx({"NEW": third, "V1": third - 2000, "V2": third - 2000}, abs=0.02)
+    assert "GROWTH_HELD" in _split(out, "G1")["flags"]
+
+
+def test_mix_groups() -> None:
+    out = load_script(SL).run_sleeves(_rb_params({"V1": 2000, "G1": 1000, "G2": 5000}, {"V1": _FAIR, "G1": _gr(), "G2": _gr()},
+                                                 mode="mix"))
+    total = 308000.0
+    assert out["mix"]["groups"] == {"value": {"value": 2000.0, "weight": round(2000 / total, 4), "count": 1},
+                                    "growth": {"value": 6000.0, "weight": round(6000 / total, 4), "count": 2}}
+    with pytest.raises(ValueError, match="style must be value or growth"):
+        load_script(SL).run_sleeves(_rb_params({"V1": 2000}, {"V1": {**_FAIR, "style": "momentum"}}, mode="mix"))
+
+
+def test_rebalance_with_fewer_than_two_value_picks_holds_without_error() -> None:
+    # saved weighting valuation; all picks growth (or one value pick): a no-trade plan, not bad input
+    for sat, picks in (({"G1": 2000, "G2": 9000}, {"G1": _gr(), "G2": _gr()}),
+                       ({"V": 2000, "G1": 9000}, {"V": {**_FAIR, "recheck_due": True}, "G1": _gr()})):
+        out = load_script(SL).run_sleeves(_rb_params(sat, picks, mode="rebalance"))
+        assert out["trades"] == [] and out["settings_used"]["weighting"] == "valuation"
+        assert all("GROWTH_HELD" in _split(out, s)["flags"] for s in sat if s.startswith("G"))
+        assert [f["code"] for f in out["flags"]].count("GROWTH_HELD") == sum(s.startswith("G") for s in sat)
+
+
+# --- sleeve_run.py: style, --group and --mix ----------------------------------------------------
+
+def _captured(monkeypatch, mod) -> list[dict]:
+    seen: list[dict] = []
+    real = mod.sleeves.run_sleeves
+    monkeypatch.setattr(mod.sleeves, "run_sleeves", lambda params: (seen.append(params), real(params))[1])
+    return seen
+
+
+def _set_style(tmp_path, sym: str, style: str) -> None:
+    path = tmp_path / "picks.json"
+    book = json.loads(path.read_text())
+    for p in book["picks"]:
+        if p["symbol"] == sym:
+            p["style"] = style
+    path.write_text(json.dumps(book))
+
+
+def test_sleeve_run_reads_style(cs_sdk, tmp_path, monkeypatch) -> None:
+    _set_style(tmp_path, "BBB", "growth")
+    mod = load_script(R)
+    seen = _captured(monkeypatch, mod)
+    mod.run(["mix", "--today", "2026-11-10"])
+    assert seen[0]["picks"]["BBB"]["style"] == "growth" and seen[0]["picks"]["AAA"]["style"] == "value"
+
+
+def test_sleeve_run_new_pick_takes_the_saved_style(cs_sdk, tmp_path, monkeypatch) -> None:
+    book = json.loads((tmp_path / "picks.json").read_text())
+    book["picks"].append({"symbol": "ZZZ", "kind": "deep", "style": "growth", "baseline": _deep_baseline(tmp_path, "ZZZ", 40.0),
+                          "baseline_as_of": "2026-10-01", "next_earnings": "2027-01-30", "checks": []})
+    (tmp_path / "picks.json").write_text(json.dumps(book))
+    mod = load_script(R)
+    seen = _captured(monkeypatch, mod)
+    out = mod.run(["new-pick", "ZZZ", "--amount", "600", "--today", "2026-11-10"])
+    assert seen[0]["new_pick"]["style"] == "growth" and out["settings_used"]["group"] == "growth"
+    seen.clear()
+    mod.run(["add", "500", "--today", "2026-11-10"])
+    assert "style" not in (seen[0].get("new_pick") or {})
+
+
+def test_growth_pick_with_unreadable_baseline_keeps_its_style(cs_sdk, tmp_path) -> None:
+    book = json.loads((tmp_path / "picks.json").read_text())
+    for p in book["picks"]:
+        p["style"], p["baseline"] = "growth", "picks/none.json"
+    (tmp_path / "picks.json").write_text(json.dumps(book))
+    out = load_script(R).run(["mix", "--today", "2026-11-10"])
+    assert out["mix"]["groups"]["growth"]["count"] == 2 and out["mix"]["groups"]["value"]["count"] == 0
+    codes = {f["code"] for f in out["flags"]}
+    assert "GROWTH_OVER_CAP" in codes                    # AAA 1000 of 17500 is above the 5% cap
+    out = load_script(R).run(["add", "500", "--group", "growth", "--today", "2026-11-10"])
+    codes = {f["code"] for f in out["flags"]}
+    assert out["trades"] == [] and "NO_GROWTH_PICKS" not in codes and "PICK_BASELINE_MISSING" in codes
+    assert all("PICK_BASELINE_MISSING" in _split(out, s)["flags"] for s in ("AAA", "BBB"))
+    assert not {"HELD_FOR_RECHECK", "RECHECK_DUE"} & codes
+
+
+def test_mix_percent(cs_sdk, tmp_path, monkeypatch) -> None:
+    _set_style(tmp_path, "BBB", "growth")
+    monkeypatch.setitem(CS_BALANCES, "acc-1", [{"currency": {"code": "USD"}, "cash": 6000.0, "buying_power": 6000.0}])
+    mod = load_script(R)
+    seen = _captured(monkeypatch, mod)
+    mod.run(["add", "5000", "--mix", "70%,30%", "--today", "2026-11-10"])
+    assert seen[0]["group_amounts"] == {"value": 3500.0, "growth": 1500.0} and "group" not in seen[0]
+    seen.clear()
+    mod.run(["add", "500", "--mix", "300,200", "--today", "2026-11-10"])
+    assert seen[0]["group_amounts"] == {"value": 300.0, "growth": 200.0}
+    seen.clear()
+    mod.run(["add", "500", "--group", "growth", "--today", "2026-11-10"])
+    assert seen[0]["group"] == "growth" and "group_amounts" not in seen[0]
+
+
+def test_mix_bad_sums(cs_sdk, capsys) -> None:
+    rc, out = run_json(load_script(R), ["add", "5000", "--mix", "3000,1000"], capsys)
+    assert rc == 2 and "4000" in out["error"] and "5000" in out["error"]
+    rc, out = run_json(load_script(R), ["add", "5000", "--mix", "60%,30%"], capsys)
+    assert rc == 2 and "90%" in out["error"]
+    rc, out = run_json(load_script(R), ["add", "5000", "--mix", "60%,2000"], capsys)
+    assert rc == 2 and "--mix" in out["error"]
+    rc, out = run_json(load_script(R), ["add", "5000", "--mix", "5000"], capsys)
+    assert rc == 2 and "--mix" in out["error"]
+
+
+def test_mix_and_group_exclusive(cs_sdk, capsys) -> None:
+    rc, out = run_json(load_script(R), ["add", "5000", "--mix", "70%,30%", "--group", "value"], capsys)
+    assert rc == 2 and "--group" in out["error"] and "--mix" in out["error"]
+
+
+def test_group_and_mix_only_with_add(cs_sdk, capsys) -> None:
+    for args in (["mix", "--group", "value"], ["rebalance", "--mix", "50%,50%"], ["new-pick", "ZZZ", "--group", "growth"]):
+        rc, out = run_json(load_script(R), args, capsys)
+        assert rc == 2 and "add" in out["error"], args
+    rc, out = run_json(load_script(R), ["add", "500", "--group", "momentum"], capsys)
+    assert rc == 2

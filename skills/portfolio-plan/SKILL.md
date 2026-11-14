@@ -74,6 +74,20 @@ One portfolio plan over the connected accounts. The global plan rebalances class
   - A pick is trimmed only when it is above target by at least max(25% of its target, $250). Any pick below target can receive proceeds, furthest below first (`IN_BAND` means it is inside its band and did not trade).
   - Each account trims no further than the picks in that account can take, and proceeds buy picks in the same account only. With whole shares, under one share's worth can remain (`UNALLOCATED`).
 - **The 5% cap** limits a pick's target under every strategy except `size`.
+- **Growth picks.** A saved pick carries a style, value (the default) or growth. Both count toward the sleeve's size; the style decides who receives money:
+
+  | The person says | Who gets it | How it is split | Run |
+  |---|---|---|---|
+  | "add $5k to my picks" | value picks only | the strategy, as above | `contribute 5000 --sleeve PICKS` |
+  | "add $5k to my growth picks" | growth picks only | the same dollars to each growth pick, whatever they hold | `contribute 5000 --sleeve PICKS --group growth` |
+  | a mix | both | each group's part as two dollar amounts (`--mix 3000,2000`) or two percentages (`--mix 70%,30%`); each group then splits its part by its own rule | `contribute 5000 --sleeve PICKS --mix VALUE,GROWTH` |
+  | "I have a new pick" | that pick | a value pick as above; a saved growth pick takes the whole `--amount`, or with none opens at the median of the growth picks held (of all picks when it is the first) | `open SYMBOL [--amount A]` |
+
+  - A mix with no split given is not guessed: ask for each group's part before running.
+  - Money that names no group (a contribution, the fill toward the picks target) reaches value picks only (`GROWTH_BY_REQUEST_ONLY` when no value pick is saved).
+  - Growth picks are left to run. No automatic path sells or trims one: not a picks rebalance (`GROWTH_HELD`), not the 5% cap (`GROWTH_OVER_CAP`; new money still never takes one past it), not the global plan, not a withdrawal. A growth pick is sold only when the person names it.
+  - In the global plan a growth pick is frozen, and the PICKS line aims at max(T − G, min(V, T)), with T the target, V the value picks and G the growth picks.
+  - So value picks fill to T − G, hold when only growth picks put the sleeve over (`GROWTH_PICKS_OVER`), and sell down to T only when they alone are over.
 - **The research.** Read `references/research.md` before explaining where the sleeve's proposed size, its tracking error or its weighting come from.
 
 **Accounts and tax**
@@ -97,7 +111,7 @@ Run with the Bash tool. Every script prints JSON.
 
 ```bash
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-plan/scripts/plan.py" status [common]
-"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-plan/scripts/plan.py" contribute AMOUNT [--sleeve PICKS] [common]
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-plan/scripts/plan.py" contribute AMOUNT [--sleeve PICKS [--group value|growth | --mix VALUE,GROWTH]] [common]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-plan/scripts/plan.py" withdraw AMOUNT [common]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-plan/scripts/plan.py" rebalance [--sleeve PICKS] [common]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-plan/scripts/plan.py" open SYMBOL [--amount A] [common]
@@ -111,7 +125,7 @@ Common flags: `[--weighting equal|market_cap|valuation|size] [--include-light] [
 |---|---|
 | `plan.py status` | `sleeves` (the sleeve mix: buckets, `n_eff`, `tracking_error`, the target in force and the room under it), `global` (the global plan's allocation and drift without trades, or null with no saved targets), `targets_saved`, `sleeve_target`, `glide` (`to`, `by`, `months_left`, `monthly`). |
 | `plan.py contribute AMOUNT` | AMOUNT is cash already in the accounts. The picks sleeve takes its share first when it sits below its target in force; the rest is routed by the global plan with no sells (no targets: the core funds held, pro rata). `sleeve` and `global` hold each part. |
-| `plan.py contribute AMOUNT --sleeve PICKS` | Puts AMOUNT of trading-account cash into the held picks. |
+| `plan.py contribute AMOUNT --sleeve PICKS` | Puts AMOUNT of trading-account cash into the held value picks; `--group growth` into the growth picks, `--mix VALUE,GROWTH` into both. |
 | `plan.py withdraw AMOUNT` | Raises AMOUNT; with no targets, pro rata from today's weights. |
 | `plan.py rebalance` | The global plan against the saved targets; with no targets, `no_targets` and `derived_targets`, no trades. |
 | `plan.py rebalance --sleeve PICKS` | Only on request. Trims picks above their band and buys picks below target in the same account. No cash, no core sales, same sleeve total. |
@@ -126,6 +140,7 @@ Every `plan.py` output carries `command`, `sleeve` (the sleeve engine's output o
 | `--weighting` | This run only; wins over the saved weighting. `size` works for adding money only. |
 | `--include-light` | This run only, standard depth only; light valuations enter the tilt. |
 | `--split` | This run only; adding money (and the rest of an opened pick with `--amount`) splits by the strategy's shares instead of filling toward target. Only when the person asks for an even or by-share split. |
+| `--group value\|growth`, `--mix VALUE,GROWTH` | `contribute --sleeve PICKS` only (exit 2 elsewhere, or both together). `--group growth` only when the person names their growth picks; `--mix` only with the split the person gave: two dollar amounts summing to AMOUNT, or two percentages summing to 100%. |
 | `--over-ceiling` | Lets the picks sleeve pass its target. Only when the person asked for that in their own words. |
 | `--whole-shares` | Whole-share trades, when the broker does not take fractional orders or a preview rejects fractional units. |
 | `--sell SYM[,SYM]` | Core funds sold first, in that order, when a new pick's account is short of cash. Each must be a core fund held in a trading account, else exit 2. |
@@ -135,7 +150,7 @@ Every `plan.py` output carries `command`, `sleeve` (the sleeve engine's output o
 
 | Exit code | Meaning | What to do |
 |---|---|---|
-| 2 | Bad input: an amount above the cash; a symbol already held, the employer symbol, or anything but a single stock for `open`; weights not summing to 1; an unknown account; `--sleeve` other than PICKS; for `rebalance --sleeve PICKS`, weighting `size`, `--sell`, `--over-ceiling`, `valuation` with no eligible pick, an unreadable pick store, or a margin debit | Show `error`. |
+| 2 | Bad input: an amount above the cash; a symbol already held, the employer symbol, or anything but a single stock for `open`; weights not summing to 1; an unknown account; `--sleeve` other than PICKS; `--group` or `--mix` outside `contribute --sleeve PICKS`, both together, or `--mix` parts not summing to AMOUNT or 100% (the error names the sums) or mixing a dollar and a percent part; for `rebalance --sleeve PICKS`, weighting `size`, `--sell`, `--over-ceiling`, `valuation` with no eligible pick, an unreadable pick store, or a margin debit | Show `error`. |
 | 4 | Credentials missing | Show the `hint`. |
 | 4, code `ETRADE_REAUTH` | An E*Trade login is needed | Follow the session's broker-login rule: show the `url`, get the verifier code, run the connect skill's `etrade-login.py --verifier CODE`, rerun once. `--partial` runs without E*Trade. |
 | 5 | SnapTrade error, or an unreadable `settings.json` | Show the error and the `hint`. |
@@ -171,6 +186,11 @@ Vested shares arrive as shares and show up as employer stock. The employer polic
 
 1. Run `plan.py contribute X --sleeve PICKS`, with `--weighting` when the person names a strategy for this run and `--include-light` only when they ask.
 2. Reply with the sleeve format, then the hand-off.
+
+**"Add $X to my growth picks", or a mix of value and growth picks**
+
+1. Growth only: run `plan.py contribute X --sleeve PICKS --group growth`. A mix: run it with `--mix VALUE,GROWTH` from the parts the person gave (dollars, or percentages with `%`). A mix with no split given: ask for each group's part, then run.
+2. Reply with the sleeve format, then the hand-off. With `NO_GROWTH_PICKS`, say no growth pick is saved and held, so nothing was bought.
 
 **"Raise $X", a withdrawal**
 
@@ -228,7 +248,8 @@ Vested shares arrive as shares and show up as employer stock. The employer polic
 3. If `UNCLASSIFIED`, `NO_PRICE`, `PICK_STORE_UNREADABLE`, `PICK_BASELINE_MISSING`, `NO_PICK_STORE` or `NO_MARKET_CAP` is in `flags`, name the symbols from its `message` and continue. Never guess a classification.
 4. If `LIGHT_VALUATION` or `NO_SAVED_VALUATION` is in `flags`, offer a deep valuation of those symbols in standard depth (the valuation skill's Deep steps, saved with stock-screener's `picks.py save-deep`); in deep depth run it under the session's depth rule. If `RECHECK_DUE`, offer the stock-screener re-check. Name each `HELD_FOR_RECHECK` and `DEEP_VALUATION_NEEDED` pick and why it is held.
 5. If `NO_HOLDINGS` names `PICKS`, say the picks sleeve has a target and no picks to buy, and that `open` starts one.
-6. If `UNMAPPED` is in `flags`, list the holdings it names as "not in the plan", one line each.
+6. If `UNMAPPED` is in `flags`, list the holdings it names as "not in the plan", one line each; a growth pick there is frozen because growth picks are left to run, so say that instead.
+7. Growth picks are left to run with a flag: for `GROWTH_HELD`, `GROWTH_OVER_CAP` or `GROWTH_PICKS_OVER`, give the message as one line and say a growth pick is sold only when the person names it. For `GROWTH_BY_REQUEST_ONLY`, say growth picks take money only when asked for by name.
 
 ### After the person approves trades
 

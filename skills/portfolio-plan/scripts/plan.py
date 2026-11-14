@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Usage: plan.py status
-       plan.py contribute AMOUNT [--sleeve PICKS]
+       plan.py contribute AMOUNT [--sleeve PICKS [--group value|growth | --mix VALUE,GROWTH]]
        plan.py withdraw AMOUNT
        plan.py rebalance [--sleeve PICKS]
        plan.py open SYMBOL [--amount A]
@@ -16,9 +16,11 @@ sleeve (sleeve_run.py) and adds no math of its own: every trade comes from one o
   months_left, monthly} with ``monthly`` the gap to ``to`` spread over the whole months left
   (at least one), or null with no glide saved.
 - ``contribute AMOUNT``: AMOUNT is cash already in the accounts. With ``--sleeve PICKS`` it is the
-  sleeve's ``add``. Otherwise, when the sleeve has a target in force and sits below it, the sleeve
+  sleeve's ``add``, and ``--group``/``--mix`` pass through to it (sleeve_run.py: the picks group
+  the money goes to, or each group's part as two dollar amounts or two percentages; bad input with
+  any other command, or without ``--sleeve PICKS``). Otherwise, when the sleeve has a target in force and sits below it, the sleeve
   takes min(AMOUNT, the room under its target, the trading-account cash) first through ``add``; the
-  rest goes to the global plan with no sells, ``cash`` 0 and ``contribution`` the rest. With saved
+  rest goes to the global plan (the sleeve's ``add`` there names no group, so it reaches value picks only) with no sells, ``cash`` 0 and ``contribution`` the rest. With saved
   targets that is them without the sleeve keys, renormalized; with none, the core funds held, pro
   rata to their value. Picks and employer stock are left untouched by the global part, and its buys
   land in the accounts holding the cash the sleeve left (BUY_CASH_SHORT for what none covers).
@@ -53,6 +55,7 @@ from second_opinion.errors import InvalidInput  # noqa: E402
 
 _EPS = 0.005
 _SLEEVE_FLAGS = ("weighting", "sell", "short_term", "long_term", "today")
+_GROUP_FLAGS = ("group", "mix")             # contribute --sleeve PICKS only
 _SLEEVE_SWITCHES = ("include_light", "over_ceiling", "whole_shares", "split", "partial")
 _GLOBAL_FLAGS = ("short_term", "long_term", "min_trade", "band_abs", "band_rel")
 _GLOBAL_SWITCHES = ("whole_shares", "partial")
@@ -71,6 +74,8 @@ def _parser() -> _Parser:
         common.add_argument(name, type=float, default=None)
     for name in ("--include-light", "--over-ceiling", "--whole-shares", "--split", "--partial"):
         common.add_argument(name, action="store_true")
+    common.add_argument("--group", choices=("value", "growth"), default=None)
+    common.add_argument("--mix", default=None)
     common.add_argument("--today", help=argparse.SUPPRESS)
     p = _Parser(prog="plan.py", add_help=False)
     sub = p.add_subparsers(dest="command", required=True, parser_class=_Parser)
@@ -144,7 +149,8 @@ def _months_left(today: date, by: date) -> int:
 def _contribute(ns: argparse.Namespace, sc: list[str], gc: list[str]) -> dict:
     amount = _amount(ns.amount)
     if _sleeve_name(ns):
-        return _envelope("contribute", sleeve_run.run(["add", str(amount), *sc]), None, amount=amount)
+        group = _argv(ns, _GROUP_FLAGS, ())
+        return _envelope("contribute", sleeve_run.run(["add", str(amount), *group, *sc]), None, amount=amount)
     mix = sleeve_run.run(["mix", *sc])["mix"]
     cash = float(mix["cash"]["value"])
     if amount > cash + _EPS:
@@ -193,6 +199,8 @@ def run(args: list[str]) -> dict:
             date.fromisoformat(ns.today)
         except ValueError as exc:
             raise InvalidInput("--today must be YYYY-MM-DD") from exc
+    if (ns.group or ns.mix) and not (ns.command == "contribute" and _sleeve_name(ns)):
+        raise InvalidInput("--group and --mix are only for contribute --sleeve PICKS")
     sc = _argv(ns, _SLEEVE_FLAGS, _SLEEVE_SWITCHES)
     gc = _argv(ns, _GLOBAL_FLAGS, _GLOBAL_SWITCHES)
     if ns.command == "status":

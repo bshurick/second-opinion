@@ -452,6 +452,12 @@ def test_recent_news_falls_back_to_search_when_ticker_news_is_empty(monkeypatch)
     assert [n["title"] for n in market.recent_news("XYZ")] == ["only"]
 
 
+def test_recent_news_search_drops_stories_yahoo_tagged_with_no_ticker(monkeypatch) -> None:
+    # Search("DECK") is a text search: it returns "roof deck" and "Upper Deck" stories with relatedTickers == [].
+    _news_yf(monkeypatch, RuntimeError("HTTP 404"), [_story("roof deck", 1, []), _story("Upper Deck cards", 2, []), _story("Deckers target", 3, ["DECK"])])
+    assert [n["title"] for n in market.recent_news("DECK")] == ["Deckers target"]
+
+
 def test_recent_news_keeps_ticker_news_when_it_answers(monkeypatch) -> None:
     searched = _news_yf(monkeypatch, [_story("direct", 1)], [_story("searched", 1)])
     assert [n["title"] for n in market.recent_news("XYZ")] == ["direct"] and searched == []

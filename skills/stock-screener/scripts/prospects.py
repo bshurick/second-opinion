@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Usage: prospects.py SYM[,SYM...] [--out FILE]
+"""Usage: prospects.py SYM[,SYM...] [--profile value|growth] [--out FILE]
 
 The industry scanner's four prospect tests for up to 25 tickers at once, from the
 fundamental-research skill's ``edgar.py SYM --years 5 --quarters 12`` (one subprocess per
@@ -29,6 +29,21 @@ or institutions holding under 60%, or a 12-month price change below -20%. ``chan
 last close against the close a year earlier (split-adjusted, dividends not added back). A figure
 that cannot be computed is null; a test is true or false only when the figures it has settle
 it, otherwise null. ``tests_passed`` counts the tests that are true. Ratios are fractions.
+
+``--profile growth`` swaps the four tests (every other field of the row is unchanged; the default
+``value`` profile is the four above): ``tests`` keys ``trajectory``, ``funded``, ``reinvestment``,
+``scale``, each ``{"pass", "figures"}``. ``trajectory``: revenue up year over year in at least 6 of
+the last 8 quarters and trailing-twelve-month revenue growth of at least 15% (figures
+``quarters_up_of_8``, ``ttm_revenue_growth``). ``funded``: net debt (long-term debt less cash and
+short-term investments, latest fiscal year; a missing figure counts 0) at most 0, or positive with
+operating profit and at most 4 times it; and free cash flow not negative in the latest year, or cash
+plus short-term investments at least 2 years of the burn (figures ``net_debt``,
+``net_debt_to_operating_income``, ``free_cash_flow``, ``runway_years``). ``reinvestment``: R&D plus
+capex (the known parts) at least 10% of the latest year's revenue, or grown faster than revenue
+since three fiscal years earlier (null when that year's figures are missing; figures
+``reinvestment_to_revenue``, ``reinvestment_growth_3y``, ``revenue_growth_3y``). ``scale``: gross
+margin at least 40% in the latest year, or higher in each of the last three year-over-year steps
+(figures ``gross_margin``, ``gross_margin_rising_3y``). Tests are true, false or null as above.
 
 Output: {"as_of", "prospects": [...in the order given...], "not_found": [tickers not in the
 SEC ticker list; BRK.B is looked up as BRK-B], "flags": [{"code", "message"}]}; ``--out FILE`` also writes it there (``"out"`` names
@@ -68,6 +83,11 @@ MIN_MARKET_CAP = 3e8
 QUARTERS, QUARTERS_UP_MIN = 8, 5
 FCF_YEARS, FCF_YEARS_MIN = 4, 3
 MIN_FCF_YIELD, MAX_PE = 0.06, 15.0
+GROWTH_QUARTERS_UP_MIN, GROWTH_TTM_MIN = 6, 0.15
+RUNWAY_YEARS, MAX_NET_DEBT_TO_EBIT = 2.0, 4.0
+REINVEST_MIN, GROSS_MARGIN_MIN = 0.10, 0.40
+REINVEST_LOOKBACK = 3  # fiscal years
+PROFILES = ("value", "growth")
 MAX_ANALYSTS, MAX_INSTITUTIONAL, MAX_CHANGE = 8, 0.60, -0.20
 TTM_SPAN = (250, 300)  # days from the first to the last period end of four consecutive quarters
 YEAR_TOLERANCE_DAYS = 10
@@ -89,6 +109,7 @@ class _Parser(argparse.ArgumentParser):
 def parser() -> argparse.ArgumentParser:
     p = _Parser(prog="prospects.py", add_help=False)
     p.add_argument("symbols")
+    p.add_argument("--profile", choices=PROFILES, default="value")
     p.add_argument("--out")
     return p
 
@@ -202,6 +223,90 @@ def _cash(report: dict) -> tuple[dict, str, float | None]:
     return {"pass": passed, "figures": {"fcf_positive_years_of_4": positive, "dividends_covered": covered}}, why, latest
 
 
+def _annual(report: dict) -> list[dict]:
+    return [r for r in report.get("annual") or [] if isinstance(r, dict)]
+
+
+def _trajectory_growth(report: dict) -> tuple[dict, str]:
+    last = [r for r in report.get("quarterly") or [] if isinstance(r, dict)][-QUARTERS:]
+    known = [y for y in (_num(r.get("revenue_yoy")) for r in last) if y is not None]
+    up = sum(1 for y in known if y > 0) if known else None
+    up_ok = None if up is None else _at_least(up, QUARTERS - len(known), GROWTH_QUARTERS_UP_MIN)
+    ttm = _num((report.get("ttm") or {}).get("revenue_ttm_yoy"))
+    ttm_ok = None if ttm is None else ttm >= GROWTH_TTM_MIN
+    passed = _all(up_ok, ttm_ok)
+    why = f"trajectory: revenue up in {up} of 8 quarters, TTM revenue growth {_pct(ttm)}" if passed else ""
+    return {"pass": passed, "figures": {"quarters_up_of_8": up, "ttm_revenue_growth": ttm}}, why
+
+
+def _funded(report: dict) -> tuple[dict, str]:
+    annual = _annual(report)
+    latest = annual[-1] if annual else {}
+    fcf, ebit = _num(latest.get("free_cash_flow")), _num(latest.get("operating_income"))
+    liquid = (_num(latest.get("cash")) or 0) + (_num(latest.get("short_term_investments")) or 0)
+    net_debt = (_num(latest.get("long_term_debt")) or 0) - liquid if latest else None
+    ratio = net_debt / ebit if net_debt is not None and net_debt > 0 and ebit and ebit > 0 else None
+    if net_debt is None:
+        debt_ok = None
+    elif net_debt <= 0:
+        debt_ok = True
+    else:
+        debt_ok = None if ebit is None else ratio is not None and ratio <= MAX_NET_DEBT_TO_EBIT
+    runway = liquid / -fcf if fcf is not None and fcf < 0 else None
+    runway_ok = None if fcf is None else fcf >= 0 or runway >= RUNWAY_YEARS
+    passed = _all(debt_ok, runway_ok)
+    figures = {"net_debt": net_debt, "net_debt_to_operating_income": _r4(ratio), "free_cash_flow": fcf, "runway_years": None if runway is None else round(runway, 2)}
+    why = ""
+    if passed:
+        why = "funded: " + ("net cash" if net_debt <= 0 else f"net debt {ratio:.1f}x operating profit") + (", free cash flow positive" if fcf >= 0 else f", {runway:.1f} years of cash")
+    return {"pass": passed, "figures": figures}, why
+
+
+def _reinvest(row: dict) -> float | None:
+    parts = [_num(row.get("research_and_development")), _num(row.get("capex"))]
+    return None if parts == [None, None] else sum(abs(p) for p in parts if p is not None)
+
+
+def _reinvestment(report: dict) -> tuple[dict, str]:
+    annual = _annual(report)
+    spend = _reinvest(annual[-1]) if annual else None
+    rev = _num(annual[-1].get("revenue")) if annual else None
+    share = spend / rev if spend is not None and rev else None
+    old = annual[-1 - REINVEST_LOOKBACK] if len(annual) > REINVEST_LOOKBACK else {}
+    old_spend, old_rev = _reinvest(old), _num(old.get("revenue"))
+    spend_growth = spend / old_spend - 1 if spend is not None and old_spend else None
+    rev_growth = rev / old_rev - 1 if rev and old_rev else None
+    share_ok = None if share is None else share >= REINVEST_MIN
+    faster = None if spend_growth is None or rev_growth is None else spend_growth > rev_growth
+    passed = True if True in (share_ok, faster) else (False if share_ok is False and faster is False else None)
+    figures = {"reinvestment_to_revenue": _r4(share), "reinvestment_growth_3y": _r4(spend_growth), "revenue_growth_3y": _r4(rev_growth)}
+    why = ""
+    if passed:
+        why = f"reinvestment: R&D plus capex {_pct(share)} of revenue" if share_ok else f"reinvestment: R&D plus capex up {_pct(spend_growth)} in 3 years against revenue up {_pct(rev_growth)}"
+    return {"pass": passed, "figures": figures}, why
+
+
+def _margin(row: dict) -> float | None:
+    gp, rev = _num(row.get("gross_profit")), _num(row.get("revenue"))
+    return gp / rev if gp is not None and rev else _num(row.get("gross_margin"))
+
+
+def _scale(report: dict) -> tuple[dict, str]:
+    margins = [_margin(r) for r in _annual(report)][-(REINVEST_LOOKBACK + 1):]
+    latest = margins[-1] if margins else None
+    steps = [b > a for a, b in zip(margins, margins[1:]) if a is not None and b is not None]
+    rising: bool | None = False if False in steps else (True if len(steps) == REINVEST_LOOKBACK else None)
+    if latest is None:
+        passed, rising = None, None
+    else:
+        passed = True if latest >= GROSS_MARGIN_MIN or rising else rising  # a margin short of 40% is settled only by the trend
+    figures = {"gross_margin": _r4(latest), "gross_margin_rising_3y": rising}
+    why = ""
+    if passed:
+        why = f"scale: gross margin {_pct(latest)}" + ("" if latest >= GROSS_MARGIN_MIN else ", rising for 3 years")
+    return {"pass": passed, "figures": figures}, why
+
+
 def _price(info: dict, report: dict, fcf_latest: float | None, change: float | None) -> tuple[dict, str]:
     cap = _num(info.get("market_cap"))
     pe = _num(info.get("pe_ratio"))
@@ -234,7 +339,7 @@ def _overlooked(info: dict, change: float | None) -> tuple[dict, str]:
     return {"pass": passed, "figures": figures}, ("overlooked: " + ", ".join(reasons)) if reasons else ""
 
 
-def prospect(symbol: str, report: dict | None, info: dict | None, change: float | None) -> dict:
+def prospect(symbol: str, report: dict | None, info: dict | None, change: float | None, profile: str = "value") -> dict:
     """One row from an edgar.py report (None when it failed), a company profile and the 12-month change."""
     flags = []
     if report is None:
@@ -245,11 +350,16 @@ def prospect(symbol: str, report: dict | None, info: dict | None, change: float 
         flags.append("PRICE_HISTORY_UNAVAILABLE")
     report, info = report or {}, info or {}
     flags += [f["code"] for f in report.get("flags") or [] if isinstance(f, dict) and f.get("code") in PASSED_ON]
-    trajectory, why_t = _trajectory(report)
-    cash, why_c, fcf_latest = _cash(report)
-    price, why_p = _price(info, report, fcf_latest, change)
-    overlooked, why_o = _overlooked(info, change)
-    tests = {"trajectory": trajectory, "cash": cash, "price": price, "overlooked": overlooked}
+    if profile == "growth":
+        parts = {"trajectory": _trajectory_growth(report), "funded": _funded(report),
+                 "reinvestment": _reinvestment(report), "scale": _scale(report)}
+    else:
+        trajectory, why_t = _trajectory(report)
+        cash, why_c, fcf_latest = _cash(report)
+        price, why_p = _price(info, report, fcf_latest, change)
+        overlooked, why_o = _overlooked(info, change)
+        parts = {"trajectory": (trajectory, why_t), "cash": (cash, why_c), "price": (price, why_p), "overlooked": (overlooked, why_o)}
+    tests = {name: t for name, (t, _) in parts.items()}
     cap = _num(info.get("market_cap"))
     return {
         "ticker": symbol,
@@ -258,7 +368,7 @@ def prospect(symbol: str, report: dict | None, info: dict | None, change: float 
         "tests_passed": sum(1 for t in tests.values() if t["pass"] is True),
         "tests": tests,
         "size_ok": None if cap is None else cap >= MIN_MARKET_CAP,
-        "why": "; ".join(w for w in (why_t, why_c, why_p, why_o) if w),
+        "why": "; ".join(w for _, w in parts.values() if w),
         "flags": flags,
     }
 
@@ -303,7 +413,7 @@ def run(args: list[str]) -> dict:
             continue
         if rc != 0:  # EDGAR down, or a filer with no US-GAAP facts (a foreign issuer filing IFRS)
             errors[s] = str(report.get("error") or f"exit {rc}")
-        rows.append(prospect(s, report if rc == 0 else None, info, changes.get(s)))
+        rows.append(prospect(s, report if rc == 0 else None, info, changes.get(s), ns.profile))
     flags = []
     for code, text in _FLAG_TEXT.items():
         hit = [r["ticker"] for r in rows if code in r["flags"]]
