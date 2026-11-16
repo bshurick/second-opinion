@@ -13,12 +13,12 @@ passages, and an ``INDEX.md`` of them) and ``DIR/cards/<TICKER>.data.json`` is w
    "company", "price", "business_type", "pack_as_of",
    "quick_value": <the pack's quick_value.json: basis, bear, base, bull, irr_5y, note, scenarios,
                    and the business-type tests for a bank, REIT or utility>,
-   "value_hint": 5 | 4 | 3 | 2 | 1 | null  (a growth run: "upside_hint" in its place),
-   "leverage": {"net_debt", "ebitda", "net_debt_to_ebitda", "interest_coverage", "debt_now",
+   "value_hint": 5 | 4 | 3 | 2 | 1 | null  (a growth run: "upside_hint" in its place, and "yardstick"),
+   "leverage": {"net_debt", "ebitda", "ebitda_basis": "ttm" | "annual", "net_debt_to_ebitda", "interest_coverage", "debt_now",
                 "debt_at_annual", "ok": true | false | null, "why",
                 "flags": [LEVERAGE_HIGH, DEBT_CHANGED_SINCE_ANNUAL when they fired]},
    "red_flags": {"inputs_flags": [those of SHARE_CLASSES_COMBINED, CORPORATE_ACTION_SUSPECTED,
-                                  LARGE_MINORITY_INTEREST, CYCLICAL, CYCLE_BASE_SPLIT,
+                                  LARGE_MINORITY_INTEREST, CYCLICAL, MARGINS_RISING, CYCLE_BASE_SPLIT,
                                   CURRENCY_MISMATCH, THIN_EDGAR_HISTORY that fired],
                  "terms": {"<red-flag term>": hits in the 10-K, only terms with a hit}},
    "direction": {"quarters_up_of_8", "ttm_revenue_growth"},
@@ -40,9 +40,15 @@ a levered company is how the downside gate has failed. ``leverage.ok`` is null f
 REIT or utility and when figures are missing. ``THIN_EDGAR_HISTORY`` (no annual SEC data or no
 10-K under this registrant) leaves the hint as it is: it rests on Yahoo's statements alone.
 In a growth run (``growth.run_profile(DIR)``) the data file and the printed row carry ``upside_hint``
-in place of ``value_hint``: a starting point for the ``upside`` score from ``growth.upside_hint`` (the
-quick value's bull and base against the price; null with no DCF basis, ``CURRENCY_MISMATCH``, or a
-latest annual ``free_cash_flow`` in ``edgar.json`` that is not positive). ``leverage`` is unchanged.
+in place of ``value_hint``, and the data file adds ``yardstick`` (``growth_yardstick()``, whose
+contract is ``growth.yardstick``): the revenue growth the price already assumes, the growth a 2x in
+five years needs at today's margin, and the consensus and trailing growth it is measured against.
+``upside_hint`` is the yardstick's ``hint``; when the yardstick has none (no positive margin, a
+foreign filer's missing TTM, a financial) it falls back to ``growth.upside_hint`` (the quick value's
+bull and base against the price; null with no DCF basis, ``CURRENCY_MISMATCH``, or a latest annual
+``free_cash_flow`` in ``edgar.json`` that is not positive). The quick value's DCF caps growth at 15%
+and averages four years of cash margin, so it reads nearly every fast grower as dear; the yardstick
+is the one to start from. ``leverage`` is unchanged.
 ``direction`` counts the last 8 quarters with revenue above the same quarter a year earlier
 (null when EDGAR has none) and gives trailing-twelve-month revenue growth. A hit on a red-flag
 term is a passage to read, not a finding.
@@ -86,7 +92,7 @@ from second_opinion.errors import InvalidInput, ScriptError  # noqa: E402
 import growth  # noqa: E402
 
 DEFAULT_WORKERS = 3  # each pack is one Yahoo-bound chain of scripts; four at once drew HTTP 429
-INPUTS_FLAGS = ("SHARE_CLASSES_COMBINED", "CORPORATE_ACTION_SUSPECTED", "LARGE_MINORITY_INTEREST", "CYCLICAL", "CYCLE_BASE_SPLIT", "CURRENCY_MISMATCH", "THIN_EDGAR_HISTORY")
+INPUTS_FLAGS = ("SHARE_CLASSES_COMBINED", "CORPORATE_ACTION_SUSPECTED", "LARGE_MINORITY_INTEREST", "CYCLICAL", "MARGINS_RISING", "CYCLE_BASE_SPLIT", "CURRENCY_MISMATCH", "THIN_EDGAR_HISTORY")
 VALUE_HINTS = ((0.15, 5), (0.10, 4), (0.06, 3), (0.0, 2))  # irr_5y at or above -> hint; below all of them is 1
 QUARTERS = 8
 # The finalist balance-sheet check. Debt turns a revenue decline into a large loss for the shares,
@@ -153,15 +159,19 @@ def leverage(folder: Path, business_type: Any) -> dict:
 
     Net debt is today's: Yahoo's total debt less total cash (the latest quarter, leases included).
     EBITDA, EBIT and interest are the latest annual income statement's (Yahoo, else EDGAR's
-    operating income plus D&A). ``ok`` is False when net debt is over MAX_NET_DEBT_TO_EBITDA x
+    operating income plus D&A), except that when ``edgar.json``'s ``ttm`` carries operating income
+    (the last four reported quarters), EBIT is that figure and EBITDA is it plus the annual D&A
+    (``ebitda_basis`` "ttm", else "annual"): a fast grower's annual profit understates what it
+    earns now, and a shrinking company's overstates it. ``ok`` is False when net debt is over MAX_NET_DEBT_TO_EBITDA x
     EBITDA, when EBITDA is not positive while net debt is, or when EBIT covers interest fewer than
     MIN_INTEREST_COVERAGE times. When debt now is over DEBT_CHANGED_RATIO x the annual balance
     sheet's (a deal or refinancing since), the annual interest no longer fits the debt, so the
     coverage test is left out and DEBT_CHANGED_SINCE_ANNUAL is raised: the 10-K's leverage figures
     are stale. Net cash passes, with no flag. A financial, REIT or utility gets ``ok`` null (judged on its
     yardstick), as does a company whose figures are missing."""
-    out: dict[str, Any] = {"net_debt": None, "ebitda": None, "net_debt_to_ebitda": None, "interest_coverage": None,
-                           "debt_now": None, "debt_at_annual": None, "ok": None, "why": None, "flags": []}
+    out: dict[str, Any] = {"net_debt": None, "ebitda": None, "ebitda_basis": "annual", "net_debt_to_ebitda": None,
+                           "interest_coverage": None, "debt_now": None, "debt_at_annual": None, "ok": None, "why": None,
+                           "flags": []}
     if business_type in YARDSTICK_TYPES:
         out["why"] = f"{business_type}: leverage is judged on its yardstick, not on net debt to EBITDA"
         return out
@@ -180,6 +190,14 @@ def leverage(folder: Path, business_type: Any) -> dict:
     if ebitda is None and _num(last.get("operating_income")) is not None:
         ebitda = _num(last.get("operating_income")) + (_num(last.get("depreciation_amortization")) or 0.0)
     ebit = _num(income.get("EBIT")) if _num(income.get("EBIT")) is not None else _num(last.get("operating_income"))
+    ttm_oi = _num(((edgar or {}).get("ttm") or {}).get("operating_income")) if isinstance(edgar, dict) else None
+    if ttm_oi is not None:  # the last four quarters: a fast grower's (or a shrinker's) annual figure is stale
+        if ebitda is not None and ebit is not None:
+            da = max(ebitda - ebit, 0.0)
+        else:
+            da = _num(last.get("depreciation_amortization")) or 0.0
+        ebit, ebitda = ttm_oi, ttm_oi + da
+        out["ebitda_basis"] = "ttm"
     interest = _num(income.get("Interest Expense"))
     interest = abs(interest) if interest is not None else None
     debt_annual = _num(balance.get("Total Debt"))
@@ -232,6 +250,52 @@ def _fcf_latest(folder: Path) -> float | None:
     return _num(annual[-1].get("free_cash_flow")) if annual else None
 
 
+def _consensus_revenue_growth(folder: Path) -> float | None:
+    """The analysts' revenue growth for the next fiscal year ("+1y") from the pack's sentiment.json."""
+    data = _read(folder / "sentiment.json")
+    syms = (data or {}).get("symbols") if isinstance(data, dict) else None
+    rows = syms if isinstance(syms, list) else list(syms.values()) if isinstance(syms, dict) else []
+    for entry in rows:
+        est = ((entry or {}).get("analysts") or {}).get("estimates") or {}
+        for r in est.get("revenue") or []:
+            if isinstance(r, dict) and r.get("period") == "+1y":
+                return _num(r.get("growth"))
+    return None
+
+
+def growth_yardstick(folder: Path, business_type: Any = None) -> dict:
+    """``growth.yardstick`` from the pack on disk: Yahoo's market value, debt and cash; EDGAR's TTM
+    revenue and revenue growth; the operating margin from TTM operating income (else the latest
+    annual), the TTM net margin, and the latest annual free-cash-flow margin after stock pay (as the
+    screen's default ``fcf_basis``); the analysts' next-year
+    revenue growth from sentiment.json. A financial, REIT or utility gets an empty yardstick (their
+    revenue and cash flow do not read this way)."""
+    if business_type in YARDSTICK_TYPES:
+        return growth.yardstick(None, None, None, None, None, None, None) | {"why": f"{business_type}: not read on revenue growth"}
+    fund = _read(folder / "fundamentals.json")
+    info = (fund.get("info") or {}) if isinstance(fund, dict) else {}
+    edgar = _read(folder / "edgar.json")
+    edgar = edgar if isinstance(edgar, dict) else {}
+    ttm = edgar.get("ttm") or {}
+    annual = [r for r in edgar.get("annual") or [] if isinstance(r, dict)]
+    last = annual[-1] if annual else {}
+
+    def ratio(a: Any, b: Any) -> float | None:
+        a, b = _num(a), _num(b)
+        return a / b if a is not None and b else None
+
+    op_margin = ratio(ttm.get("operating_income"), ttm.get("revenue"))
+    if op_margin is None:
+        op_margin = ratio(last.get("operating_income"), last.get("revenue"))
+    fcf = _num(last.get("free_cash_flow"))
+    fcf_margin = ratio(fcf - (_num(last.get("sbc")) or 0.0), last.get("revenue")) if fcf is not None else None
+    debt, cash = _num(info.get("total_debt")), _num(info.get("total_cash"))
+    net_debt = (debt or 0.0) - (cash or 0.0) if debt is not None or cash is not None else None
+    return growth.yardstick(_num(info.get("market_cap")), net_debt, _num(ttm.get("revenue")), op_margin,
+                            ratio(ttm.get("net_income"), ttm.get("revenue")), fcf_margin,
+                            _num(ttm.get("revenue_ttm_yoy")), _consensus_revenue_growth(folder))
+
+
 def card_data(row: dict, built: dict, folder: Path, profile: str = "value") -> dict:
     """The data file for one pool row from its pack (``pack.json``'s content) in ``folder``.
 
@@ -247,9 +311,16 @@ def card_data(row: dict, built: dict, folder: Path, profile: str = "value") -> d
     hint = None if "CURRENCY_MISMATCH" in codes else value_hint(quick.get("irr_5y"))
     if hint is not None and lev["ok"] is False and hint > LEVERAGE_HINT_CAP:
         hint = LEVERAGE_HINT_CAP
+    extra: dict = {}
     if profile == "growth":
         hint_key = "upside_hint"
-        hint = None if "CURRENCY_MISMATCH" in codes else growth.upside_hint(quick, _num(summary.get("price")), _fcf_latest(folder))
+        stick = growth_yardstick(folder, summary.get("business_type"))
+        if "CURRENCY_MISMATCH" in codes:
+            stick = growth.yardstick(None, None, None, None, None, None, None) | {"why": "statements in another currency than the price"}
+        extra["yardstick"] = stick
+        hint = stick["hint"]
+        if hint is None and "CURRENCY_MISMATCH" not in codes:
+            hint = growth.upside_hint(quick, _num(summary.get("price")), _fcf_latest(folder))
     else:
         hint_key = "value_hint"
     return {
@@ -258,6 +329,7 @@ def card_data(row: dict, built: dict, folder: Path, profile: str = "value") -> d
         "pack_as_of": built.get("as_of"),
         "quick_value": quick,
         hint_key: hint,
+        **extra,
         "leverage": lev,
         "red_flags": {"inputs_flags": [c for c in INPUTS_FLAGS if c in codes], "terms": {t: n for t, n in hits.items() if n}},
         "direction": direction(_read(folder / "edgar.json")),

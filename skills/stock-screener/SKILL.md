@@ -92,6 +92,7 @@ The saved depth decides the default; when it is deep, the session's depth rule s
   - A finalist passes when no gated deep-valuation scenario loses money over five years, dividends included (`floor`, default 0%), and the central (first) scenario earns at least the hurdle (`hurdle`, default 10%) a year at today's price.
   - The worst scenario judged is the severest single story. The one scenario marked `"stress": true` (several risks at once) is reported as `stress` and named in `reasons` when it loses money, but it is not gated.
   - `pass_flagged` means it passed while every gated scenario sits above the price, so a downside case may be missing.
+  - A scenario marked `"reference": true` (the one the price implies, written when no supported story reaches the price) is never gated, never the best or the worst, and stays out of `value_range`; each result lists it in `reference`.
   - **Growth runs (`--profile growth`)** use the best-case rule instead:
     - A finalist passes when its best scenario earns at least the yearly return that reaches `min_upside` times today's price over the horizon (2.0 by default: 14.9% a year at five years), and the central scenario is worth more than the price.
     - The worst case is reported and is not a test, so a growth pick can lose money in its bear case.
@@ -377,10 +378,14 @@ The scripts do the fetching and the file assembly. Do not write `macro.md`, `poo
 10. Run `budget.py DIR/pick-DATE add quick_reads=N` once, with the total the quick readers reported. If a quick reader failed, keep its name for `missing_roles`.
 11. Rank the cards (`cards/<TICKER>.json`) by their four scores with judgement, and choose three finalists, or up to five when the person asks and the search plan from step 4 covers them:
     - only names whose `leverage.ok` in `cards/<TICKER>.data.json` is true or null. A null for missing figures needs the card to show the balance sheet is sound; a false is never a finalist
-    - at least one contrarian when one survives
-    - no more than two from one industry
-    - held names allowed, and marked
-12. Run the valuation skill's **Deep** steps on the finalists, two or three at a time. Each finalist gets its own `DIR/deep-SYMBOL/` folder, its own `budget.json` and a published page.
+    - the gate tests the price, and the quality and direction scores do not: a great business at a price that already assumes it fails. Rank on the price score first (`value`, or `upside` in a growth run), then the other three. A finalist with a price score of 2 or less needs a reason in `notes`
+    - in a growth run, read each candidate's `yardstick` in its data file before choosing: a `growth_for_upside` well above its `benchmark` means the best case must beat the consensus for years, which is how the 2026-11-15 run's NVDA, ALAB and DAVE failed
+    - in a growth run, at least one finalist covered by at most 15 analysts (`analysts.count`) or worth under $20B, when one with an `upside` of 3 or more survives: the most-watched names are the ones the price has caught up with
+    - at least one contrarian when one survives; no more than two from one industry, and no more than two riding the same theme (AI data-center spending, GLP-1 drugs, one customer) whatever their industry labels
+    - held names allowed, and marked. Keep the rest of the ranking: step 12 draws on it
+12. Run the valuation skill's **Deep** steps on the finalists in two waves: two finalists first, then the rest.
+    - When the first wave is done, read why each failed or passed (`returns.out.json` and the case's `ledger.json`) before starting the second. Swap a second-wave finalist for the next name in the ranking when it shares the first wave's reason for failing: the same theme, or a price that already assumes more growth than its benchmark. Say the swap in `notes`.
+    - Each finalist gets its own `DIR/deep-SYMBOL/` folder, its own `budget.json` and a published page.
     - Give each finalist to its own agent (general-purpose) that follows those steps and dispatches the research roles itself.
     - When a subagent cannot dispatch its own, run the valuations yourself, one company's model and ledger at a time.
     - In its step 1, run `deep_prep.py SYMBOL --case DIR/deep-SYMBOL --plan valuation-picker` with one `--industry FILE` flag per file: the `industries/group<N>.json` that holds the finalist's industry, and its `industries/group<N>.md`. A finalist no scan covers (`industry` is null in `pool.json`) gets no `--industry` flag.
@@ -457,6 +462,7 @@ The scripts do the fetching and the file assembly. Do not write `macro.md`, `poo
 2. The near misses, each with the test it failed, and the stress test's return when a finalist has one (`stress.irr` in `gate.out.json`), labelled not gated.
 3. One line on the industry picture: the favored and contrarian industries.
 4. **Flags**: missing roles, the searches line from `pick.json`'s `notes` and anything cut to stay within the plan, script flags the Picker flags table says to name, names the health check could not cover, and concentration against the person's portfolio. Or "None".
+   - **Growth run with no pass:** when a finalist's `best_multiple` came within 0.25 of the multiple, name it and the multiple it reached, and say once that the multiple is the setting `picker.growth.min_upside` (or `--min-upside` for one run). State it as a fact about the setting; the choice is the person's.
 5. One sentence, once: the picks are general information at the stated assumptions, not financial, tax, or legal advice.
 
 **For a re-check:** in chat.

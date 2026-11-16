@@ -55,3 +55,10 @@ def test_observations_returns_the_last_n_numeric_rows_oldest_first(monkeypatch, 
     assert fred.observations("WRMFNS", 2) == [{"date": "2026-08-01", "value": 3009.1}, {"date": "2026-09-01", "value": 3020.5}]
     assert len(fred.observations("WRMFNS", 10)) == 3
     assert fred.SERIES_NAMES["WRMFNS"] == "Retail Money Market Funds"
+
+
+def test_user_agent_is_urllibs_default_form() -> None:
+    """FRED's edge serves only User-Agents it recognizes; urllib's own default form is one of them."""
+    import re
+
+    assert re.fullmatch(r"Python-urllib/\d+\.\d+", fred._USER_AGENT)

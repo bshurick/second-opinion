@@ -398,6 +398,7 @@ def test_quarterly_ttm_ignores_year_to_date_facts_and_takes_q4_from_the_10k() ->
     assert out["ttm"]["revenue"] == 110.0 + 112.0 + 114.0 + 116.0  # four discrete quarters, no YTD double count
     assert out["ttm"]["net_income"] == round((110.0 + 112.0 + 114.0 + 116.0) / 10, 2)
     assert out["ttm"]["revenue_ttm_yoy"] == round(452.0 / 412.0 - 1, 4)
+    assert out["ttm"]["operating_income"] is None  # no operating income tagged
     assert q[5]["revenue_yoy"] == round(112.0 / 102.0 - 1, 4)  # vs the quarter ending 2024-06-30
     assert q[1]["revenue_yoy"] is None
     # the annual table is untouched by the quarterly facts
@@ -535,3 +536,12 @@ def test_discrete_q4_fact_takes_precedence_over_the_derived_one() -> None:
     last = mod.run_fundamentals({"facts": facts, "years": 2, "quarters": 4})["quarterly"][-1]
     assert (last["revenue"], last["net_income"], last["derived"]) == (1681.0, 84.5, False)
     assert "derived" not in mod.run_fundamentals({"facts": facts, "years": 2})["latest_quarter"]
+
+
+def test_ttm_operating_income_sums_the_four_latest_quarters() -> None:
+    mod = load_script("fundamental-research/scripts/fundamentals.py")
+    facts = _ytd_shape()
+    gaap = facts["facts"]["us-gaap"]
+    gaap["OperatingIncomeLoss"] = {"units": {"USD": [dict(f, val=f["val"] / 5) for f in gaap["Revenues"]["units"]["USD"]]}}
+    out = mod.run_fundamentals({"facts": facts, "years": 2, "quarters": 8})
+    assert out["ttm"]["operating_income"] == round((110.0 + 112.0 + 114.0 + 116.0) / 5, 2)

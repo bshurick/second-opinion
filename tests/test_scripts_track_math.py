@@ -507,3 +507,11 @@ def test_growth_best_and_upside_exclude_the_stress_test() -> None:
     lv = TM.price_levels(m, "growth", 2.0)
     assert lv["best"] == 400.0 and lv["upside"] == round(300 / 2.0, 2)     # Bull, as the gate sees it
     assert TM.price_levels(m)["best"] == 600.0                               # value levels as before
+
+
+def test_price_levels_leave_out_a_reference_scenario() -> None:
+    model = {"scenarios": [{"name": "Central", "value_per_share": 30.0}, {"name": "Bear", "value_per_share": 10.0},
+                           {"name": "Bull", "value_per_share": 50.0}, {"name": "Price-implied", "value_per_share": 90.0, "reference": True}]}
+    levels = TM.price_levels(model, style="growth")
+    assert levels["best"] == 50.0 and levels["worst"] == 10.0
+    assert TM.price_levels(model)["best"] == 50.0

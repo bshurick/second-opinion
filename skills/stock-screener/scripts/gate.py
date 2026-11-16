@@ -31,6 +31,11 @@ share. Output adds top-level ``profile`` and ``min_upside`` (and no ``hurdle`` o
 "all_above_price"}. Results run pass, pass_flagged, fail, each by best return, highest first. Value
 output carries no ``profile`` key and is unchanged.
 
+Reference scenarios. A scenario marked ``"reference": true`` in ``model.scenarios`` (never the
+first) is shown for comparison only, such as the scenario the price implies: it is not a story the
+research supports. It is never gated, never the best or the worst, and stays out of ``value_range``;
+each result lists them in ``reference`` ([{"name", "irr", "value_per_share"}], empty when none).
+
 A non-finite return (NaN) counts as not computed. When ``returns`` carries the price it was
 computed at, the gate uses that price, and exits 2 when it differs from the finalist's ``price`` by
 more than 1%.
@@ -160,14 +165,21 @@ def run_gate(params: dict) -> dict:
             raise ValueError(f"{sym}: needs model.scenarios and returns.scenarios")
         irr_by = {r.get("name"): r.get("irr") for r in rets if isinstance(r, dict)}
         all_rows = [{"name": s.get("name"), "irr": irr_by.get(s.get("name")), "value_per_share": s.get("value_per_share"),
-                     "_stress": s.get("stress") is True and i > 0} for i, s in enumerate(scen)]
+                     "_stress": s.get("stress") is True and i > 0, "_reference": s.get("reference") is True and i > 0}
+                    for i, s in enumerate(scen)]
         for r in all_rows:
             if not isinstance(r["irr"], (int, float)) or isinstance(r["irr"], bool) or not math.isfinite(r["irr"]):
                 r["irr"] = None  # never echo NaN or infinity back out
-        stress = next(({k: v for k, v in r.items() if k != "_stress"} for r in all_rows if r["_stress"]), None)
-        rows = [{k: v for k, v in r.items() if k != "_stress"} for r in all_rows if not r["_stress"]]
+
+        def _clean(r: dict) -> dict:
+            return {k: v for k, v in r.items() if not k.startswith("_")}
+        stress = next((_clean(r) for r in all_rows if r["_stress"] and not r["_reference"]), None)
+        reference = [_clean(r) for r in all_rows if r["_reference"]]
+        rows = [_clean(r) for r in all_rows if not r["_stress"] and not r["_reference"]]
         if is_growth:
-            results.append(_growth_result(f, price, rows, stress, min_upside, (f["model"]).get("horizon")))
+            res = _growth_result(f, price, rows, stress, min_upside, (f["model"]).get("horizon"))
+            res["reference"] = reference
+            results.append(res)
             continue
         reasons = []
         missing = [r["name"] for r in rows if r["irr"] is None]
@@ -199,7 +211,8 @@ def run_gate(params: dict) -> dict:
                         "value_range": [min(values), max(values)] if values else None,
                         "central": central, "worst": worst, "stress": stress,
                         "checks": {"worst_ok": worst_ok, "central_ok": central_ok, "all_above_price": all_above},
-                        "reasons": reasons, "page": f.get("page"), "implied": (f.get("model") or {}).get("implied")})
+                        "reasons": reasons, "page": f.get("page"), "implied": (f.get("model") or {}).get("implied"),
+                        "reference": reference})
     if is_growth:
         results.sort(key=lambda r: (ORDER[r["verdict"]], -(r["best"]["irr"] if r["best"] else -9)))
         counts = {k: sum(1 for r in results if r["verdict"] == k) for k in ORDER}

@@ -52,7 +52,8 @@ Output JSON contract (stdout)::
                                       # GOODWILL_HEAVY, ACCRUALS
       "quarterly": [{fiscal_year, period_end, revenue, net_income,
                      revenue_yoy, derived}],   # only when "quarters" was given; oldest first
-      "ttm": {revenue, net_income, revenue_ttm_yoy}   # only when "quarters" was given
+      "ttm": {revenue, net_income, revenue_ttm_yoy,
+              operating_income}             # only when "quarters" was given
     }
 
 Method: annual values are 10-K (or 20-F/40-F) facts with fiscal period FY,
@@ -118,7 +119,7 @@ becomes such a derived Q4 (revenue and net income only, ``derived: true``)
 when it ends after the latest 10-Q quarter. ``fiscal_year`` is the SEC ``fy``
 of the fact used. ``revenue_yoy``
 compares the quarter ending 365 +/- 15 days earlier. ``ttm`` sums the four
-most recent quarters per metric, null unless their period ends are 250..300
+most recent quarters per metric (revenue, net income and operating income), null unless their period ends are 250..300
 days apart (four consecutive quarters, no gap); ``revenue_ttm_yoy`` compares
 that sum with the four quarters before it (null without a full extra year of
 quarterly history). ``latest_quarter`` applies the same 80..100-day test.
@@ -580,10 +581,13 @@ def _quarterly_table(gaap: dict, n: int) -> tuple[list[dict], dict]:
     ttm_rev = ttm_sum(rev_series, rev_ends, len(rev_ends))
     ttm_ni = ttm_sum(ni_series, ni_ends, len(ni_ends))
     prev_ttm_rev = ttm_sum(rev_series, rev_ends, len(rev_ends) - 4)
+    oi_series = _quarterly_series(gaap, "operating_income")
+    ttm_oi = ttm_sum(oi_series, sorted(oi_series), len(oi_series))
     ttm = {
         "revenue": _r2(ttm_rev),
         "net_income": _r2(ttm_ni),
         "revenue_ttm_yoy": _r4(_growth(ttm_rev, prev_ttm_rev)),
+        "operating_income": _r2(ttm_oi),
     }
 
     rows = []

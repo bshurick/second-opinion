@@ -14,6 +14,7 @@
      "Margin holds"
     ],
     "stress": false,
+    "reference": false,
     "enterprise_value": 1630.14,
     "equity_value": 1430.14,
     "value_per_share": 14.3,
@@ -216,6 +217,7 @@
      "Rivals cut price"
     ],
     "stress": false,
+    "reference": false,
     "enterprise_value": 680.07,
     "equity_value": 480.07,
     "value_per_share": 4.8,

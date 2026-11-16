@@ -88,6 +88,7 @@ Each section is the brief for one deep-picker subagent. The coordinator hands a 
 - Fetch primary sources directly before searching: government data (EIA, Census, BLS, FRED), trade-body releases and company investor-relations pages by URL. A direct fetch does not spend a search.
 - Save searches for what needs them: news, earnings-call coverage and competitor coverage.
 - At the cap, stop searching, and say which claims you could not check.
+- Never run `budget.py` or write `budget.json` yourself. Report the number of searches you used in your hand-back; the orchestrator records every role's count once, so a count you also record is counted twice.
 
 ### What you hand back
 
@@ -276,7 +277,9 @@ In a growth run (`run.json` says `growth`; the data file has `upside_hint`, not 
 |---|---|---|
 | `upside` | the bull case is below the price | the bull case is at least twice the price and the base case is above it |
 
-- `upside_hint` is a starting point for `upside`, from `quick_value`'s `bull` and `base` against the price (null with no DCF basis, `CURRENCY_MISMATCH`, or a latest annual free cash flow that is not positive). Move it for what steps 2 to 7 found, and give the reason. When it is null, score from the growth yardstick: the revenue the company needs for the price to double at a mature margin for its industry, against its current revenue, growth rate and market size, and EV/sales against growing peers. Name the yardstick and its figures in the reason.
+- `upside_hint` is a starting point for `upside`. It comes from the data file's `yardstick`, a reverse DCF at today's cash margin: `implied_growth` is the revenue growth the price already assumes, `growth_for_upside` the growth a 2x in five years needs (both a starting rate that fades to 3% over ten years), measured against `benchmark` (the analysts' next-year revenue growth, never above trailing growth). Its `why` says it in one sentence. When the yardstick has no reading (no positive margin today, a foreign filer without quarterly figures, a financial), the hint falls back to `quick_value`'s `bull` and `base` against the price, which caps growth at 15% and so reads every fast grower as dear; then score from the growth yardstick by hand: the revenue the company needs for the price to double at a mature margin for its industry, against its current revenue, growth rate and market size, and EV/sales against growing peers.
+  - Move the hint for what steps 2 to 7 found and give the reason. The yardstick holds today's margin flat: raise it where the filings show margins expanding with scale (operating leverage, a mix shift already reported), lower it where the benchmark rests on one customer or one year.
+  - Name `growth_for_upside` against the benchmark in the `upside` reason, with any figure you moved it on. A card whose `growth_for_upside` is well above its benchmark has a best case that has to beat the consensus for years; say so.
 
 - When `industry_verdict` is null, no scan covers the company. Score `tailwind` from `context/macro.md` and the company's own filings, and say so in the reason.
 

@@ -28,7 +28,9 @@ in the scenario table and headlines its value and return. The other scenarios ar
 nothing is averaged: scenarios carry no probabilities. The headline tiles show price, the central
 value and return, the worst case (lowest value among the scenarios that are not the stress test) and
 the range. A scenario marked ``"stress": true`` (several risks at once) is labelled "Stress test" in
-the table and gets its own tile; the deep picker's gate does not judge it.
+the table and gets its own tile; the deep picker's gate does not judge it. A scenario marked
+``"reference": true`` (shown for comparison only, such as the one the price implies) is labelled
+"Reference only" in the table and stays out of the worst-case tile and the range.
 
 Always shown first: the headline tiles, the scenario table (value per share, upside, annualized return, total
 multiple, what has to be true), a line on what today's price implies (model.py's ``implied``),
@@ -127,9 +129,9 @@ SCRIPT = r"""
   g('h1').textContent = `${D.symbol || ''} deep valuation`.trim();
   g('sub').textContent = `Price ${money(price)}${D.as_of ? ' · as of ' + D.as_of : ''} · ${scs.length} scenarios · ${M.horizon}-year horizon`;
   F.intro(g('intro'), {lead: `What one share of ${esc(D.symbol || 'this company')} could be worth under ${scs.length} different futures, built segment by segment from the company’s filings, and what buying at ${money(price)} would earn a year in each. The central case is the scenario the research found most consistent with the evidence; the others are alternatives and are not averaged.`});
-  const gated = scs.filter((s, i) => i === 0 || !s.stress), ST = scs.find((s, i) => i > 0 && s.stress);
+  const gated = scs.filter((s, i) => i === 0 || (!s.stress && !s.reference)), ST = scs.find((s, i) => i > 0 && s.stress && !s.reference);
   const C = scs[0], cr = ret[C.name] || {}, worst = gated.reduce((a, s) => s.value_per_share < a.value_per_share ? s : a, gated[0]), wr = ret[worst.name] || {};
-  const allv = scs.map(s => s.value_per_share).filter(F.isNum), irrTxt = r => F.isNum(r.irr) ? pct(r.irr) : '—';
+  const allv = scs.filter((s, i) => i === 0 || !s.reference).map(s => s.value_per_share).filter(F.isNum), irrTxt = r => F.isNum(r.irr) ? pct(r.irr) : '—';
   const tile = (k, v, d) => `<div class="tile"><div class="k">${esc(k)}</div><div class="v">${v}</div><div class="d">${d}</div></div>`;
   g('headline').innerHTML = tile('Price', esc(money(price)), D.as_of ? 'as of ' + esc(D.as_of) : '&nbsp;')
     + tile('Central value', esc(money(C.value_per_share)), `${esc(C.name)}${F.isNum(C.upside) ? ' · ' + esc(pct(C.upside)) + ' vs price' : ''}`)
@@ -139,12 +141,12 @@ SCRIPT = r"""
     + tile('Range', `${esc(money(Math.min(...allv)))} to ${esc(money(Math.max(...allv)))}`, 'scenarios not averaged');
 
   F.table(g('sc'), [
-    {key: 'name', label: 'Scenario', left: true, fmt: (v, r) => `${r.central ? '<span class="pill pill-central">Central</span>' : ''}${r.stress ? '<span class="pill" style="margin-left:0;margin-right:6px">Stress test</span>' : ''}<b>${esc(v)}</b><div class="muted" style="font-size:12px">${esc(r.summary)}</div>${r.must.length ? `<ul class="must">${r.must.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}`},
+    {key: 'name', label: 'Scenario', left: true, fmt: (v, r) => `${r.central ? '<span class="pill pill-central">Central</span>' : ''}${r.stress ? '<span class="pill" style="margin-left:0;margin-right:6px">Stress test</span>' : ''}${r.reference ? '<span class="pill" style="margin-left:0;margin-right:6px">Reference only</span>' : ''}<b>${esc(v)}</b><div class="muted" style="font-size:12px">${esc(r.summary)}</div>${r.must.length ? `<ul class="must">${r.must.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}`},
     {key: 'value', label: 'Value / share', fmt: v => money(v)},
     {key: 'upside', label: 'vs price', fmt: v => F.isNum(v) ? pct(v) : '—'},
     {key: 'irr', label: `Return / yr (${M.horizon}y)`, fmt: v => F.isNum(v) ? pct(v) : '—'},
     {key: 'mult', label: 'Total multiple', fmt: v => F.isNum(v) ? F.num(v, 2) + '×' : '—'},
-  ], scs.map((s, i) => ({central: i === 0, stress: i > 0 && !!s.stress, name: s.name, summary: s.summary, value: s.value_per_share, upside: s.upside, irr: (ret[s.name] || {}).irr, mult: (ret[s.name] || {}).total_multiple, must: s.must_be_true || []})), {sortKey: 'value', pin: r => r.central});
+  ], scs.map((s, i) => ({central: i === 0, stress: i > 0 && !!s.stress, reference: i > 0 && !!s.reference, name: s.name, summary: s.summary, value: s.value_per_share, upside: s.upside, irr: (ret[s.name] || {}).irr, mult: (ret[s.name] || {}).total_multiple, must: s.must_be_true || []})), {sortKey: 'value', pin: r => r.central});
   const IM = M.implied;
   if (IM && F.isNum(IM.value)) {
     const what = IM.field === 'roe_shift' ? 'return on equity' : 'operating margin';

@@ -322,7 +322,7 @@ def test_inputs_script_fills_dcf_and_ddm_inputs(fake_yahoo, capsys) -> None:
     a = out["assumptions"]
     assert a["risk_free"]["value"] == 0.045 and out["sources"]["risk_free"] == "yahoo (^TNX)"
     assert a["adjusted_beta"]["value"] == pytest.approx(0.67 * 1.2 + 0.33)
-    coe = 0.045 + (0.67 * 1.2 + 0.33) * 0.042
+    coe = 0.045 + (0.67 * 1.2 + 0.33) * load_script(INPUTS)._DEFAULT_ERP
     assert a["cost_of_equity"]["value"] == pytest.approx(coe, abs=1e-4)
     assert a["cost_of_debt"]["value"] == pytest.approx(0.05)            # 20 interest / 400 debt
     assert a["tax_rate"]["value"] == 0.25
@@ -815,6 +815,7 @@ def test_inputs_flags_a_cyclical_and_shows_the_latest_year_beside_the_average(fa
     codes = {f["code"]: f for f in out["flags"]}
     assert "CYCLICAL" in codes and "CYCLE_BASE_SPLIT" in codes
     assert "do not report one base value" in codes["CYCLE_BASE_SPLIT"]["message"]
+    assert "MARGINS_RISING" in codes and "scaling up" in codes["CYCLICAL"]["message"]  # rose every year: say both readings
     latest = 450.0 + 20.0 * 0.75
     assert out["dcf_input_latest"]["fcf0"] == pytest.approx(latest)
     assert out["assumptions"]["fcf0_latest"]["value"] == pytest.approx(latest) and out["assumptions"]["fcf0_latest"]["source"]
@@ -901,8 +902,8 @@ def test_inputs_bad_erp_arguments_exit_2(fake_yahoo, capsys, argv) -> None:
 def test_inputs_default_erp_is_dated_and_flagged(fake_yahoo, capsys) -> None:
     rc, out = run_json(load_script(INPUTS), ["ko"], capsys)
     erp = out["assumptions"]["equity_risk_premium"]
-    assert erp["value"] == 0.042 and erp["as_of"] == "2026-10-01"
-    assert erp["source"] == "Damodaran implied ERP, 2026-10-01 (stated default; pass --erp with a dated figure)"
+    assert erp["value"] == 0.0441 and erp["as_of"] == "2026-11-01"
+    assert erp["source"] == "Damodaran implied ERP, 2026-11-01 (stated default; pass --erp with a dated figure)"
     codes = {f["code"] for f in out["flags"]}
     assert "ERP_DEFAULT" in codes and "ERP_STALE" not in codes
 
@@ -913,7 +914,7 @@ def test_inputs_default_erp_goes_stale_after_180_days(fake_yahoo, capsys, monkey
     class Later(date):
         @classmethod
         def today(cls):
-            return date(2026, 10, 1) + timedelta(days=200)
+            return date.fromisoformat(module._DEFAULT_ERP_AS_OF) + timedelta(days=200)
 
     monkeypatch.setattr(module, "date", Later)
     rc, out = run_json(module, ["ko"], capsys)

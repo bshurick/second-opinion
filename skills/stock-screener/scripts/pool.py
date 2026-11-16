@@ -23,10 +23,12 @@ are the same name, found both ways; ``--held BRK.B`` marks it), and the row carr
 screen name no scan covers (``sector`` is then Yahoo's, when the screen priced it). ``held`` is
 true for a ``--held`` symbol or a survivor its screen marked held.
 
-Trim. More than ``--max`` names (default 40) are cut to it: every ``both`` name first, then
-prospects and screen survivors alternately, each in its own order (prospects one industry after
-another in turn, survivors one screen after another in turn by rank). Never on the verdict. The
-names cut are listed in ``trimmed`` and flagged ``POOL_TRIMMED``.
+Trim. More than ``--max`` names (default 40) are cut to it, industry by industry: within each
+industry (its scanned industry, else its sector) every ``both`` name comes first, then prospects
+and screen survivors alternately, each in its own order (prospects one industry after another in
+turn, survivors one screen after another in turn by rank); the industries then take turns, one
+name each, so a sector the screens favor cannot crowd out another's prospects. Never on the
+verdict. The names cut are listed in ``trimmed`` and flagged ``POOL_TRIMMED``.
 
 Health. ``screen.py --symbols <the pool> --preset health --no-price [--held ...]`` once (``health_growth``
 when the run's ``run.json`` says ``growth``: ``growth.run_profile``, ``value`` without a ``run.json``), then
@@ -221,14 +223,25 @@ def merge(run_dir: Path, held: list[str], flags: list[dict]) -> tuple[dict[str, 
     return rows, prospect_queues, screen_queues, counts
 
 
+def _industry_key(row: dict) -> str:
+    """The group a name competes in when the pool is trimmed: its scanned industry, else its sector."""
+    return str(row.get("industry") or row.get("sector") or "unclassified").strip().lower()
+
+
 def trim(rows: dict[str, dict], prospect_queues: list[list[str]], screen_queues: list[list[str]], limit: int) -> tuple[list[str], list[str]]:
-    """(kept tickers in priority order, tickers cut): ``both`` first, then prospects and screen
-    survivors alternately by their order."""
+    """(kept tickers in priority order, tickers cut). Within each industry (``_industry_key``) the
+    order is ``both`` names first, then prospects and screen survivors alternately by their order;
+    the industries then take turns, one name each, in the order their first name appears, so no
+    industry gets a second name before every industry has had its first."""
     order = [t for t in rows if rows[t]["origin"] == "both"]
     prospects = [t for t in _round_robin(prospect_queues) if rows[t]["origin"] == "industry"]
     screened = [t for t in _round_robin(screen_queues) if rows[t]["origin"] == "screen"]
     for i in range(max(len(prospects), len(screened))):
         order += prospects[i:i + 1] + screened[i:i + 1]
+    groups: dict[str, list[str]] = {}
+    for t in order:
+        groups.setdefault(_industry_key(rows[t]), []).append(t)
+    order = _round_robin(list(groups.values()))
     return order[:limit], order[limit:]
 
 
@@ -286,7 +299,7 @@ def run(args: list[str]) -> dict:
         raise InvalidInput(f"nothing to merge: {run_dir} has no prospects in industries/*.json and no survivors in screen/*.json")
     kept, cut = trim(rows, prospect_queues, screen_queues, ns.max)
     if cut:
-        flags.append({"code": "POOL_TRIMMED", "message": f"{len(rows)} candidates cut to {len(kept)} (--max {ns.max}): names found both ways first, then prospects and screen survivors alternately; the rest are in pool.json's trimmed"})
+        flags.append({"code": "POOL_TRIMMED", "message": f"{len(rows)} candidates cut to {len(kept)} (--max {ns.max}): industries take turns, and within each, names found both ways first, then prospects and screen survivors alternately; the rest are in pool.json's trimmed"})
     names = [rows[t] for t in kept]
 
     try:

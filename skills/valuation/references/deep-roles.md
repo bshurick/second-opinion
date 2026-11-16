@@ -85,6 +85,7 @@ Each section is the brief for one research subagent in a deep valuation. The orc
 - Fetch primary sources directly before searching: government data (EIA, Census, BLS, FRED), trade-body releases and company investor-relations pages by URL. A direct fetch does not spend a search.
 - Save searches for what needs them: news, earnings-call coverage and competitor coverage.
 - At the cap, stop searching, and say which claims you could not check.
+- Never run `budget.py` or write `budget.json` yourself. Report the number of searches you used in your hand-back; the orchestrator records every role's count once, so a count you also record is counted twice.
 
 ### What you hand back
 

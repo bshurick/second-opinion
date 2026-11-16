@@ -262,6 +262,12 @@ GROWTH_LEVELS = ("below_worst", "normal", "upside", "above_central", "above_all"
 MIN_UPSIDE_DEFAULT = 2.0  # growth.MIN_UPSIDE_DEFAULT: the best case must reach this multiple of the price
 
 
+def supported(scen: list[dict]) -> list[dict]:
+    """The scenarios a re-check measures against: every one but a ``"reference": true`` scenario after
+    the first (shown for comparison only, such as the one the price implies; gate.py leaves it out too)."""
+    return [s for i, s in enumerate(scen) if i == 0 or s.get("reference") is not True]
+
+
 def price_levels(model: dict, style: str = "value", min_upside: float = MIN_UPSIDE_DEFAULT) -> dict:
     """The prices at which a deep pick's price level changes: the worst, central (first) and best
     scenario values per share, and ``hurdle``, the price at which the central scenario's annual
@@ -272,7 +278,7 @@ def price_levels(model: dict, style: str = "value", min_upside: float = MIN_UPSI
     best scenario's distributions and exit value, discounted at the
     yearly return that reaches ``min_upside`` over its horizon, are worth exactly the price (null without
     a returns input); above it the best case no longer reaches ``min_upside``."""
-    scen = model.get("scenarios") or []
+    scen = supported(model.get("scenarios") or [])
     vals = [s["value_per_share"] for s in scen if isinstance(s.get("value_per_share"), (int, float))]
     if not vals:
         raise ValueError("the model has no scenario values")
@@ -349,7 +355,7 @@ def run_deep(params: dict) -> dict:
     if not isinstance(base_line, dict) or not isinstance(base_line.get("model"), dict) or not base_line["model"].get("scenarios"):
         raise ValueError("baseline.model must be a model.py output with scenarios")
     model = base_line["model"]
-    scen = model["scenarios"]
+    scen = supported(model["scenarios"])
     as_of = _date(params.get("as_of"), "as_of")
     base_as_of = _date(base_line.get("as_of"), "baseline.as_of")
     price = _num(params.get("price"), "price")

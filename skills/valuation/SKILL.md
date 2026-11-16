@@ -22,7 +22,7 @@ Quick mode runs a discounted-cash-flow range cross-checked against comparable mu
 | Field | How it is built |
 |---|---|
 | `fcf0` | Free cash flow **to the firm**: the annual statement's free cash flow plus after-tax interest, so it matches the WACC and the net-debt subtraction. When the latest year is above the average margin over the statements, the average is used and the source says so. |
-| `wacc` | A weighted cost of capital: CAPM cost of equity on the 10-year Treasury (^TNX) with beta pulled a third of the way toward 1, cost of debt from interest expense over total debt, market-value weights on debt net of cash (a company holding more cash than debt carries no debt weight, matching the net-debt subtraction in `dcf.py`; gross debt when cash is unknown), debt after tax, and never below the Treasury plus 2.5 points. The equity risk premium is a dated default (4.2%, Damodaran implied, 2026-10-01) flagged `ERP_DEFAULT`, and `ERP_STALE` after 180 days; `--erp RATE --erp-date YYYY-MM-DD` replaces it with a dated figure between 2% and 10%. |
+| `wacc` | A weighted cost of capital: CAPM cost of equity on the 10-year Treasury (^TNX) with beta pulled a third of the way toward 1, cost of debt from interest expense over total debt, market-value weights on debt net of cash (a company holding more cash than debt carries no debt weight, matching the net-debt subtraction in `dcf.py`; gross debt when cash is unknown), debt after tax, and never below the Treasury plus 2.5 points. The equity risk premium is a dated default (4.41%, Damodaran implied, 2026-11-01) flagged `ERP_DEFAULT`, and `ERP_STALE` after 180 days; `--erp RATE --erp-date YYYY-MM-DD` replaces it with a dated figure between 2% and 10%. |
 | `growth_rate` | The lower of the revenue and free-cash-flow CAGRs, kept within 0–15%. |
 | `dcf_scenarios` | `bear`, `base` and `bull` inputs that differ in the business assumption, not the discount rate. Each fades growth in a straight line to terminal growth, from below, at, and above the hint. |
 | `business_type` | From Yahoo's sector. |
@@ -325,7 +325,8 @@ Run with the Bash tool. All print JSON on stdout.
    - End each prompt with the instruction to start from `baseline/INDEX.md` in the case folder. The index holds the pack's files and the resolved script commands, so the prompt lists neither.
    - The caps are in `budget`'s `caps`: `forensic`, `claims`, `industry`, `segments`.
    - If the Agent tool is unavailable, run the roles one after another yourself, and say so in the reply.
-4. Run `budget.py DIR/deep-SYMBOL add forensic=N claims=N industry=N segments=N` once, with the searches each role reported. If a role failed or wrote no file, add its name to `missing_roles` and go on.
+4. Run `budget.py DIR/deep-SYMBOL add forensic=N claims=N industry=N segments=N` once, with the searches each role reported.
+   - The roles never record their own (deep-roles.md says so). Do not pass `budget.py` commands into their prompts. If a role failed or wrote no file, add its name to `missing_roles` and go on.
 5. Merge the candidate beliefs into `ledger.json`. Combine duplicates. Set `verdict` to `open` where the evidence is thin. Rank by stakes, then by how evenly the evidence splits.
    - Stakes are how much value moves if the belief is wrong, never how much attention the belief gets in the news.
    - A belief settled by a single source, or by a policy that can be reversed, keeps its stakes and stays eligible for a thread.
@@ -355,7 +356,9 @@ Run with the Bash tool. All print JSON on stdout.
    10. Add a `sensitivity` on the two inputs the central scenario hangs on. `roe_shift` serves a residual-income segment, and `discount_shift` with segment `"*"` moves every discount rate at once.
 7. Run `deep_run.py --case DIR/deep-SYMBOL --label baseline`. It replaces separate `model.py` and `returns.py` runs.
    - If it exits 2, fix `model.json` from the `error` and rerun.
-   - If `position` is `all_above_price` or `all_below_price`, a scenario is probably missing. Read `implied`, write the scenario the price implies, and rerun before the threads.
+   - If `position` is `all_above_price` or `all_below_price`, a scenario is probably missing. Read `implied` and look for a story the research supports that reaches the price; write it as an ordinary scenario only when its `must_be_true` points to dated ledger claims.
+   - When no supported story reaches the price, write the scenario the price implies anyway, so the page shows what the price needs, and mark it `"reference": true`. Rerun before the threads.
+     - A reference scenario is never the best case, the worst case or part of the gate: without the mark, the deep picker's growth gate would judge the price against itself. `position` leaves it out, so it does not clear the flag.
    - If `flags` has `NO_BEST_CASE`, no scenario is better than the central one. Add a best case whose `must_be_true` points to dated ledger claims, and rerun before the threads.
 8. Run one thread round:
    1. Take `threads_allowed` from the step 4 output. If it is 0, skip the threads, say so in the flags, and go to step 10.

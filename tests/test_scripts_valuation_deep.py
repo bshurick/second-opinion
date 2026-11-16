@@ -828,7 +828,16 @@ def test_one_stress_scenario_is_valued_and_echoed() -> None:
     ([{"name": "Base", "stress": True}, {"name": "Bear"}], "central case and cannot be the stress test"),
     ([{"name": "Base"}, {"name": "A", "stress": True}, {"name": "B", "stress": True}], "at most one scenario can be a stress test"),
     ([{"name": "Base"}, {"name": "A", "stress": "yes"}], "stress must be true or false"),
+    ([{"name": "Base", "reference": True}, {"name": "Bear"}], "cannot be a reference scenario"),
+    ([{"name": "Base"}, {"name": "A", "reference": "yes"}], "reference must be true or false"),
+    ([{"name": "Base"}, {"name": "A", "stress": True, "reference": True}], "both the stress test and a reference"),
 ])
 def test_stress_scenario_rules(scenarios, needle) -> None:
     with pytest.raises(ValueError, match=needle):
         load_script(MODEL).run_model(base_input(scenarios=scenarios))
+
+
+def test_reference_scenario_is_valued_and_echoed() -> None:
+    m = load_script(MODEL).run_model(base_input(scenarios=[{"name": "Base"}, {"name": "Price-implied", "reference": True,
+                                                                                "overrides": {"Core": {"margin": 0.30}}}]))
+    assert [s["reference"] for s in m["scenarios"]] == [False, True]

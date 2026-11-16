@@ -12,7 +12,7 @@ is left as it is), runs model.py and then returns.py on the model's ``returns_in
 Prints::
 
     {"run": n, "label", "price",
-     "scenarios": [{"name", "value_per_share", "value_ex_premiums", "upside", "irr", "change_vs_prev", "stress"}],
+     "scenarios": [{"name", "value_per_share", "value_ex_premiums", "upside", "irr", "change_vs_prev", "stress", "reference"}],
      "compared_to", "max_move", "round2_due", "unmatched": [{"name", "run", "value_per_share"}],
      "position", "implied", "flags": [{"code", "message"}]}
 
@@ -36,11 +36,11 @@ own ``change_vs_prev`` stays null, and the flag's message gives the figure). Kee
 the same between runs and nothing here fires.
 
 Best case. A deep valuation carries at least one scenario better than the central one: a
-non-stress scenario other than the first with a higher ``value_per_share`` (a non-numeric value is
-ignored). Without one the flag NO_BEST_CASE is raised; it never changes the exit code.
+non-stress, non-reference scenario other than the first with a higher ``value_per_share`` (a
+non-numeric value is ignored). Without one the flag NO_BEST_CASE is raised; it never changes the exit code.
 
 ``position`` says where the price sits among the
-scenario values: ``all_above_price`` (every value is above the price), ``all_below_price``, or
+scenario values (a ``"reference": true`` scenario left out): ``all_above_price`` (every value is above the price), ``all_below_price``, or
 ``brackets_price``; null without a price. ``implied`` is model.py's (what the price implies).
 ``flags`` are model.py's followed by returns.py's.
 
@@ -154,7 +154,8 @@ def summarize(model: dict, rets: dict, runs: list[dict], label: str | None, agai
         before = prev.get(s["name"])
         change = round((s["value_per_share"] - before) / abs(before), 4) if isinstance(before, (int, float)) and before else None
         scenarios.append({"name": s["name"], "value_per_share": s["value_per_share"], "value_ex_premiums": s["value_ex_premiums"],
-                          "upside": s["upside"], "irr": irr.get(s["name"]), "change_vs_prev": change, "stress": bool(s.get("stress"))})
+                          "upside": s["upside"], "irr": irr.get(s["name"]), "change_vs_prev": change, "stress": bool(s.get("stress")),
+                          "reference": bool(s.get("reference"))})
     moves = [abs(s["change_vs_prev"]) for s in scenarios if s["change_vs_prev"] is not None]
 
     number = len(runs) + 1
@@ -182,13 +183,14 @@ def summarize(model: dict, rets: dict, runs: list[dict], label: str | None, agai
         extra_flags.append({"code": "SCENARIOS_CHANGED", "message": message + ". Keep the names the same between runs."})
     central_value = scenarios[0]["value_per_share"] if scenarios else None
     if _is_number(central_value) and not any(
-            _is_number(s["value_per_share"]) and not s["stress"] and s["value_per_share"] > central_value for s in scenarios[1:]):
+            _is_number(s["value_per_share"]) and not s["stress"] and not s["reference"] and s["value_per_share"] > central_value
+            for s in scenarios[1:]):
         extra_flags.append({"code": "NO_BEST_CASE", "message": "No scenario is better than the central one; add a best case backed by dated ledger claims and rerun."})
     max_move = max(moves) if moves else None
     return {"run": number, "label": label, "price": model.get("price"), "scenarios": scenarios,
             "compared_to": against.get("run") if against else None, "max_move": max_move, "round2_due": max_move is not None and max_move > ROUND2_MOVE,
             "unmatched": unmatched,
-            "position": _position([s["value_per_share"] for s in scenarios], model.get("price")),
+            "position": _position([s["value_per_share"] for i, s in enumerate(scenarios) if i == 0 or not s["reference"]], model.get("price")),
             "implied": model.get("implied"), "flags": [*(model.get("flags") or []), *(rets.get("flags") or []), *extra_flags]}
 
 

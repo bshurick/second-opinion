@@ -106,7 +106,7 @@ def test_trim_keeps_every_both_and_alternates(monkeypatch, capsys, tmp_path):
     names = [n["ticker"] for n in saved["names"]]
     assert len(names) == 40 and {"B1", "B2", "B3"} <= set(names)
     kept_p, kept_s = [t for t in names if t.startswith("P")], [t for t in names if t.startswith("S")]
-    assert abs(len(kept_p) - len(kept_s)) <= 1  # prospects and survivors alternately
+    assert len(kept_p) == 20 and len(kept_s) == 17  # industries take turns: the two small ones are kept whole
     assert kept_s == [f"S{i:02d}" for i in range(len(kept_s))]  # the screen's own order
     assert {"P00", "P12"} <= set(kept_p)  # never on the verdict: both industries keep their first prospects
     assert saved["counts"]["candidates"] == 50 and saved["counts"]["merged"] == 40 and saved["counts"]["trimmed"] == 10
@@ -261,3 +261,18 @@ def test_value_run_uses_health(monkeypatch, capsys, tmp_path):
     assert rc == 0, out
     assert presets == ["health"] and out["profile"] == "value"
     assert json.loads((run / "pool.json").read_text())["profile"] == "value"
+
+
+def test_trim_lets_no_industry_crowd_out_another(monkeypatch, capsys, tmp_path):
+    """2026-11-15 growth run: tech and healthcare names found both ways filled the 40 and every
+    industrial prospect (BE, FIX, GEV, HWM) was cut."""
+    tech = [f"T{i:02d}" for i in range(45)]
+    run = make_run(tmp_path, {"group1": [industry("Semiconductors", "Technology", tech)],
+                              "group3": [industry("Electrical Equipment", "Industrials", ["BE", "GEV"])]},
+                   {"growth": screen(tech)})
+    fake_health(monkeypatch)
+    rc, out = run_json(pool, ["--run", str(run)], capsys)
+    assert rc == 0, out
+    names = [n["ticker"] for n in json.loads((run / "pool.json").read_text())["names"]]
+    assert len(names) == 40 and {"BE", "GEV"} <= set(names)
+    assert names[:2] == ["T00", "BE"]  # one name per industry in turn

@@ -15,6 +15,7 @@ from __future__ import annotations
 import csv
 import io
 import re
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -27,7 +28,10 @@ from second_opinion.errors import ApiError
 _BASE = "https://fred.stlouisfed.org/graph/fredgraph.csv?id="
 _TTL = 86400
 _TIMEOUT = 20
-_USER_AGENT = "second-opinion/1.0 (python-urllib)"
+# FRED's edge drops (HTTP/2 INTERNAL_ERROR, seen as a read timeout) any User-Agent it does not
+# recognize, a product token like "second-opinion/1.0" included (it served one until 2026-11), but
+# serves urllib's own default "Python-urllib/X.Y". Send exactly that.
+_USER_AGENT = f"Python-urllib/{sys.version_info[0]}.{sys.version_info[1]}"
 _SERIES_RE = re.compile(r"^[A-Z0-9_]{1,32}$")
 SERIES_NAMES = {
     "AAA": "Moody's Seasoned Aaa Corporate Bond Yield",
@@ -52,8 +56,6 @@ def cache_dir() -> Path:
 
 
 def _fetch(url: str) -> bytes:
-    # FRED's edge stalls or drops requests whose User-Agent is a bare word or a
-    # browser string, but serves product/version tokens (and urllib's default).
     req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     try:
         with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:  # noqa: S310 — fixed https host

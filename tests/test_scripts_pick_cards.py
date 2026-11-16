@@ -253,6 +253,20 @@ def test_leverage_falls_back_to_edgar_ebitda(tmp_path):
     assert lev["ebitda"] == 100e6 and lev["ok"] is False and lev["net_debt_to_ebitda"] == 5.0
 
 
+def test_leverage_uses_trailing_twelve_month_operating_income(tmp_path):
+    """BE: FY2025 EBITDA of 20M failed the check while the last four quarters earned far more."""
+    _write_fundamentals(tmp_path, 1500e6, 1200e6, 20e6, ebit=5e6, interest=30e6, annual_debt=1500e6)
+    (tmp_path / "edgar.json").write_text(json.dumps({"annual": [], "ttm": {"operating_income": 400e6}}))
+    lev = cards.leverage(tmp_path, "industrial")
+    assert lev["ebitda_basis"] == "ttm" and lev["ebitda"] == 415e6  # TTM EBIT plus the annual D&A (20M - 5M)
+    assert lev["ok"] is True and lev["interest_coverage"] == round(400e6 / 30e6, 2)
+
+
+def test_leverage_without_ttm_keeps_the_annual_basis(tmp_path):
+    _write_fundamentals(tmp_path, 300e6, 100e6, 200e6, ebit=150e6, interest=15e6, annual_debt=280e6)
+    assert cards.leverage(tmp_path, "industrial")["ebitda_basis"] == "annual"
+
+
 @pytest.mark.parametrize("btype", ["financial", "reit", "utility"])
 def test_yardstick_businesses_are_not_leverage_checked(tmp_path, btype):
     _write_fundamentals(tmp_path, 9e9, 0, 1e8)
@@ -317,3 +331,26 @@ def test_value_run_keeps_value_hint_and_no_upside_hint(monkeypatch, capsys, tmp_
     monkeypatch.setattr(cards.pack, "build", fake_build(irr={"AAA": 0.17}))
     rc, out = run_json(cards, ["--run", str(run)], capsys)
     assert "upside_hint" not in out["cards"][0] and "upside_hint" not in json.loads((run / "cards" / "AAA.data.json").read_text())
+
+
+def test_growth_card_takes_its_upside_hint_from_the_yardstick(monkeypatch, capsys, tmp_path):
+    run = make_run(tmp_path, ("AAA",))
+    (run / "run.json").write_text(json.dumps({"profile": "growth"}))
+    base = fake_build(irr={"AAA": 0.2})
+
+    def build(symbol, out_dir, level="card", workers=4):
+        pack = base(symbol, out_dir, level, workers)
+        out_dir = Path(out_dir)
+        (out_dir / "fundamentals.json").write_text(json.dumps({"info": {"market_cap": 1000e6, "total_debt": 0, "total_cash": 0}, "statements": {}}))
+        (out_dir / "edgar.json").write_text(json.dumps({"quarterly": [], "annual": [{"revenue": 90e6, "free_cash_flow": 20e6, "sbc": 5e6}],
+                                                         "ttm": {"revenue": 100e6, "operating_income": 30e6, "net_income": 20e6, "revenue_ttm_yoy": 1.0}}))
+        (out_dir / "sentiment.json").write_text(json.dumps({"symbols": {symbol: {"analysts": {"estimates": {"revenue": [{"period": "+1y", "growth": 0.5}]}}}}}))
+        return pack
+
+    monkeypatch.setattr(cards.pack, "build", build)
+    rc, out = run_json(cards, ["--run", str(run)], capsys)
+    assert rc == 0, out
+    data = json.loads((run / "cards" / "AAA.data.json").read_text())
+    stick = data["yardstick"]
+    assert stick["consensus_growth"] == 0.5 and stick["benchmark"] == 0.5 and stick["margin"] == round(0.30 * 0.79, 4)
+    assert data["upside_hint"] == stick["hint"] is not None and out["cards"][0]["upside_hint"] == stick["hint"]

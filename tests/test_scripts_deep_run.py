@@ -53,7 +53,7 @@ def test_first_run_writes_outputs_and_has_no_move(tmp_path, capsys) -> None:
     assert rets == json.loads(json.dumps(RETURNS.run_returns(expected["returns_input"])))
     assert [s["name"] for s in out["scenarios"]] == ["Base", "Squeeze"]
     base = out["scenarios"][0]
-    assert set(base) == {"name", "value_per_share", "value_ex_premiums", "upside", "irr", "change_vs_prev", "stress"}
+    assert set(base) == {"name", "value_per_share", "value_ex_premiums", "upside", "irr", "change_vs_prev", "stress", "reference"}
     assert base["value_per_share"] == expected["scenarios"][0]["value_per_share"]
     assert base["upside"] == expected["scenarios"][0]["upside"] and base["irr"] == rets["scenarios"][0]["irr"]
     assert base["change_vs_prev"] is None
@@ -289,3 +289,16 @@ def test_a_stress_scenario_above_the_central_one_is_not_a_best_case(tmp_path, ca
     out = run(case, capsys)[1]
     assert out["scenarios"][2]["value_per_share"] > out["scenarios"][0]["value_per_share"]
     assert "NO_BEST_CASE" in {f["code"] for f in out["flags"]}
+
+
+def test_reference_scenario_is_not_a_best_case_and_not_in_position() -> None:
+    """A "reference": true scenario (the one the price implies) neither satisfies NO_BEST_CASE nor sets position."""
+    deep_run = load_script("valuation/scripts/deep_run.py")
+    model = {"price": 100, "scenarios": [
+        {"name": "Central", "value_per_share": 60, "value_ex_premiums": 60, "upside": -0.4},
+        {"name": "Bear", "value_per_share": 40, "value_ex_premiums": 40, "upside": -0.6},
+        {"name": "Price-implied", "value_per_share": 101, "value_ex_premiums": 101, "upside": 0.01, "reference": True}]}
+    out = deep_run.summarize(model, {"scenarios": []}, [], "baseline")
+    assert out["position"] == "all_below_price"
+    assert any(f["code"] == "NO_BEST_CASE" for f in out["flags"])
+    assert out["scenarios"][2]["reference"] is True

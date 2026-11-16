@@ -30,7 +30,9 @@ so every one can be challenged):
   interest added, minority share scaled the same way), and the output carries
   dcf_input_latest: a copy of dcf_input with fcf0 replaced by that figure, only
   when CYCLICAL fires. When the two figures differ by more than 2x, flag
-  CYCLE_BASE_SPLIT: present both, never one base value. A mid-cycle view comes
+  CYCLE_BASE_SPLIT: present both, never one base value. When the margin rose every
+  year over three or more statements, MARGINS_RISING is raised beside CYCLICAL:
+  a business scaling up looks the same as a cycle's upswing, and the filings decide. A mid-cycle view comes
   from intrinsic.py's normalized block.
 - wacc is a real weighted cost of capital: cost of equity = risk-free +
   adjusted beta x equity risk premium (a dated default, flagged ERP_DEFAULT,
@@ -95,7 +97,7 @@ so every one can be challenged):
   special types a cash-flow DCF says little and a flag names what to use
   instead (intrinsic-inputs.py | intrinsic.py, and ddm.py).
 
-Stated defaults (challenge all of them): equity risk premium 4.2% dated 2026-10-01 (flagged ERP_DEFAULT), terminal
+Stated defaults (challenge all of them): equity risk premium 4.41% dated 2026-11-01 (Damodaran's implied ERP, trailing 12 months with adjusted payout; flagged ERP_DEFAULT), terminal
 growth 2.5%, stage-1 years 5, tax rate 21% when the statement has none, cost
 of debt risk-free + 2% when it cannot be measured, DDM model Gordon. Fields
 the data cannot fill are null for the agent to set.
@@ -113,8 +115,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
 from second_opinion import brokerage, market, output  # noqa: E402
 from second_opinion.errors import InvalidInput  # noqa: E402
 
-_DEFAULT_ERP = 0.042
-_DEFAULT_ERP_AS_OF = "2026-10-01"
+# Damodaran's implied ERP for the S&P 500, trailing 12 months with adjusted payout, from his home page
+# (pages.stern.nyu.edu/~adamodar). The same line gives 3.79% on the trailing cash yield. The 4.2% this
+# replaced was labelled 2026-10-01 but was his start-of-2026 figure (4.23%).
+_DEFAULT_ERP = 0.0441
+_DEFAULT_ERP_AS_OF = "2026-11-01"
 _ERP_STALE_DAYS = 180
 _ERP_BOUNDS = (0.02, 0.10)
 _DEFAULT_TERMINAL_GROWTH = 0.025
@@ -367,7 +372,12 @@ def main(argv: list[str] | None = None) -> int:
             (min(margins) <= 0 < margins[-1]) or (min(margins) > 0 and max(margins) / min(margins) > 3)
         )
         if cyclical:
-            flags.append({"code": "CYCLICAL", "message": f"free-cash-flow margin ran from {min(margins):.0%} to {max(margins):.0%} over {len(margins)} annual statements; a single year's cash flow is a poor base. dcf_input holds the normalized figure and dcf_input_latest the latest year's."})
+            rising = len(margins) >= 3 and all(b > a for a, b in zip(margins, margins[1:]))
+            shape = (" It rose every year: either a business scaling up (the average understates it; judge from the filings) or a cycle's upswing (the latest year overstates it)."
+                     if rising else "")
+            flags.append({"code": "CYCLICAL", "message": f"free-cash-flow margin ran from {min(margins):.0%} to {max(margins):.0%} over {len(margins)} annual statements; a single year's cash flow is a poor base.{shape} dcf_input holds the normalized figure and dcf_input_latest the latest year's."})
+            if rising:
+                flags.append({"code": "MARGINS_RISING", "message": f"free-cash-flow margin rose every year, {margins[0]:.0%} to {margins[-1]:.0%}: CYCLICAL here may be a business scaling up rather than a cycle."})
             if fcf0 is not None and fcf0_latest is not None and (min(fcf0, fcf0_latest) <= 0 or max(fcf0, fcf0_latest) / min(fcf0, fcf0_latest) > 2):
                 flags.append({"code": "CYCLE_BASE_SPLIT", "message": "normalized and latest-year cash flow differ more than 2x; present both and do not report one base value; intrinsic.py's normalized block gives a mid-cycle view."})
         if fcf0 is not None and fcf0 <= 0:

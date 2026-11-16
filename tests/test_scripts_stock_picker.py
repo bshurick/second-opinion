@@ -154,6 +154,26 @@ def test_growth_stress_not_best(capsys, monkeypatch) -> None:
     assert r["value_range"] == [130, 900]
 
 
+def _with_reference(f: dict, name: str, value: float, irr: float) -> dict:
+    f["model"]["scenarios"].append({"name": name, "value_per_share": value, "reference": True})
+    f["returns"]["scenarios"].append({"name": name, "irr": irr})
+    return f
+
+
+def test_growth_reference_scenario_is_never_best(capsys, monkeypatch) -> None:
+    f = _with_reference(gfinal("G", 100, [("Central", 130, 0.06), ("Bull", 200, 0.12)]), "Price-implied", 400, 0.35)
+    r = _grow([f], capsys, monkeypatch)["results"][0]
+    assert r["best"]["name"] == "Bull" and r["verdict"] == "fail"
+    assert r["reference"] == [{"name": "Price-implied", "irr": 0.35, "value_per_share": 400}]
+    assert r["value_range"] == [130, 200]
+
+
+def test_value_reference_scenario_is_not_gated(capsys, monkeypatch) -> None:
+    f = _with_reference(finalist("V", 50, [("Base", 62, 0.11), ("Bear", 45, 0.03)]), "Price-implied", 20, -0.2)
+    r = run_stdin(GATE, {"finalists": [f]}, capsys, monkeypatch)["results"][0]
+    assert r["verdict"] == "pass" and r["worst"]["name"] == "Bear" and r["reference"][0]["name"] == "Price-implied"
+
+
 def test_growth_order_by_best(capsys, monkeypatch) -> None:
     out = _grow([gfinal("LO", 100, [("C", 130, 0.06), ("B", 230, 0.17)]), gfinal("HI", 100, GROW)], capsys, monkeypatch)
     assert [r["symbol"] for r in out["results"]] == ["HI", "LO"]
