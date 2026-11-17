@@ -330,6 +330,37 @@ def test_safety_rules_verbatim(skill_name: str) -> None:
         assert rule in text, f"{skill_name}: missing safety rule: {rule}"
 
 
+# Writing standards, pinned verbatim in every SKILL.md and every subagent role file. A deep
+# valuation named its central scenario "slower comps" and never said comps meant
+# comparable-store sales; free-form deep pages had no rule against undefined shorthand.
+WRITING_RULES = [
+    'Spell out every acronym and shorthand at its first use, as in "comparable-store sales (comps)".',
+    "A label is a first use: a scenario name, headline or column header uses the plain words or defines its shorthand.",
+    'Cut adjectives and adverbs that carry no fact. A word like "sharp" or "severe" stays only beside the number that shows it.',
+    "Use the active voice: name who did what.",
+    "Keep sentences short, one idea each, under about 25 words.",
+    "Give every bulleted or numbered list a heading or lead-in that says what it lists. Otherwise write the items as prose, or as a table with column or row headers when they share fields.",
+]
+ROLE_FILES = sorted(
+    str(p.relative_to(SKILLS_ROOT)) for p in SKILLS_ROOT.glob("*/references/*.md") if "Return to the " in p.read_text()
+)
+
+
+@pytest.mark.parametrize("skill_name", SKILL_NAMES)
+def test_writing_rules_verbatim(skill_name: str) -> None:
+    text = _skill_md_path(skill_name).read_text()
+    assert "**Writing** (every reply, page and saved file):" in text, f"{skill_name}: missing the Writing block"
+    for rule in WRITING_RULES:
+        assert rule in text, f"{skill_name}: missing writing rule: {rule}"
+
+
+@pytest.mark.parametrize("rel", ROLE_FILES)
+def test_role_files_carry_writing_rules(rel: str) -> None:
+    text = (SKILLS_ROOT / rel).read_text()
+    for rule in WRITING_RULES:
+        assert rule in text, f"{rel}: missing writing rule: {rule}"
+
+
 # Every skill that waits on a user's yes before a --confirm run. A confirmation asked in an
 # ordinary sentence mid-reply was missed in real use, so each one ends the reply with the same
 # call-to-action block.

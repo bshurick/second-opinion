@@ -6,6 +6,7 @@ Every `skills/<name>/SKILL.md` follows one layout, so that a small model can fol
 - Layout
 - Frontmatter
 - Writing rules
+- Writing standards for output
 - What belongs in a reference file
 - What to leave out
 
@@ -20,7 +21,7 @@ Loose information first, then exactly what to do, in order. These level-2 headin
 | `## Scripts` | The commands in one fenced `bash` block **(tested)**, then a table of what each does, then a table of exit codes. | when the skill has scripts |
 | `## Steps` | The procedure. Numbered, one action per step, in the order to do them. When requests differ, one bold case line per kind of request, each with its own numbered steps. | yes **(tested)** |
 | `## Reply format` | The shape of the answer: ordered sections, field names from the script output, number formats. | when the skill has a fixed reply |
-| `## Rules` | Hard rules: the skill's own first, then the shared compliance bullets verbatim. Always last **(tested)**. | yes **(tested)** |
+| `## Rules` | Hard rules: the skill's own first, then the shared compliance bullets verbatim, then the shared **Writing** block verbatim **(tested)**. Always last **(tested)**. | yes **(tested)** |
 
 Use `###` headings or bold lead-ins inside a section when it needs parts. Do not add other `##` headings.
 
@@ -41,6 +42,10 @@ Use `###` headings or bold lead-ins inside a section when it needs parts. Do not
 - A reply that waits on the user's yes before a `--confirm` run ends with the `### ⚠️ ACTION NEEDED` confirmation block, defined in each such skill's Reply format. Nothing follows it **(tested)**.
 - No section tags such as `<protocol>`. The one exception is `<research_dating>`, which the tests look for by name; it sits inside `## Rules`.
 - No dates, "measured on", "as of this year", or release history. A figure that goes stale belongs in a reference file with a "verify the current figure" note.
+
+## Writing standards for output
+
+The shared **Writing** block at the end of every `## Rules` governs what the model writes for the person: replies, pages, ledgers, scenario names and saved files. Every subagent role file carries the same five rules in its shared rules **(tested)**, because role findings reach pages. Change the wording in `WRITING_RULES` in `tests/test_skills_structure.py` and in every file at once.
 
 ## What belongs in a reference file
 

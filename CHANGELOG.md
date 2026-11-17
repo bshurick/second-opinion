@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.13.0
+
+- every skill: a shared **Writing** block closes each `## Rules`, and every subagent role file carries the same rules. Spell out each acronym and shorthand at first use, with labels (scenario names, headlines, column headers) counting as a first use. Cut adjectives and adverbs that carry no fact. Use the active voice. Keep sentences under about 25 words. Give each list a heading or lead-in, or write it as prose or a table with headers. A deep valuation had named its central scenario "slower comps" without saying comps meant comparable-store sales. `tests/test_skills_structure.py` pins the rules verbatim.
+
 ## 1.12.0
 
 - stock screener: every priced survivor carries `ma200w_gap` (the latest weekly close against its 200-week simple moving average, less 1) and `ma200w_slope` (that average against its value 52 weeks earlier, less 1), built from the same batched Yahoo download as momentum, now about five years of daily closes grouped into weeks. Two price criteria use them, `max_ma200w_gap` and `min_ma200w_slope`; no preset sets either, and a missing figure fails. The screen page shows "vs 200-wk avg" beside the value ranking and "200-wk slope" beside the growth ranking.

@@ -41,6 +41,12 @@ Each section is the brief for one research subagent in a portfolio deep review. 
   - `watch`: `what` to check, what result `breaks_if`, and a `check_by` date
 - `share` is the part of the holding's value that depends on the belief, above 0 and at most 1. Tie it to a figure where one exists, such as the revenue from one customer in a 10-K. Mark any other share as inference.
 - `shock` is the assumed change in that exposed value if the belief is wrong, from -1 to 1. Base it on how the same kind of shock played out before, name that precedent in `why`, and date it. A shock is an assumption, not a forecast.
+- Write every finding to these standards, because it may reach the person's page:
+  - Spell out every acronym and shorthand at its first use, as in "comparable-store sales (comps)". A label is a first use: a scenario name, headline or column header uses the plain words or defines its shorthand. Tickers, $ and % are exempt. Spelling out a term is not explaining a concept.
+  - Cut adjectives and adverbs that carry no fact. A word like "sharp" or "severe" stays only beside the number that shows it.
+  - Use the active voice: name who did what. "Management cut prices", not "prices were cut".
+  - Keep sentences short, one idea each, under about 25 words.
+  - Give every bulleted or numbered list a heading or lead-in that says what it lists. Otherwise write the items as prose, or as a table with column or row headers when they share fields.
 - Return to the orchestrator one paragraph: the three findings that matter most, the file path and the searches you used.
 - Leave buy, sell and hold judgements, target weights and fair values out entirely. Avoid the words "recommend", "advise", "should" and "suggest" in what you write.
 

@@ -96,6 +96,12 @@ Each section is the brief for one research subagent in a deep valuation. The orc
   - which way it cuts: whether the value goes up or down if the belief is true
   - the evidence for and against so far, with sources
   - the model field it would change (segment, and growth, margin, sales_to_capital, a discount premium, or a scenario failure)
+- Write every finding to these standards, because it may reach the person's page:
+  - Spell out every acronym and shorthand at its first use, as in "comparable-store sales (comps)". A label is a first use: a scenario name, headline or column header uses the plain words or defines its shorthand. Tickers, $ and % are exempt. Spelling out a term is not explaining a concept.
+  - Cut adjectives and adverbs that carry no fact. A word like "sharp" or "severe" stays only beside the number that shows it.
+  - Use the active voice: name who did what. "Management cut prices", not "prices were cut".
+  - Keep sentences short, one idea each, under about 25 words.
+  - Give every bulleted or numbered list a heading or lead-in that says what it lists. Otherwise write the items as prose, or as a table with column or row headers when they share fields.
 - Return to the orchestrator one paragraph: the three findings that matter most, the file path, and the searches you used.
 - Leave buy, sell and hold judgements out entirely. The output describes the business and the evidence.
 

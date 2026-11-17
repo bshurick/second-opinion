@@ -38,6 +38,12 @@ Each section is the brief for one research subagent in a real-estate deep review
   - `## Findings`: `claim`, `side` (`for` or `against` the property's numbers holding up), `source` and `date`.
   - `## Open questions`: what could not be settled, and `who` can answer it.
   - `## Watch`: `what` to check, what result `breaks_if`, and a `check_by` date.
+- Write every finding to these standards, because it may reach the person's page:
+  - Spell out every acronym and shorthand at its first use, as in "comparable-store sales (comps)". A label is a first use: a scenario name, headline or column header uses the plain words or defines its shorthand. Tickers, $ and % are exempt. Spelling out a term is not explaining a concept.
+  - Cut adjectives and adverbs that carry no fact. A word like "sharp" or "severe" stays only beside the number that shows it.
+  - Use the active voice: name who did what. "Management cut prices", not "prices were cut".
+  - Keep sentences short, one idea each, under about 25 words.
+  - Give every bulleted or numbered list a heading or lead-in that says what it lists. Otherwise write the items as prose, or as a table with column or row headers when they share fields.
 - Return to the orchestrator one paragraph: the three findings that matter most, the file path and the searches you used.
 - Leave buy, pass and offer judgements and fair values out entirely. Avoid the words "recommend", "advise", "should" and "suggest" in what you write. You are not an inspector, appraiser or lawyer, so name those questions and leave them open.
 

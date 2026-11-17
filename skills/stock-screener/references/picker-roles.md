@@ -94,6 +94,12 @@ Each section is the brief for one deep-picker subagent. The coordinator hands a 
 
 ### What you hand back
 
+- Write every finding to these standards, because it may reach the person's page:
+  - Spell out every acronym and shorthand at its first use, as in "comparable-store sales (comps)". A label is a first use: a scenario name, headline or column header uses the plain words or defines its shorthand. Tickers, $ and % are exempt. Spelling out a term is not explaining a concept.
+  - Cut adjectives and adverbs that carry no fact. A word like "sharp" or "severe" stays only beside the number that shows it.
+  - Use the active voice: name who did what. "Management cut prices", not "prices were cut".
+  - Keep sentences short, one idea each, under about 25 words.
+  - Give every bulleted or numbered list a heading or lead-in that says what it lists. Otherwise write the items as prose, or as a table with column or row headers when they share fields.
 - Return to the coordinator one paragraph: the three findings that matter most, the file paths, and the number of searches you used.
 - **No verdicts on stocks.** Leave buy, sell and hold judgements out entirely. The output describes industries, businesses and evidence.
 

@@ -120,7 +120,6 @@ The saved depth decides the default; when it is deep, the session's depth rule s
   | 5 | `picker-5` | 18 (6 each) | 40 (1 per company) | 95 (19 each, no second thread round) | 153 |
 
   - A growth run uses `picker-growth-N`: the same caps plus `scout` 6 (133, 156 and 159).
-
   - Each finalist's valuation keeps its own `budget.json` in `DIR/deep-SYMBOL/` on the plan `valuation-picker`: 23 searches, the valuation plan with `industry` at 4.
   - `pick_assemble.py` sums the finalists' own budgets into the `valuations` figure, so the run's `budget.json` records only `scanners` and `quick_reads`.
   - Every `budget.py` command prints `caps`, `used`, `used_total`, `remaining` and `flags` (`ROLE_OVER_CAP`, `OVER_BUDGET`).
@@ -479,10 +478,8 @@ The scripts do the fetching and the file assembly. Do not write `macro.md`, `poo
 
 ## Rules
 
-- Every number comes from the script.
-- Say the limits in Background when they bear on a result.
+- Every number comes from the script. Say the limits in Background when they bear on a result.
 - A ranking that did not predict anything in the look-back is a reason to treat rank as a starting order, not a signal.
-- A large gap between expected growth and the growth the price implies is a question, not an answer.
 - In the deep picker, industry verdicts and candidate scores are judgement backed by dated evidence. They are not forecasts.
 - Surface only gate passes as picks, and never call a pick a recommendation.
 - Name a `pass_flagged` warning beside the pick every time.
@@ -495,3 +492,11 @@ The scripts do the fetching and the file assembly. Do not write `macro.md`, `poo
 - Always surface key risks alongside opportunities.
 - When the answer is a figure the user could act on (a projection, valuation, trade preview, tax estimate, or allocation), say once that it is general information at the stated assumptions, not financial, tax, or legal advice.
 - Only explain financial concepts when the user asks for an explanation.
+
+**Writing** (every reply, page and saved file):
+
+- Spell out every acronym and shorthand at its first use, as in "comparable-store sales (comps)". A label is a first use: a scenario name, headline or column header uses the plain words or defines its shorthand. Tickers, $ and % are exempt. Spelling out a term is not explaining a concept.
+- Cut adjectives and adverbs that carry no fact. A word like "sharp" or "severe" stays only beside the number that shows it.
+- Use the active voice: name who did what. "Management cut prices", not "prices were cut".
+- Keep sentences short, one idea each, under about 25 words.
+- Give every bulleted or numbered list a heading or lead-in that says what it lists. Otherwise write the items as prose, or as a table with column or row headers when they share fields.
