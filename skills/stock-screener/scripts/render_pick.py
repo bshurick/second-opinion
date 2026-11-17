@@ -9,7 +9,10 @@ Turns a deep-picker run into one self-contained HTML page for the Artifact tool.
                      "temperature", "growth", "sentiment", "leaders": [{"ticker", "name", "trend"}],
                      "prospects": [{"ticker", "name", "market_cap", "why"}] (optional),
                      "evidence": [{"claim", "source", "date"}]}],
-     "candidates": [{"ticker", "name", "industry", "origin": "industry"|"screen"|"both", "held",
+     "themes": [{"theme", "crowding": "crowded"|"mixed"|"overlooked", "crowding_why", "why_now",
+                 "segments": [...], "prospects": [{"ticker", "name", "market_cap", "why"}],
+                 "evidence": [{"claim", "source", "date"}]}] (optional; a growth run's theme scout),
+     "candidates": [{"ticker", "name", "industry", "origin": "industry"|"theme"|"screen"|"both", "held", "themes": [...],
                      "scores": {"quality", "direction", "tailwind", "value"} (1-5; "upside" in place of "value" in a growth run),
                      "reasons": {...}, "missing", "bad_pick", "health", "finalist"}],
      "picks": {"SYMBOL": {"thesis", "bad_pick"}}, "missing_roles": [...], "notes": [...]}
@@ -24,11 +27,12 @@ Sections: Picks (each gate pass or pass_flagged result, with central and worst a
 stress test's return when there is one (not gated), the
 range of scenario values,
 thesis, what would make it a bad pick, and a link to its deep valuation; a plain "none passed"
-card otherwise), Near misses (each fail with its reasons), Funnel, Industry map (grouped favored,
+card otherwise), Near misses (each fail with its reasons), Funnel, Themes (only when there are
+any: each theme with its crowding, why now, prospects and dated evidence), Industry map (grouped favored,
 contrarian, neutral, unfavored; rows open to growth, sentiment and dated evidence), Candidates
 (highest total first; rows open to the reasons), Flags. Prints {"out", "title", "picks",
-"near_misses", "industries", "candidates", "flags"}. Exit 2 on a missing gate, an unknown industry
-verdict, a score outside 1-5, an evidence claim without a source or date, a picks entry that is
+"near_misses", "themes", "industries", "candidates", "flags"}. Exit 2 on a missing gate, an unknown industry
+verdict, a theme without a name or with an unknown crowding, a score outside 1-5, an evidence claim without a source or date, a picks entry that is
 not a passing gate result, a funnel entry without a numeric count, a page link that is not https,
 or any list holding something other than objects. Every figure comes from the scripts; nothing is fetched at runtime.
 """
@@ -46,6 +50,7 @@ from second_opinion import output, page  # noqa: E402
 from second_opinion.errors import InvalidInput  # noqa: E402
 
 VERDICTS = ("favored", "neutral", "unfavored")
+CROWDING = ("crowded", "mixed", "overlooked")
 SCORES = ("quality", "direction", "tailwind", "value")
 GROWTH_SCORES = ("quality", "direction", "tailwind", "upside")  # a growth run (pick.json profile "growth") scores upside, not value
 
@@ -69,6 +74,7 @@ BODY = """
 .row .n{font-weight:600}.row .m{color:var(--muted);font-size:12px;flex:1}.row .d{font-size:13px;margin-top:6px}.row ul{margin:6px 0 0;padding-left:18px;font-size:13px}
 .lg{font-size:13px;margin:14px 0 2px}.lg.favored{color:var(--s1)}.lg.unfavored{color:var(--warn)}.lg.contrarian{color:var(--s3)}.lg.neutral{color:var(--muted)}
 .src{color:var(--muted);font-size:12px}
+.lg.crowded{color:var(--warn)}.lg.overlooked{color:var(--s1)}.lg.mixed{color:var(--muted)}
 .row .sc{display:flex;gap:8px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}.row .sc b{color:var(--ink);min-width:20px;text-align:right}
 </style>
 <h1 id="h1">Deep picks</h1>
@@ -77,6 +83,7 @@ BODY = """
 <section class="card" id="picks-card"><h2>Picks</h2><p class="sub">Finalists whose deep valuation shows no scenario losing money over five years and a central case that clears the hurdle.</p><div id="picks"></div></section>
 <section class="card" id="near-card"><h2>Near misses</h2><p class="sub">Finalists that were valued in depth but failed the downside gate, and why.</p><div id="near"></div></section>
 <section class="card" id="funnel-card"><h2>Funnel</h2><p class="sub">How many companies were left after each stage of the search.</p><div id="funnel"></div></section>
+<section class="card" id="theme-card" hidden><h2>Themes</h2><p class="sub">What the theme scout found poised for fast growth now, how crowded each theme already is, and the prospects it added to the pool.</p><div id="themes"></div></section>
 <section class="card" id="ind-card"><h2>Industry map</h2><p class="sub">Each industry the scan covered, grouped by its verdict, with its biggest companies, its prospects (chosen on trajectory, cash, price and coverage, not size) and the dated evidence behind the call.</p><div id="ind"></div></section>
 <section class="card" id="cand-card"><h2>Candidates</h2><p class="sub">Every company in the merged pool, scored 1 to 5 on business quality (Q), direction (D), industry tailwind (T) and price against value (V).</p><div id="cand"></div></section>
 <section data-help="none"><h2>Flags</h2>""" + page.FLAGS_INTRO + """<ul class="flags" id="flags"></ul></section>
@@ -115,6 +122,17 @@ SCRIPT = r"""
   F.bars(g('funnel'), (D.funnel || []).map((s, i) => ({label: s.stage, share: (s.count || 0) / fmax, text: String(s.count), color: F.S[i % 8]})));
   F.help(g('funnel-card'), {lead: 'The search narrows in stages: industries scanned, screen survivors, the merged pool, the health check, quick reads, finalists and picks.'});
 
+  const TH = D.themes || [];
+  if (TH.length) {
+    g('theme-card').hidden = false;
+    const tev = xs => (xs || []).map(x => `<li>${esc(x.claim)} <span class="src">${esc(x.source)}, ${esc(x.date)}</span></li>`).join('');
+    g('themes').innerHTML = [['overlooked', 'Overlooked'], ['mixed', 'Mixed'], ['crowded', 'Crowded']].map(([k, t]) => { const xs = TH.filter(x => x.crowding === k); return xs.length ? `<h3 class="lg ${k}">${esc(t)} <span class="muted">(${xs.length})</span></h3>` + xs.map(x =>
+      `<details class="row"><summary><span class="n">${esc(x.theme)}</span><span class="m">${esc((x.segments || []).join(', '))}</span></summary>
+        <div class="d"><b>Why now:</b> ${esc(x.why_now || '—')}</div><div class="d"><b>Crowding:</b> ${esc(x.crowding_why || '—')}</div>
+        <div class="d"><b>Prospects:</b> ${(x.prospects || []).map(p => `${esc(p.ticker)}${p.why ? ` <span class="muted">${esc(p.why)}</span>` : ''}`).join('; ') || '—'}</div><ul>${tev(x.evidence)}</ul></details>`).join('') : ''; }).join('');
+    F.help(g('theme-card'), {lead: 'Before the industry scan, a theme scout reads current dated news and data for segments that may grow fast from here. Each theme is marked crowded, mixed or overlooked from its valuation against its own history, fund flows and analyst coverage: a crowded theme is one the price may already reflect. Its prospects joined the pool beside the scan and the screens; they were never the only candidates.'});
+  }
+
   const groups = [['favored', 'Favored', i => i.verdict === 'favored' && !i.contrarian], ['contrarian', 'Contrarian: out of favour, fundamentals improving', i => i.contrarian],
                   ['neutral', 'Neutral', i => i.verdict === 'neutral' && !i.contrarian], ['unfavored', 'Unfavored', i => i.verdict === 'unfavored' && !i.contrarian]];
   const ev = xs => (xs || []).map(x => `<li>${esc(x.claim)} <span class="src">${esc(x.source)}, ${esc(x.date)}</span></li>`).join('');
@@ -127,7 +145,7 @@ SCRIPT = r"""
 
   const label = {quality: 'Quality', direction: 'Direction', tailwind: 'Tailwind', value: 'Value', upside: 'Upside'};
   const cands = (D.candidates || []).map(c => ({...c, total: SCORES.reduce((a, k) => a + (c.scores[k] || 0), 0)})).sort((a, b) => b.total - a.total || (b.finalist - a.finalist));
-  g('cand').innerHTML = cands.map(c => `<details class="row"><summary><span class="n">${esc(c.ticker)}${c.finalist ? ' ★' : ''}</span><span class="m">${esc(c.industry)} · found by ${esc(c.origin)}${c.held ? ' · held' : ''}</span>
+  g('cand').innerHTML = cands.map(c => `<details class="row"><summary><span class="n">${esc(c.ticker)}${c.finalist ? ' ★' : ''}</span><span class="m">${esc(c.industry)} · found by ${esc(c.origin)}${(c.themes || []).length ? ` · theme: ${esc(c.themes.join(', '))}` : ''}${c.held ? ' · held' : ''}</span>
       <span class="sc">${SCORES.map(k => `<span title="${label[k]}">${label[k][0]}${c.scores[k]}</span>`).join('')}<b>${c.total}</b></span></summary>
       <ul>${SCORES.map(k => `<li><b>${label[k]} ${c.scores[k]}/5:</b> ${esc((c.reasons || {})[k] || '—')}</li>`).join('')}</ul>
       <div class="d"><b>What the market may be missing:</b> ${esc(c.missing || '—')}</div><div class="d"><b>What would make this a bad pick:</b> ${esc(c.bad_pick || '—')}</div>
@@ -180,6 +198,19 @@ def _validate(data: dict) -> None:
             for f in ("claim", "source", "date"):
                 if not e.get(f):
                     raise InvalidInput(f"industry {name}: an evidence claim has no {f}")
+    for t in _list_of_dicts(data.get("themes"), "themes"):
+        name = t.get("theme")
+        if not name:
+            raise InvalidInput("a theme has no name")
+        if t.get("crowding") not in CROWDING:
+            raise InvalidInput(f"theme {name}: crowding must be one of {', '.join(CROWDING)}")
+        for p in _list_of_dicts(t.get("prospects"), f"theme {name}: prospects"):
+            if not p.get("ticker"):
+                raise InvalidInput(f"theme {name}: a prospect has no ticker")
+        for e in _list_of_dicts(t.get("evidence"), f"theme {name}: evidence"):
+            for f in ("claim", "source", "date"):
+                if not e.get(f):
+                    raise InvalidInput(f"theme {name}: an evidence claim has no {f}")
     for c in _list_of_dicts(data.get("candidates"), "candidates"):
         if not isinstance(c.get("scores"), dict):
             raise InvalidInput(f"candidate {c.get('ticker', '?')}: scores must be an object")
@@ -203,7 +234,7 @@ def build(data: dict) -> tuple[str, str, dict]:
     res = data["gate"]["results"]
     info = {"title": title, "picks": [r["symbol"] for r in res if r["verdict"] != "fail"],
             "near_misses": [r["symbol"] for r in res if r["verdict"] == "fail"],
-            "industries": len(data.get("industries") or []), "candidates": len(data.get("candidates") or []),
+            "themes": len(data.get("themes") or []), "industries": len(data.get("industries") or []), "candidates": len(data.get("candidates") or []),
             "flags": len(data.get("missing_roles") or []) + len(data.get("notes") or [])}
     return title, markup, info
 

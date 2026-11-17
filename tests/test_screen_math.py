@@ -411,3 +411,22 @@ def test_health_growth_keeps_cash_burner() -> None:
 def test_health_growth_drops_levered_loss_maker() -> None:
     c = company(op=-0.05, ni=-0.08, ocf=0.0, capex=0.02, balance={**BAL, "debt": 500e6, "cash": 100e6})
     assert "max_net_debt_to_ebit" in one(c, "health_growth")["failed"]
+
+
+def test_ma200w_metrics_pass_through_and_criteria() -> None:
+    mkt = {"market_cap": 4e9, "enterprise_value": 4e9, "momentum": 0.05, "ma200w_gap": -0.18, "ma200w_slope": 0.04}
+    row = one(company(market=mkt))
+    assert row["metrics"]["ma200w_gap"] == -0.18 and row["metrics"]["ma200w_slope"] == 0.04
+    assert one(company(market=mkt), max_ma200w_gap=0.0, min_ma200w_slope=0.0)["failed"] == []
+    assert one(company(market=mkt), max_ma200w_gap=-0.25, min_ma200w_slope=0.10)["failed"] == ["max_ma200w_gap", "min_ma200w_slope"]
+
+
+def test_ma200w_criteria_fail_without_the_history() -> None:
+    mkt = {"market_cap": 4e9, "enterprise_value": 4e9}
+    row = one(company(market=mkt), max_ma200w_gap=0.0)
+    assert row["metrics"]["ma200w_gap"] is None and row["failed"] == ["max_ma200w_gap"]
+
+
+def test_ma200w_is_off_in_every_preset() -> None:
+    for preset in MATH.PRESETS.values():
+        assert preset.get("max_ma200w_gap") is None and preset.get("min_ma200w_slope") is None

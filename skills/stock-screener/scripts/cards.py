@@ -22,6 +22,7 @@ passages, and an ``INDEX.md`` of them) and ``DIR/cards/<TICKER>.data.json`` is w
                                   CURRENCY_MISMATCH, THIN_EDGAR_HISTORY that fired],
                  "terms": {"<red-flag term>": hits in the 10-K, only terms with a hit}},
    "direction": {"quarters_up_of_8", "ttm_revenue_growth"},
+   "trend": {"ma200w_gap", "ma200w_slope", "momentum"},
    "analysts": {"target_mean", "count"}, "insiders": {"buys", "sells"},
    "flags": [every inputs.py and intrinsic.py flag code],
    "sentiment_flags": [sentiment.py's flag codes, e.g. NEWS_UNAVAILABLE, ANALYSTS_UNAVAILABLE:
@@ -52,6 +53,11 @@ is the one to start from. ``leverage`` is unchanged.
 ``direction`` counts the last 8 quarters with revenue above the same quarter a year earlier
 (null when EDGAR has none) and gives trailing-twelve-month revenue growth. A hit on a red-flag
 term is a passage to read, not a finding.
+``trend`` is the price against its own history, from ONE batched Yahoo download of about five
+years of daily closes for every name in the run (screen.py's ``signals_from_bars``): the latest
+weekly close against its 200-week average, that average's change over 52 weeks, and the 12-month
+change skipping the latest month. Each is null without the history, and all are null when the
+download fails (flag TREND_UNAVAILABLE). It is context for the quick reader, not a score input.
 
 Packs are built ``--workers`` at a time (default 3). Each pack runs its Yahoo scripts one after
 another, so the worker count is the number of Yahoo-bound processes; more than three drew HTTP
@@ -63,7 +69,7 @@ after a rate limit fetches only the names that failed. A part Yahoo refused is i
 Prints {"run", "cards": [{"ticker", "status": "built"|"skipped", "seconds", "basis", "base",
 "irr_5y", "value_hint", "leverage_ok", "net_debt_to_ebitda", "missing", "sentiment_flags", "data": <path>}]
 in pool order, "failed": [{"ticker", "error"}], "counts": {"names", "built", "skipped", "failed"},
-"flags": [{"code", "message"}]}. LEVERAGE_HIGH names (``tickers``) the cards that fail the
+"flags": [{"code", "message"}]}. TREND_UNAVAILABLE: the price-history download failed. LEVERAGE_HIGH names (``tickers``) the cards that fail the
 balance-sheet check.
 A name whose pack fails entirely (an unknown ticker, EDGAR not set up, anything else) is in
 ``failed`` (flag PACK_FAILED) and never an exit. YAHOO_RATE_LIMITED names the tickers
@@ -90,6 +96,7 @@ from second_opinion import output, pack  # noqa: E402
 from second_opinion.errors import InvalidInput, ScriptError  # noqa: E402
 
 import growth  # noqa: E402
+import screen  # noqa: E402
 
 DEFAULT_WORKERS = 3  # each pack is one Yahoo-bound chain of scripts; four at once drew HTTP 429
 INPUTS_FLAGS = ("SHARE_CLASSES_COMBINED", "CORPORATE_ACTION_SUSPECTED", "LARGE_MINORITY_INTEREST", "CYCLICAL", "MARGINS_RISING", "CYCLE_BASE_SPLIT", "CURRENCY_MISMATCH", "THIN_EDGAR_HISTORY")
@@ -296,7 +303,26 @@ def growth_yardstick(folder: Path, business_type: Any = None) -> dict:
                             _num(ttm.get("revenue_ttm_yoy")), _consensus_revenue_growth(folder))
 
 
-def card_data(row: dict, built: dict, folder: Path, profile: str = "value") -> dict:
+_NO_TREND = {"ma200w_gap": None, "ma200w_slope": None, "momentum": None}
+
+
+def price_trends(tickers: list[str]) -> dict[str, dict] | None:
+    """``trend`` per ticker from one batched download; None when the download fails."""
+    from second_opinion import market
+
+    start = (dt.date.today() - dt.timedelta(days=screen.TREND_LOOKBACK_DAYS)).isoformat()
+    try:
+        hist = market.close_histories(tickers, start)
+    except Exception:  # noqa: BLE001 — the trend is context; the cards stand without it
+        return None
+
+    def r4(v: Any) -> Any:
+        return None if v is None else round(v, 4)
+
+    return {t: {k: r4(v) for k, v in screen.signals_from_bars(hist.get(t) or []).items()} for t in tickers}
+
+
+def card_data(row: dict, built: dict, folder: Path, profile: str = "value", trend: dict | None = None) -> dict:
     """The data file for one pool row from its pack (``pack.json``'s content) in ``folder``.
 
     ``profile`` ``growth`` swaps ``value_hint`` for ``upside_hint``."""
@@ -333,6 +359,7 @@ def card_data(row: dict, built: dict, folder: Path, profile: str = "value") -> d
         "leverage": lev,
         "red_flags": {"inputs_flags": [c for c in INPUTS_FLAGS if c in codes], "terms": {t: n for t, n in hits.items() if n}},
         "direction": direction(_read(folder / "edgar.json")),
+        "trend": {k: (trend or {}).get(k) for k in _NO_TREND},
         "analysts": summary.get("analysts") or {"target_mean": None, "count": None},
         "insiders": summary.get("insiders") or {"buys": None, "sells": None},
         "flags": codes,
@@ -357,7 +384,7 @@ def _limited(text: Any) -> bool:
     return any(word in str(text) for word in _RATE_LIMIT_WORDS)
 
 
-def _one(row: dict, cards_dir: Path, today: str, force: bool, profile: str = "value") -> dict:
+def _one(row: dict, cards_dir: Path, today: str, force: bool, profile: str = "value", trend: dict | None = None) -> dict:
     ticker = row["ticker"]
     folder = cards_dir / ticker
     start = time.monotonic()
@@ -366,7 +393,7 @@ def _one(row: dict, cards_dir: Path, today: str, force: bool, profile: str = "va
     try:
         if built is None:
             built = pack.build(ticker, folder, level="card")
-        data = card_data(row, built, folder, profile)
+        data = card_data(row, built, folder, profile, trend)
         dest = cards_dir / f"{ticker}.data.json"
         dest.write_text(json.dumps(data, indent=2, ensure_ascii=False, default=str) + "\n", encoding="utf-8")
     except ScriptError as exc:  # an unknown ticker (InvalidInput) or EDGAR not set up (ConfigError)
@@ -410,12 +437,15 @@ def run(args: list[str]) -> dict:
     cards_dir = run_dir / "cards"
     cards_dir.mkdir(parents=True, exist_ok=True)
     today = dt.date.today().isoformat()
+    trends = price_trends([r["ticker"] for r in rows])
     with ThreadPoolExecutor(max_workers=ns.workers) as ex:
-        results = list(ex.map(lambda r: _one(r, cards_dir, today, ns.force, profile), rows))
+        results = list(ex.map(lambda r: _one(r, cards_dir, today, ns.force, profile, (trends or {}).get(r["ticker"])), rows))
 
     done = [r for r in results if "failed" not in r]
     failed = [{"ticker": r["ticker"], "error": r["failed"]} for r in results if "failed" in r]
     flags: list[dict] = []
+    if trends is None:
+        flags.append({"code": "TREND_UNAVAILABLE", "message": "the price-history download failed, so every card's trend is null; the cards are otherwise complete"})
     if failed:
         flags.append({"code": "PACK_FAILED", "message": f"no pack for {', '.join(f['ticker'] for f in failed)}; see failed. Run cards.py again to retry only these"})
     limited = [r["ticker"] for r in results if r.get("_limited") or _limited(r.get("failed") or "")]

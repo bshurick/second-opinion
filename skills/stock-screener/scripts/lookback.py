@@ -16,11 +16,15 @@ Output: ``screen_date``, ``years``, ``years_held``, ``preset``, ``criteria``, ``
 ``survivors`` (ranked as the screen ranked them, each with ``rank``, ``forward_return`` and
 ``beat_benchmark``), ``benchmark`` ``{"symbol", "return"}``, ``summary`` ``{"survivors",
 "median_return", "mean_return", "beat_benchmark_share", "top_half_median",
-"bottom_half_median", "rank_correlation", "passed_fundamentals_median"}``, ``priced`` and
+"bottom_half_median", "rank_correlation", "passed_fundamentals_median", "by_ma200w"}``, ``priced`` and
 ``flags``. ``rank_correlation`` is Spearman's, between the screen's rank and the return rank:
 positive means better-ranked survivors did better. ``passed_fundamentals_median`` is the
 median return of every priced company that passed the business tests, the baseline the price
-stage has to beat.
+stage has to beat. ``by_ma200w`` splits the survivors by where the price sat against its
+200-week average on the screen date (``below``, ``above``) and by that average's 52-week slope
+(``slope_rising``, ``slope_falling``), each ``{"count", "median_return"}``, with ``no_history``
+the survivors lacking 200 weeks of closes then; ``--set max_ma200w_gap=0`` or
+``--set min_ma200w_slope=0`` tests the same idea as a filter.
 
 What this cannot tell you, each raised as a flag: it is one period, not a test over many;
 companies delisted or acquired since have no ticker today and are left out
@@ -82,7 +86,24 @@ def then_and_since(bars: list[dict], when: dt.date) -> dict | None:
     return {
         "price_ratio": start["close"] / end["close"],
         "forward_return": end["adj_close"] / start["adj_close"] - 1,
-        "momentum": screen.momentum_from_closes([b["adj_close"] for b in bars[: i + 1]]),
+        **screen.signals_from_bars(bars[: i + 1]),
+    }
+
+
+def by_ma200w(survivors: list[dict]) -> dict[str, dict]:
+    """Survivors below and at-or-above their 200-week average on the screen date, and the slope's
+    sign, each with its count and median forward return (names without the history are left out)."""
+    def part(rows: list[dict]) -> dict:
+        return {"count": len(rows), "median_return": _median([r["forward_return"] for r in rows])}
+
+    gap = [(s["metrics"].get("ma200w_gap"), s) for s in survivors]
+    slope = [(s["metrics"].get("ma200w_slope"), s) for s in survivors]
+    return {
+        "below": part([s for g, s in gap if g is not None and g < 0]),
+        "above": part([s for g, s in gap if g is not None and g >= 0]),
+        "slope_rising": part([s for g, s in slope if g is not None and g > 0]),
+        "slope_falling": part([s for g, s in slope if g is not None and g <= 0]),
+        "no_history": sum(1 for g, _ in gap if g is None),
     }
 
 
@@ -122,7 +143,7 @@ def run(ns: argparse.Namespace, frame: screen.Frame | None = None, quoter: Calla
     with ThreadPoolExecutor(max_workers=8) as ex:
         quotes = dict(zip([s["cik"] for s in pool], ex.map(lambda s: quoter(s["ticker"]), pool)))
     tickers = [str(s["ticker"]).upper() for s in pool if quotes.get(s["cik"])]
-    start = (when - dt.timedelta(days=screen.MOMENTUM_LOOKBACK_DAYS + screen.MOMENTUM_SKIP + 10)).isoformat()
+    start = (when - dt.timedelta(days=screen.TREND_LOOKBACK_DAYS)).isoformat()
     bars = history_of(tickers + [ns.benchmark], start)
     by_cik = {c["cik"]: c for c in companies}
     moves: dict[int, dict] = {}
@@ -134,7 +155,8 @@ def run(ns: argparse.Namespace, frame: screen.Frame | None = None, quoter: Calla
         cap = q["market_cap"] * move["price_ratio"]
         ev = cap + (q["enterprise_value"] - q["market_cap"]) if q.get("enterprise_value") else None
         by_cik[s["cik"]]["market"] = {"market_cap": cap, "enterprise_value": ev if ev and ev > 0 else None, "price": None,
-                                      "sector": q.get("sector"), "financial": q.get("financial"), "momentum": move["momentum"]}
+                                      "sector": q.get("sector"), "financial": q.get("financial"), "momentum": move["momentum"],
+                                      "ma200w_gap": move["ma200w_gap"], "ma200w_slope": move["ma200w_slope"]}
         moves[s["cik"]] = move
     result = screen_math.run_screen_math(payload)
     bench = then_and_since(bars.get(ns.benchmark.upper()) or [], when)
@@ -156,6 +178,7 @@ def run(ns: argparse.Namespace, frame: screen.Frame | None = None, quoter: Calla
         "bottom_half_median": _median(returns[half:]) if half else None,
         "rank_correlation": rank_correlation(returns),
         "passed_fundamentals_median": _median(baseline),
+        "by_ma200w": by_ma200w(survivors),
     }
     no_ticker = sum(1 for s in first["survivors"] if not s.get("ticker"))
     not_listed = len(pool) - len(moves)

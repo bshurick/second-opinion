@@ -100,7 +100,7 @@ Criteria (``None`` or absent = not applied), fundamental first, then price: ``mi
 ``min_current_ratio``, ``max_debt_to_working_capital``, ``min_f_score``, ``max_payout_to_fcf``,
 ``min_runway_years``; then ``min_market_cap``, ``min_fcf_yield``, ``min_earnings_yield``, ``min_shareholder_yield``,
 ``max_pe``, ``max_ps``, ``max_pe_times_pb``, ``max_implied_growth``, ``min_growth_gap``,
-``min_momentum``. A criterion whose metric is missing fails, except the ones companies often do
+``min_momentum``, ``max_ma200w_gap``, ``min_ma200w_slope``. A criterion whose metric is missing fails, except the ones companies often do
 not tag -- ``min_gross_margin``, ``max_debt_to_equity``, ``min_latest_quarter_growth``,
 ``max_sbc_pct`` -- which are listed in ``not_reported`` instead (a missing latest quarter also
 raises the flag ``LATEST_QUARTER_NOT_REPORTED``).
@@ -123,7 +123,12 @@ real cost to shareholders. ``growth_gap`` is ``expected_growth - implied_growth`
 positive), ``ps`` market cap / revenue, ``pb`` market cap / equity, ``pe_times_pb`` their
 product (Graham's 22.5 test), ``shareholder_yield`` dividends plus buybacks paid last year over
 market cap, ``payout_to_fcf`` the same payout over free cash flow. ``momentum`` is passed
-through from ``market`` (the 12-month price change skipping the latest month). ``magic_rank``
+through from ``market`` (the 12-month price change skipping the latest month), and so are
+``ma200w_gap`` (the latest weekly close over its 200-week simple moving average, less 1:
+negative below the line) and ``ma200w_slope`` (that average now over its value 52 weeks
+earlier, less 1). Both are null with under 200 (gap) or 252 (slope) weekly closes, and a
+criterion on a null one fails. No preset sets either criterion: they are measured, and
+switched on with ``--set``. ``magic_rank``
 is the sum of a survivor's rank on earnings yield and its rank on ``roce`` (Greenblatt's
 formula; lower is better).
 
@@ -191,6 +196,8 @@ PRICE = (
     "max_implied_growth",
     "min_growth_gap",
     "min_momentum",
+    "max_ma200w_gap",
+    "min_ma200w_slope",
 )
 SETTINGS = (
     "discount_rate",
@@ -678,6 +685,8 @@ def _price_metrics(m: dict, market: dict, crit: dict) -> None:
     m["sector"] = market.get("sector")
     m["financial"] = fin
     m["momentum"] = _r4(_num(market.get("momentum")))
+    m["ma200w_gap"] = _r4(_num(market.get("ma200w_gap")))
+    m["ma200w_slope"] = _r4(_num(market.get("ma200w_slope")))
     priced, filed = _num(market.get("shares")), m["shares_latest"]
     m["priced_shares"] = priced
     m["priced_to_filed_shares"] = _r4(priced / filed) if priced and priced > 0 and filed and filed > 0 else None
@@ -733,6 +742,10 @@ def _price_test(name: str, m: dict, want):
         return at_least("growth_gap")
     if name == "min_momentum":
         return at_least("momentum")
+    if name == "max_ma200w_gap":
+        return at_most("ma200w_gap")
+    if name == "min_ma200w_slope":
+        return at_least("ma200w_slope")
     raise ValueError(f"unknown criterion {name}")
 
 

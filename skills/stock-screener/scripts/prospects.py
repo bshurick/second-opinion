@@ -16,6 +16,7 @@ Per symbol:
              "overlooked": {"pass", "figures": {"analyst_count", "institutional_ownership",
                                                 "change_12m"}}},
    "size_ok": market_cap >= 3e8 (null without a market cap),
+   "trend": {"ma200w_gap", "ma200w_slope"},
    "why": "<one line of the passing tests with their figures>", "flags": [codes]}
 
 Rules. ``trajectory``: revenue above the same quarter a year earlier in at least 5 of the last 8
@@ -26,7 +27,11 @@ dividends paid in the latest (nothing paid counts as covered). ``price``: free-c
 else market cap over trailing net income) at most 15; otherwise ``pass`` is null, never false,
 because the scanner judges price against history and peers. ``overlooked``: at most 8 analysts,
 or institutions holding under 60%, or a 12-month price change below -20%. ``change_12m`` is the
-last close against the close a year earlier (split-adjusted, dividends not added back). A figure
+last close against the close a year earlier (split-adjusted, dividends not added back).
+``trend`` is no test: ``ma200w_gap`` is the latest weekly close against its 200-week simple
+moving average, less 1 (negative below the line), and ``ma200w_slope`` that average against its
+value 52 weeks earlier, less 1 (screen.py's ``ma200w_from_bars``, on dividend-adjusted closes);
+each null without 200 or 252 weeks of history. A figure
 that cannot be computed is null; a test is true or false only when the figures it has settle
 it, otherwise null. ``tests_passed`` counts the tests that are true. Ratios are fractions.
 
@@ -68,6 +73,7 @@ from typing import Any
 
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE.parents[2] / "lib"))
+sys.path.insert(0, str(_HERE))
 
 from second_opinion import brokerage, market, output  # noqa: E402
 from second_opinion.errors import InvalidInput  # noqa: E402
@@ -91,7 +97,7 @@ PROFILES = ("value", "growth")
 MAX_ANALYSTS, MAX_INSTITUTIONAL, MAX_CHANGE = 8, 0.60, -0.20
 TTM_SPAN = (250, 300)  # days from the first to the last period end of four consecutive quarters
 YEAR_TOLERANCE_DAYS = 10
-HISTORY_DAYS = 400
+HISTORY_DAYS = 1785  # about 252 weeks: the 12-month change and the 200-week trend from one download
 _NOT_LISTED = "SEC ticker list"  # edgar.cik_for's message; its other exit-2 errors are a filer without usable facts
 PASSED_ON = ("BANK_REVENUE_PROXY", "MISSING_DATA")  # edgar.py flags a reader of the cash and margin tests needs
 _FLAG_TEXT = {
@@ -144,14 +150,22 @@ def change_12m(bars: list[dict]) -> float | None:
     return round(last / then - 1, 4)
 
 
-def price_changes(symbols: list[str]) -> dict[str, float | None]:
-    """12-month price change per symbol from ONE batched Yahoo download; all null when it fails."""
+def price_changes(symbols: list[str]) -> dict[str, dict[str, float | None]]:
+    """Per symbol ``change_12m``, ``ma200w_gap`` and ``ma200w_slope`` from ONE batched Yahoo
+    download; all null when it fails."""
+    from screen import ma200w_from_bars
+
     start = (dt.date.today() - dt.timedelta(days=HISTORY_DAYS)).isoformat()
     try:
         hist = market.close_histories([s.replace(".", "-") for s in symbols], start)
-    except Exception:  # noqa: BLE001 — the change is one figure; the rest stands without it
-        return {s: None for s in symbols}
-    return {s: change_12m(hist.get(s.replace(".", "-").upper()) or []) for s in symbols}
+    except Exception:  # noqa: BLE001 — these are a few figures; the rest stands without them
+        return {s: {"change_12m": None, "ma200w_gap": None, "ma200w_slope": None} for s in symbols}
+    out = {}
+    for s in symbols:
+        bars = hist.get(s.replace(".", "-").upper()) or []
+        trend = ma200w_from_bars(bars)
+        out[s] = {"change_12m": change_12m(bars), **{k: _r4(v) for k, v in trend.items()}}
+    return out
 
 
 def _num(v: Any) -> float | None:
@@ -339,8 +353,11 @@ def _overlooked(info: dict, change: float | None) -> tuple[dict, str]:
     return {"pass": passed, "figures": figures}, ("overlooked: " + ", ".join(reasons)) if reasons else ""
 
 
-def prospect(symbol: str, report: dict | None, info: dict | None, change: float | None, profile: str = "value") -> dict:
-    """One row from an edgar.py report (None when it failed), a company profile and the 12-month change."""
+def prospect(symbol: str, report: dict | None, info: dict | None, change: float | dict | None, profile: str = "value") -> dict:
+    """One row from an edgar.py report (None when it failed), a company profile and the price
+    figures (``price_changes``'s dict, or a bare 12-month change)."""
+    signals = change if isinstance(change, dict) else {"change_12m": change}
+    change = signals.get("change_12m")
     flags = []
     if report is None:
         flags.append("EDGAR_UNAVAILABLE")
@@ -368,6 +385,7 @@ def prospect(symbol: str, report: dict | None, info: dict | None, change: float 
         "tests_passed": sum(1 for t in tests.values() if t["pass"] is True),
         "tests": tests,
         "size_ok": None if cap is None else cap >= MIN_MARKET_CAP,
+        "trend": {"ma200w_gap": signals.get("ma200w_gap"), "ma200w_slope": signals.get("ma200w_slope")},
         "why": "; ".join(w for _, w in parts.values() if w),
         "flags": flags,
     }

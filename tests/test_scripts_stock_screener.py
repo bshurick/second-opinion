@@ -379,3 +379,58 @@ def test_render_labels_the_minority_interest_and_corporate_action_flags(frames, 
     assert rc == 0
     assert "LARGE_MINORITY_INTEREST: 'large minority interest'" in html
     assert "CORPORATE_ACTION: 'split or spin-off since last filing'" in html
+
+
+def _weekly_bars(weeks: int, price) -> list[dict]:
+    """One bar each Friday from 2021-01-01, priced by ``price(week index)``."""
+    first = dt.date(2021, 1, 1)
+    return [{"date": (first + dt.timedelta(weeks=i)).isoformat(), "close": price(i), "adj_close": price(i), "volume": 1} for i in range(weeks)]
+
+
+def test_ma200w_gap_and_slope_from_weekly_bars() -> None:
+    flat = SCREEN.ma200w_from_bars(_weekly_bars(260, lambda i: 100.0 if i < 259 else 80.0))
+    assert flat["ma200w_gap"] == pytest.approx(80.0 / ((199 * 100.0 + 80.0) / 200) - 1)
+    assert flat["ma200w_slope"] == pytest.approx(((199 * 100.0 + 80.0) / 200) / 100.0 - 1)
+    rising = SCREEN.ma200w_from_bars(_weekly_bars(252, lambda i: 100.0 + i))
+    ma_now, ma_then = sum(100.0 + i for i in range(52, 252)) / 200, sum(100.0 + i for i in range(0, 200)) / 200
+    assert rising["ma200w_slope"] == pytest.approx(ma_now / ma_then - 1) and rising["ma200w_gap"] > 0
+
+
+def test_ma200w_needs_enough_weeks() -> None:
+    assert SCREEN.ma200w_from_bars(_weekly_bars(199, lambda i: 100.0)) == {"ma200w_gap": None, "ma200w_slope": None}
+    short = SCREEN.ma200w_from_bars(_weekly_bars(220, lambda i: 100.0))
+    assert short["ma200w_gap"] == pytest.approx(0.0) and short["ma200w_slope"] is None
+
+
+def test_daily_bars_are_grouped_into_weeks() -> None:
+    daily = _bars(dt.date(2021, 1, 4), 7 * 210, 50.0, 50.0)  # every calendar day, flat
+    out = SCREEN.ma200w_from_bars(daily)
+    assert out["ma200w_gap"] == pytest.approx(0.0) and out["ma200w_slope"] is None  # 210 weeks: a gap, no slope
+
+
+def test_screen_carries_the_200_week_signals_and_filters_on_them(frames) -> None:
+    signals = {"GROW": {"momentum": 0.4, "ma200w_gap": -0.12, "ma200w_slope": 0.08}}
+    out = _run(frames, momentum_of=lambda tickers, today: signals)
+    m = out["survivors"][0]["metrics"]
+    assert m["momentum"] == 0.4 and m["ma200w_gap"] == -0.12 and m["ma200w_slope"] == 0.08
+    out = _run(frames, "--set", "max_ma200w_gap=-0.2", momentum_of=lambda tickers, today: signals)
+    assert out["survivors"] == [] and out["fail_counts"]["max_ma200w_gap"] == 1
+
+
+def test_lookback_splits_survivors_by_the_200_week_line(frames) -> None:
+    today = dt.date(2027, 7, 1)
+    start = dt.date(2021, 1, 1)
+    days = (today - start).days + 1
+    grow = _bars(start, days, 60.0, 10.0)  # falling all along: below a falling line on the screen date
+    spy = _bars(start, days, 100.0, 120.0)
+
+    def hist(tickers, since):
+        assert since < "2021-09-01"  # about 252 weeks before the 2026-07-01 screen date
+        return {"GROW": grow, "SPY": spy}
+
+    ns = LOOKBACK.parser().parse_args(["--year", "2025"])
+    out = LOOKBACK.run(ns, frame=frames, quoter=quoter, today=today, names=NAMES, history_of=hist)
+    split = out["summary"]["by_ma200w"]
+    assert split["below"]["count"] == 1 and split["above"]["count"] == 0
+    assert split["slope_falling"]["count"] == 1 and split["no_history"] == 0
+    assert out["survivors"][0]["metrics"]["ma200w_gap"] < 0

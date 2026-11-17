@@ -4,12 +4,13 @@ Each section is the brief for one deep-picker subagent. The coordinator hands a 
 
 - the run folder
 - today's date
-- the role's assignment: a sector group for a scanner, or about five tickers for a quick reader
+- the role's assignment: a sector group for a scanner, about five tickers for a quick reader, or nothing for the theme scout
 - the search cap
-- for a scanner, the resolved command lines of `prospects.py`, `filing.py` and `earnings.py`
+- for a scanner and the theme scout, the resolved command lines of `prospects.py`, `filing.py` and `earnings.py`
 
 ## Contents
 - Shared rules
+- Theme scout
 - Industry scanner
 - Quick reader
 
@@ -81,6 +82,7 @@ Each section is the brief for one deep-picker subagent. The coordinator hands a 
 
   | Role | Cap |
   |---|---|
+  | Theme scout | 6 |
   | Industry scanner | 6 |
   | Quick reader | 1 per company |
 
@@ -95,12 +97,62 @@ Each section is the brief for one deep-picker subagent. The coordinator hands a 
 - Return to the coordinator one paragraph: the three findings that matter most, the file paths, and the number of searches you used.
 - **No verdicts on stocks.** Leave buy, sell and hold judgements out entirely. The output describes industries, businesses and evidence.
 
+## Theme scout
+
+Growth runs only, before the industry scanners. Search cap: 6, unless the prompt gives another. Output:
+
+- `context/themes.json`: the themes, in the shape below
+- `context/themes.md`: the notes behind them. The industry scanners read this file.
+
+Your job is to find where fast growth may come from next, starting from what is happening now rather than from a list of sectors. The scanners and the screens still cover the whole market. Your prospects are added to the pool beside theirs; they never replace them.
+
+1. **Read first.** Read `context/macro.md`, then fetch the `primary-sources.md` rows that fit before any search. Spend your searches on recent dated news, trade press, earnings-call coverage and policy changes.
+2. **Find three to five themes.** A theme is a change that can lift revenue for a group of companies over the next three to five years: a technology shift, a regulation or subsidy, a spending cycle, a demographic or behavioral change, a supply shortage. For each one:
+   - `why_now`: what changed, and when, with dated sources.
+   - `segments`: the industries it touches, at roughly the Yahoo industry level.
+   - Write down what would end the theme, and how often a theme like it has stalled before.
+3. **Judge crowding before anything else.** Search results cluster around the story everyone is telling now, and a theme the price already reflects is how growth finalists fail the gate. Mark each theme:
+
+   | `crowding` | When |
+   |---|---|
+   | `crowded` | The segment's valuation sits high against its own five-to-ten-year range, money has flowed in, and the leading names are covered by many analysts |
+   | `mixed` | Some of those, not all |
+   | `overlooked` | The fundamentals are improving while valuation, flows or coverage say the market has not caught on |
+
+   - Give the figures behind the mark in `crowding_why`, each with its source and date.
+   - At least one theme is `mixed` or `overlooked`. When the news only offers crowded themes, look for the second-order beneficiaries (suppliers, the picks-and-shovels, the companies that gain from the theme's costs) and the segments the theme's spending crowds out.
+4. **Prospects.** Up to five US-listed companies per theme, chosen for how directly the theme lifts their revenue, not for size or fame.
+   1. Gather the names from what you already read. Spend at most two searches on finding names.
+   2. Check them all with ONE call: `prospects.py SYM,SYM,… --profile growth --out context/scout-prospects.json` (up to 25 tickers). It spends no searches.
+   3. A prospect passes at least three of the four growth tests, judged as the Industry scanner section says, and has `size_ok` true.
+   4. Prefer the less-watched: when two names fit a theme equally, keep the one with fewer analysts or the smaller market value.
+   5. Each row's `trend` shows the price against its 200-week average and that average's slope. Treat it as context, not a test: a name far above a steep line may be one the price has caught up with. Say so in `why` when it is.
+   6. For each prospect write `ticker`, `name` and `market_cap` from its row, and a `why` that names how the theme lifts its revenue and the tests it passes, with figures.
+5. **Evidence.** At least three claims per theme, including at least one against it (a slowdown, a substitute, a policy reversal, a valuation warning).
+
+`context/themes.json`:
+
+```json
+{"as_of": "2026-11-16",
+ "themes": [{"theme": "Grid equipment for data-center power", "crowding": "crowded",
+             "crowding_why": "Segment forward P/E 34 against a ten-year median of 19 (source, date); 28 analysts on the median leader.",
+             "why_now": "One sentence: what changed and when.",
+             "segments": ["Electrical Equipment & Parts", "Specialty Industrial Machinery"],
+             "prospects": [{"ticker": "EXMP", "name": "Example Electric", "market_cap": 4.2e9,
+                            "why": "Switchgear backlog from utility capex; trajectory: 7 of 8 quarters up, 24% TTM; funded: net cash; scale: gross margin 41%."}],
+             "evidence": [{"claim": "...", "source": "...", "date": "2026-11-05"}]}]}
+```
+
+`crowding` is one of `crowded`, `mixed` or `overlooked`. The file is one JSON object and nothing else; `pool.py` and `pick_assemble.py` read it. Leave stock verdicts out, as everywhere: a theme describes what may grow, not what to buy.
+
 ## Industry scanner
 
 Search cap: 6, unless the prompt gives another. Output:
 
 - `industries/group<N>.json`: a list of industry objects, in the shape `render_pick.py` reads
 - `industries/group<N>.md`: the notes behind them
+
+In a growth run, read `context/themes.md` before you search when it exists. The themes are one researcher's hypotheses, not a frame: test each one that touches your sectors against your own dated evidence, and say where you disagree. Do not repeat the theme scout's prospects as yours unless they belong to an industry you scan; they are in the pool already.
 
 Your assignment is one sector group:
 
@@ -204,8 +256,9 @@ Fields of `cards/<TICKER>.data.json`:
 
 | Field | Meaning |
 |---|---|
-| `ticker`, `name`, `origin`, `held`, `industry`, `sector`, `industry_verdict`, `contrarian`, `why`, `health`, `failed_tests` | The pool row. `industry`, `industry_verdict` and `why` are null for a screen name no scan covers. |
+| `ticker`, `name`, `origin`, `held`, `industry`, `sector`, `industry_verdict`, `contrarian`, `why`, `themes`, `health`, `failed_tests` | The pool row. `industry`, `industry_verdict` and `why` are null for a screen name no scan covers. `origin` is `theme` and `themes` names the theme for a name only the theme scout found. |
 | `direction` | `quarters_up_of_8` (quarters with revenue above a year earlier) and `ttm_revenue_growth` |
+| `trend` | `ma200w_gap`, `ma200w_slope` and `momentum`: the price against its 200-week average, that average's change over a year, and the 12-month change skipping the latest month. Background only |
 | `quick_value` | `basis`, `bear`, `base`, `bull`, `irr_5y`, `note`, `scenarios`, and the yardstick tests for a financial, REIT or utility |
 | `value_hint` | A starting point for the `value` score, 1 to 5, or null. In a growth run the file carries `upside_hint` instead (see the card's fourth score). |
 | `leverage` | The balance-sheet check: `net_debt` (today's), `ebitda`, `net_debt_to_ebitda`, `interest_coverage`, `ok` (false over 2x or under 6x coverage; null for a financial, REIT or utility, or missing figures), `why`, and `flags` (`LEVERAGE_HIGH`, `DEBT_CHANGED_SINCE_ANNUAL`) |
@@ -281,7 +334,8 @@ In a growth run (`run.json` says `growth`; the data file has `upside_hint`, not 
   - Move the hint for what steps 2 to 7 found and give the reason. The yardstick holds today's margin flat: raise it where the filings show margins expanding with scale (operating leverage, a mix shift already reported), lower it where the benchmark rests on one customer or one year.
   - Name `growth_for_upside` against the benchmark in the `upside` reason, with any figure you moved it on. A card whose `growth_for_upside` is well above its benchmark has a best case that has to beat the consensus for years; say so.
 
-- When `industry_verdict` is null, no scan covers the company. Score `tailwind` from `context/macro.md` and the company's own filings, and say so in the reason.
+- When `industry_verdict` is null, no scan covers the company. Score `tailwind` from `context/macro.md` and the company's own filings, and say so in the reason. A name with `themes` in its data file came from the theme scout: read its theme in `context/themes.md` and score `tailwind` on that theme's evidence, lowering it for a theme marked `crowded`.
+- The data file's `trend` is the price against its 200-week average (`ma200w_gap`), that average's change over a year (`ma200w_slope`) and the 12-month momentum. It is background, not a score: look-backs of the value and growth screens found no consistent edge in either figure. Mention it in a reason only when it bears on the story (a price far above a steep line that the best case must still double from).
 
 Finish each card with:
 

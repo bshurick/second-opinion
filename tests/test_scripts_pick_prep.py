@@ -93,7 +93,7 @@ def test_growth_profile_and_finalists_plan(monkeypatch, capsys, tmp_path):
     assert rc == 0
     assert [c[0] for c in calls] == ["growth", "smallcap"]
     assert calls[1][1][calls[1][1].index("--preset") + 1] == "growth"
-    assert out["budget"]["plan"] == "picker-5"
+    assert out["budget"]["plan"] == "picker-growth-5"
 
 
 GROWTH_OFF = ["--set", "fcf_positive_latest=none", "--set", "max_share_growth=none"]

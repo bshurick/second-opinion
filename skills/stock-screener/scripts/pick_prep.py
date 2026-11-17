@@ -29,7 +29,8 @@ others are kept. A screen Yahoo rate-limited (its own ``PRICING_INCOMPLETE`` fla
 flagged ``SCREEN_PRICING_INCOMPLETE``: its survivors were not put through the price stage, so
 run again in a few minutes.
 
-Budget. ``budget.py DIR init --plan picker-N`` (N = ``--finalists``, default 3). A run folder
+Budget. ``budget.py DIR init --plan picker-N`` (N = ``--finalists``, default 3), or
+``picker-growth-N`` for a growth run (the same caps plus the theme scout's 6). A run folder
 that already has a budget keeps it (``BUDGET_KEPT``); a missing or failing ``budget.py`` is
 flagged ``BUDGET_UNAVAILABLE`` and ``budget`` is null.
 
@@ -260,7 +261,7 @@ def run(args: list[str], today: dt.date | None = None) -> dict:
     thin = [name for name, _ in plan if "PRICING_INCOMPLETE" in screens[name]["flags"]]
     if thin:
         flags.append({"code": "SCREEN_PRICING_INCOMPLETE", "message": f"Yahoo rate-limited the {', '.join(thin)} screen{'s' if len(thin) > 1 else ''}: most names were not priced, so the survivors are not the preset's; wait a few minutes and run pick_prep.py again on the same folder"})
-    budget = _budget(run_dir, f"picker-{ns.finalists}", flags)
+    budget = _budget(run_dir, f"picker-{'growth-' if ns.profile == 'growth' else ''}{ns.finalists}", flags)
     return {
         "run": str(run_dir),
         "profile": ns.profile,

@@ -15,6 +15,13 @@ from scripts_util import load_script, run_json
 from second_opinion.errors import ConfigError, InvalidInput
 
 cards = load_script("stock-screener/scripts/cards.py")
+REAL_PRICE_TRENDS = cards.price_trends
+
+
+@pytest.fixture(autouse=True)
+def no_price_download(monkeypatch):
+    """The trend download is patched out; the trend tests below patch in their own."""
+    monkeypatch.setattr(cards, "price_trends", lambda tickers: {})
 TODAY = dt.date.today().isoformat()
 
 
@@ -354,3 +361,41 @@ def test_growth_card_takes_its_upside_hint_from_the_yardstick(monkeypatch, capsy
     stick = data["yardstick"]
     assert stick["consensus_growth"] == 0.5 and stick["benchmark"] == 0.5 and stick["margin"] == round(0.30 * 0.79, 4)
     assert data["upside_hint"] == stick["hint"] is not None and out["cards"][0]["upside_hint"] == stick["hint"]
+
+
+def test_trend_rides_on_each_card_from_one_download(monkeypatch, capsys, tmp_path):
+    run = make_run(tmp_path)
+    monkeypatch.setattr(cards.pack, "build", fake_build())
+    seen = []
+
+    def trends(tickers):
+        seen.append(list(tickers))
+        return {"AAA": {"ma200w_gap": -0.3, "ma200w_slope": -0.05, "momentum": -0.22}}
+
+    monkeypatch.setattr(cards, "price_trends", trends)
+    rc, out = run_json(cards, ["--run", str(run)], capsys)
+    assert rc == 0 and seen == [["AAA", "BBB", "CCC"]]
+    assert json.loads((run / "cards" / "AAA.data.json").read_text())["trend"] == {"ma200w_gap": -0.3, "ma200w_slope": -0.05, "momentum": -0.22}
+    assert json.loads((run / "cards" / "BBB.data.json").read_text())["trend"] == {"ma200w_gap": None, "ma200w_slope": None, "momentum": None}
+    assert "TREND_UNAVAILABLE" not in {f["code"] for f in out["flags"]}
+
+
+def test_a_failed_trend_download_is_a_flag(monkeypatch, capsys, tmp_path):
+    run = make_run(tmp_path)
+    monkeypatch.setattr(cards.pack, "build", fake_build())
+    monkeypatch.setattr(cards, "price_trends", lambda tickers: None)
+    rc, out = run_json(cards, ["--run", str(run)], capsys)
+    assert rc == 0 and "TREND_UNAVAILABLE" in {f["code"] for f in out["flags"]}
+    assert json.loads((run / "cards" / "AAA.data.json").read_text())["trend"]["ma200w_gap"] is None
+
+
+def test_price_trends_reads_one_batched_download(monkeypatch):
+    first = dt.date.today() - dt.timedelta(weeks=255)
+    bars = [{"date": (first + dt.timedelta(weeks=i)).isoformat(), "close": 50.0, "adj_close": 50.0, "volume": 1} for i in range(256)]
+    from second_opinion import market
+    calls = []
+    monkeypatch.setattr(market, "close_histories", lambda tickers, start: calls.append(tickers) or {"AAA": bars})
+    out = REAL_PRICE_TRENDS(["AAA", "BBB"])
+    assert calls == [["AAA", "BBB"]]
+    assert out["AAA"]["ma200w_gap"] == 0.0 and out["AAA"]["ma200w_slope"] == 0.0
+    assert out["BBB"] == {"momentum": None, "ma200w_gap": None, "ma200w_slope": None}

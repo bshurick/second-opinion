@@ -60,6 +60,7 @@ SCRIPT = r"""
     min_f_score: v => `Piotroski score ${F.num(v, 0)}+ of 9`, max_payout_to_fcf: v => `Payout within ${F.num(v, 1)}× free cash flow`,
     min_earnings_yield: v => `Earnings yield ${pct(v, 1)}+`, min_shareholder_yield: v => `Payout yield ${pct(v, 1)}+`,
     max_pe_times_pb: v => `P/E × P/B ${F.num(v, 1)} or less`, min_momentum: v => `12-month price change ${pct(v)}+`,
+    max_ma200w_gap: v => `Price ${pct(v)} or less against its 200-week average`, min_ma200w_slope: v => `200-week average up ${pct(v)}+ over a year`,
     min_market_cap: v => `Market value ${F.moneyC(v)}+`, min_fcf_yield: v => `Cash yield ${pct(v, 1)}+ of market value`,
     max_pe: v => `P/E ${F.num(v, 0)} or less`, max_ps: v => `Price/sales ${F.num(v, 1)} or less`,
     max_implied_growth: v => `Price implies ${pct(v)} growth or less`, min_growth_gap: v => `Expected growth beats implied by ${pct(v)}+`,
@@ -71,9 +72,10 @@ SCRIPT = r"""
   FA.explain(g('explain'), `<p>Every US-listed company that files financials with the SEC, put through the ${F.esc(preset)} tests one after another; the survivors are the starting list for research.</p>
     <p>The bars show how many companies were left after each test, so you can see which test did the most narrowing. Loosen that one first if the list is too short.</p>
     <p>In the survivors table, <b>Price implies</b> is how fast free cash flow (after stock pay) would have to grow for ten years to justify today's market value. <b>Expected</b> is the growth the screen credits the company with: the lower of its three-year rate and its recent growth, fading to 3% over ten years, because fast growth rarely lasts. <b>Gap</b> is expected minus implied: a large gap means the price assumes much less than that. That is a question to research (why does the market doubt it?), not an answer.</p>
-    <p>A flag of <b>cash outruns profit</b> means cash flow is far above operating profit, often customer money or timing, so the price figures make it look cheaper than it is. <b>Profit above operating profit</b> usually means a one-off gain, so the P/E flatters. <b>Price falling</b> means the share price is down more than 20% over twelve months.</p>`);
+    <p>A flag of <b>cash outruns profit</b> means cash flow is far above operating profit, often customer money or timing, so the price figures make it look cheaper than it is. <b>Profit above operating profit</b> usually means a one-off gain, so the P/E flatters. <b>Price falling</b> means the share price is down more than 20% over twelve months.</p>
+    <p><b>vs 200-wk avg</b> is the latest weekly close against the average of the last 200 weekly closes (about four years): negative means the price sits below its long trend. <b>200-wk slope</b> is how much that average rose or fell over the last year. Both describe the price against its own history, not against the business's value.</p>`);
   const S = D.survivors || [];
-  const PRICE_STAGES = ['financial_excluded', 'sector_excluded', 'min_market_cap', 'min_fcf_yield', 'min_earnings_yield', 'min_shareholder_yield', 'max_pe', 'max_ps', 'max_pe_times_pb', 'max_implied_growth', 'min_growth_gap', 'min_momentum'];
+  const PRICE_STAGES = ['financial_excluded', 'sector_excluded', 'min_market_cap', 'min_fcf_yield', 'min_earnings_yield', 'min_shareholder_yield', 'max_pe', 'max_ps', 'max_pe_times_pb', 'max_implied_growth', 'min_growth_gap', 'min_momentum', 'max_ma200w_gap', 'min_ma200w_slope'];
   const RANK = {growth_gap: 'gap', fcf_yield: 'cash yield', magic_rank: 'magic-formula rank', pe_times_pb: 'P/E × P/B', shareholder_yield: 'payout yield', earnings_yield: 'earnings yield', roce: 'return on capital', f_score: 'Piotroski score', revenue_cagr: 'growth'};
   const ASC = ['magic_rank', 'pe', 'pe_times_pb', 'ps'];
   const tiles = [['Screened', F.num(D.universe, 0), `${F.num(D.dropped_incomplete || 0, 0)} left out for missing years`],
@@ -91,8 +93,8 @@ SCRIPT = r"""
   // Each ranking shows the columns that explain it; the rest stay in the data for a custom page.
   const LEAD = ['ticker', 'name', 'revenue_latest', 'revenue_cagr', 'latest_quarter_growth'];
   const BY_RANK = {
-    growth_gap: ['expected_growth', 'fcf_after_sbc_margin', 'market_cap', 'implied_growth', 'growth_gap', 'pe'],
-    fcf_yield: ['fcf_after_sbc_margin', 'roce', 'market_cap', 'fcf_yield', 'pe', 'f_score', 'momentum'],
+    growth_gap: ['expected_growth', 'fcf_after_sbc_margin', 'market_cap', 'implied_growth', 'growth_gap', 'pe', 'ma200w_slope'],
+    fcf_yield: ['fcf_after_sbc_margin', 'roce', 'market_cap', 'fcf_yield', 'pe', 'f_score', 'momentum', 'ma200w_gap'],
     magic_rank: ['roce', 'earnings_yield', 'magic_rank', 'market_cap', 'pe', 'momentum'],
     pe_times_pb: ['roce', 'market_cap', 'pe', 'pe_times_pb', 'momentum'],
     shareholder_yield: ['fcf_after_sbc_margin', 'market_cap', 'shareholder_yield', 'fcf_yield', 'pe', 'momentum'],
@@ -119,6 +121,8 @@ SCRIPT = r"""
     {key: 'magic_rank', label: 'Magic rank', fmt: v => F.isNum(v) ? F.num(v, 0) : '—'},
     {key: 'f_score', label: 'Piotroski', fmt: v => F.isNum(v) ? `${F.num(v, 0)}/9` : '—'},
     {key: 'momentum', label: '12-mo price', fmt: v => pct(v), cls: F.cls},
+    {key: 'ma200w_gap', label: 'vs 200-wk avg', fmt: v => pct(v), cls: F.cls},
+    {key: 'ma200w_slope', label: '200-wk slope', fmt: v => pct(v), cls: F.cls},
     {key: 'flags', label: 'Flags', left: true, fmt: v => v ? `<span class="neg">${F.esc(v)}</span>` : ''},
   ].filter(c => SHOW.includes(c.key)),
   rows, {sortKey: D.rank_by in (rows[0] || {}) ? D.rank_by : 'revenue_cagr', desc: !ASC.includes(D.rank_by)});

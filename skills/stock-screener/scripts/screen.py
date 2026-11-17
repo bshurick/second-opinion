@@ -10,7 +10,8 @@ take about 180 requests (fetched four at a time, cached for a day under the plug
 directory). ``screen_math.py`` applies the fundamental criteria; the survivors -- at most
 ``--price-limit`` of them (default 400), chosen by the figure the preset's price stage cares
 about -- are then priced from Yahoo (market cap, enterprise value, sector, and the 12-month
-price change skipping the latest month) and screened again on the price criteria, and ranked.
+price change skipping the latest month, and the price against its 200-week average with that
+average's slope over a year, from one batched download of about five years of daily closes) and screened again on the price criteria, and ranked.
 
 ``--preset`` picks a criteria set (default ``growth``; see screen_math.PRESETS): growth, value,
 quality, garp, magic, graham, payout, health (a lenient floor for a hand-picked list). ``--set`` overrides one criterion, e.g.
@@ -150,6 +151,11 @@ YEARS_SCREENED = 4
 FETCH_WORKERS = 4  # the SEC asks for at most 10 requests a second
 MOMENTUM_LOOKBACK_DAYS = 400  # calendar days of closes fetched for the 12-month figure
 MOMENTUM_BARS, MOMENTUM_SKIP = 252, 21
+# The price against its own long trend: the latest weekly close over its 200-week simple
+# moving average, and that average's change over the last 52 weeks. The same download as the
+# momentum figure, reaching back far enough for both (about five years of daily closes).
+MA_WEEKS, MA_SLOPE_WEEKS = 200, 52
+TREND_LOOKBACK_DAYS = (MA_WEEKS + MA_SLOPE_WEEKS) * 7 + 21
 # The latest year normally has fewer filers than the year before (late filers, new fiscal
 # calendars); below this share of the prior year's count the year is not fully reported yet.
 THIN_YEAR_RATIO = 0.75
@@ -312,16 +318,42 @@ def momentum_from_closes(closes: list[float]) -> float | None:
     return recent / then - 1 if then and then > 0 else None
 
 
-def momentum(tickers: list[str], today: dt.date) -> dict[str, float | None]:
-    """12-1 month momentum per ticker from ONE batched Yahoo download; {} when it fails."""
+def ma200w_from_bars(bars: list[dict]) -> dict[str, float | None]:
+    """``ma200w_gap`` and ``ma200w_slope`` from daily bars (``date``, ``adj_close``).
+
+    Daily closes are grouped into weeks (the last close of each Monday-Sunday week, the week in
+    progress at its latest close, as the market page's S&P 500 trend does). The gap is the
+    latest weekly close over the mean of the last 200, less 1; the slope is that mean over the
+    mean of the 200 weeks ending 52 weeks earlier, less 1. Null with too few weeks."""
+    from second_opinion.market import weekly_closes
+
+    rows = [(str(b["date"])[:10], b["adj_close"]) for b in bars if b.get("adj_close")]
+    _, weekly = weekly_closes([d for d, _ in rows], [c for _, c in rows])
+    gap = slope = None
+    if len(weekly) >= MA_WEEKS:
+        ma = sum(weekly[-MA_WEEKS:]) / MA_WEEKS
+        gap = weekly[-1] / ma - 1 if ma > 0 else None
+        if len(weekly) >= MA_WEEKS + MA_SLOPE_WEEKS:
+            then = sum(weekly[-MA_WEEKS - MA_SLOPE_WEEKS:-MA_SLOPE_WEEKS]) / MA_WEEKS
+            slope = ma / then - 1 if then > 0 else None
+    return {"ma200w_gap": gap, "ma200w_slope": slope}
+
+
+def signals_from_bars(bars: list[dict]) -> dict[str, float | None]:
+    """``momentum``, ``ma200w_gap`` and ``ma200w_slope`` from one ticker's daily bars."""
+    return {"momentum": momentum_from_closes([b["adj_close"] for b in bars]), **ma200w_from_bars(bars)}
+
+
+def price_signals(tickers: list[str], today: dt.date) -> dict[str, dict[str, float | None]]:
+    """Per ticker ``signals_from_bars`` from ONE batched Yahoo download; {} when it fails."""
     from second_opinion import market
 
     try:
-        start = (today - dt.timedelta(days=MOMENTUM_LOOKBACK_DAYS + MOMENTUM_SKIP + 10)).isoformat()
+        start = (today - dt.timedelta(days=TREND_LOOKBACK_DAYS)).isoformat()
         hist = market.close_histories(tickers, start)
-    except Exception:  # noqa: BLE001 -- momentum is an extra; the screen stands without it
+    except Exception:  # noqa: BLE001 -- price signals are an extra; the screen stands without them
         return {}
-    return {t: momentum_from_closes([bar["adj_close"] for bar in bars]) for t, bars in hist.items()}
+    return {t: signals_from_bars(bars) for t, bars in hist.items()}
 
 
 def price_pool(survivors: list[dict], preset: str | None, limit: int) -> tuple[list[dict], str]:
@@ -359,7 +391,7 @@ def _held(items: list[str] | None) -> set[str]:
 
 def run(ns: argparse.Namespace, frame: Frame | None = None, quoter: Callable[[str], dict | None] = quote,
         today: dt.date | None = None, names: dict[int, dict] | None = None,
-        momentum_of: Callable[[list[str], dt.date], dict] = momentum, aliases: dict[str, int] | None = None) -> dict:
+        momentum_of: Callable[[list[str], dt.date], dict] = price_signals, aliases: dict[str, int] | None = None) -> dict:
     frame = frame or edgar.frame
     today = today or dt.date.today()
     latest = ns.year or today.year - 1
@@ -409,7 +441,9 @@ def run(ns: argparse.Namespace, frame: Frame | None = None, quoter: Callable[[st
         for s in pool:
             q = quotes.get(s["cik"])
             if q:
-                by_cik[s["cik"]]["market"] = {**q, "momentum": moves.get(str(s["ticker"]).upper())}
+                move = moves.get(str(s["ticker"]).upper())
+                signals = move if isinstance(move, dict) else {"momentum": move}  # a bare number is momentum alone
+                by_cik[s["cik"]]["market"] = {**q, **{k: signals.get(k) for k in ("momentum", "ma200w_gap", "ma200w_slope")}}
         priced["count"] = sum(1 for q in quotes.values() if q)
         unpriced = [s["ticker"] for s in pool if not quotes.get(s["cik"])]
         if unpriced:

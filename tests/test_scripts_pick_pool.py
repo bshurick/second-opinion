@@ -80,7 +80,7 @@ def test_merge_origin_leaders_and_held(monkeypatch, capsys, tmp_path):
     assert json.loads((run / "screen" / "health.json").read_text())["preset"] == "health"
     assert saved["counts"]["industries"] == 3 and saved["counts"]["prospects"] == 4 and saved["counts"]["screen_survivors"] == 4
     assert saved["counts"]["merged"] == 7 and saved["counts"]["kept"] == 7 and saved["counts"]["dropped"] == 0
-    assert saved["counts"]["origin"] == {"industry": 3, "screen": 3, "both": 1}
+    assert saved["counts"]["origin"] == {"industry": 3, "theme": 0, "screen": 3, "both": 1}
     assert out["counts"] == saved["counts"] and out["batches"] == saved["batches"] and out["pool"] == str(run / "pool.json")
     assert out["flags"] == []
 
@@ -207,7 +207,7 @@ def test_dotted_and_dashed_share_classes_are_one_name(monkeypatch, capsys, tmp_p
     assert set(by) == {"BRK-B", "AAA", "BF-B"}
     assert by["BRK-B"]["origin"] == "both" and by["BRK-B"]["held"] is True and by["BRK-B"]["screens"] == ["quality", "value"]
     assert by["BF-B"]["leader"] is True and by["BF-B"]["industry"] == "Insurance"
-    assert saved["counts"]["candidates"] == 3 and saved["counts"]["origin"] == {"industry": 1, "screen": 1, "both": 1} and saved["counts"]["held"] == 1
+    assert saved["counts"]["candidates"] == 3 and saved["counts"]["origin"] == {"industry": 1, "theme": 0, "screen": 1, "both": 1} and saved["counts"]["held"] == 1
     assert sorted(seen[0][0]) == ["AAA", "BF-B", "BRK-B"] and seen[0][1] == ["BRK-B"]
     assert by["BRK-B"]["health"] == "passed"
 
@@ -276,3 +276,61 @@ def test_trim_lets_no_industry_crowd_out_another(monkeypatch, capsys, tmp_path):
     names = [n["ticker"] for n in json.loads((run / "pool.json").read_text())["names"]]
     assert len(names) == 40 and {"BE", "GEV"} <= set(names)
     assert names[:2] == ["T00", "BE"]  # one name per industry in turn
+
+
+def themes_file(run, themes) -> None:
+    (run / "context" / "themes.json").write_text(json.dumps({"as_of": "2026-11-16", "themes": themes}))
+
+
+def theme(name, prospects, crowding="mixed") -> dict:
+    return {"theme": name, "crowding": crowding, "why_now": "w", "segments": ["s"],
+            "evidence": [{"claim": "c", "source": "s", "date": "2026-11-10"}],
+            "prospects": [{"ticker": t, "name": f"{t} Ltd", "market_cap": 3.0e9, "why": f"{t}: trajectory, funded, scale"} for t in prospects]}
+
+
+def test_theme_prospects_join_the_pool(monkeypatch, capsys, tmp_path):
+    run = make_run(tmp_path, {"group1": [industry("Software", "Technology", ["SAAS", "BOTH"])]},
+                   {"growth": screen(["SCR", "THS"])})
+    themes_file(run, [theme("Grid buildout", ["GRID", "BOTH"], crowding="crowded"), theme("Clinic software", ["THS", "CLIN", "GRID"], crowding="overlooked")])
+    fake_health(monkeypatch)
+    rc, out = run_json(pool, ["--run", str(run)], capsys)
+    assert rc == 0, out
+    by = {n["ticker"]: n for n in json.loads((run / "pool.json").read_text())["names"]}
+    assert set(by) == {"SAAS", "BOTH", "GRID", "CLIN", "SCR", "THS"}
+    assert by["GRID"]["origin"] == "theme" and by["GRID"]["themes"] == ["Grid buildout", "Clinic software"]
+    assert by["GRID"]["why"] == "GRID: trajectory, funded, scale" and by["GRID"]["market_cap"] == 3.0e9 and by["GRID"]["industry"] is None
+    assert by["BOTH"]["origin"] == "industry" and by["BOTH"]["industry"] == "Software" and by["BOTH"]["themes"] == ["Grid buildout"]
+    assert by["THS"]["origin"] == "both" and by["THS"]["themes"] == ["Clinic software"] and by["THS"]["screens"] == ["growth"]
+    assert by["SCR"]["themes"] == [] and by["SAAS"]["themes"] == []
+    assert out["counts"]["themes"] == 2 and out["counts"]["theme_prospects"] == 4
+    assert out["counts"]["origin"] == {"industry": 2, "theme": 2, "screen": 1, "both": 1}
+    flat = [t for b in out["batches"] for t in b]
+    assert flat.index("SAAS") < flat.index("GRID") < flat.index("SCR")  # scanned industries, then themes, then by sector
+
+
+def test_themes_compete_as_their_own_groups_in_the_trim(monkeypatch, capsys, tmp_path):
+    run = make_run(tmp_path, {"group1": [industry("Software", "Technology", [f"S{i}" for i in range(6)])]},
+                   {"growth": screen([f"G{i}" for i in range(6)], sector="Industrials")})
+    themes_file(run, [theme("Grid buildout", ["T1", "T2", "T3"])])
+    fake_health(monkeypatch)
+    rc, out = run_json(pool, ["--run", str(run), "--max", "6"], capsys)
+    kept = [n["ticker"] for n in json.loads((run / "pool.json").read_text())["names"]]
+    assert rc == 0 and len(kept) == 6
+    assert sum(1 for t in kept if t.startswith("T")) == 2  # the theme takes its turn with the industry and the sector
+
+
+def test_a_malformed_theme_file_is_skipped_and_flagged(monkeypatch, capsys, tmp_path):
+    run = make_run(tmp_path, {"group1": [industry("Software", "Technology", ["SAAS"])]}, {})
+    (run / "context" / "themes.json").write_text(json.dumps([{"theme": "not wrapped"}]))
+    fake_health(monkeypatch)
+    rc, out = run_json(pool, ["--run", str(run)], capsys)
+    assert rc == 0 and "THEME_FILE_SKIPPED" in {f["code"] for f in out["flags"]}
+    assert out["counts"]["themes"] == 0 and [n for b in out["batches"] for n in b] == ["SAAS"]
+
+
+def test_a_theme_file_alone_is_enough_to_merge(monkeypatch, capsys, tmp_path):
+    run = make_run(tmp_path, {}, {})
+    themes_file(run, [theme("Grid buildout", ["GRID"])])
+    fake_health(monkeypatch)
+    rc, out = run_json(pool, ["--run", str(run)], capsys)
+    assert rc == 0 and out["batches"] == [["GRID"]]

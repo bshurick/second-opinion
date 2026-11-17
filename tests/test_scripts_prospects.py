@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import json
 
 from scripts_util import load_script, run_json
@@ -239,3 +240,28 @@ def test_profile_flag_reaches_the_rows(monkeypatch, capsys):
     rc, out = run_json(prospects, ["AAA", "--profile", "growth"], capsys)
     assert rc == 0 and set(out["prospects"][0]["tests"]) == {"trajectory", "funded", "reinvestment", "scale"}
     assert run_json(prospects, ["AAA", "--profile", "bogus"], capsys)[0] == 2
+
+
+def test_trend_figures_ride_along_without_being_a_test(monkeypatch, capsys):
+    signals = {"AAA": {"change_12m": 0.05, "ma200w_gap": -0.21, "ma200w_slope": 0.03}}
+    _patch(monkeypatch, {"AAA": _edgar()}, changes=signals)
+    rc, out = run_json(prospects, ["aaa"], capsys)
+    p = out["prospects"][0]
+    assert rc == 0 and p["trend"] == {"ma200w_gap": -0.21, "ma200w_slope": 0.03}
+    assert p["tests"]["price"]["figures"]["change_12m"] == 0.05 and p["tests_passed"] == 4 and set(p["tests"]) == {"trajectory", "cash", "price", "overlooked"}
+    rc, out = run_json(prospects, ["aaa", "--profile", "growth"], capsys)
+    assert out["prospects"][0]["trend"]["ma200w_slope"] == 0.03
+
+
+def test_price_changes_builds_the_trend_from_one_download(monkeypatch):
+    first = dt.date.today() - dt.timedelta(weeks=260)
+    bars = [{"date": (first + dt.timedelta(weeks=i)).isoformat(), "close": 100.0, "adj_close": 100.0, "volume": 1} for i in range(261)]
+    calls = []
+
+    def hist(symbols, start):
+        calls.append(start)
+        return {"AAA": bars}
+
+    monkeypatch.setattr(prospects.market, "close_histories", hist)
+    out = prospects.price_changes(["AAA"])
+    assert len(calls) == 1 and out["AAA"] == {"change_12m": 0.0, "ma200w_gap": 0.0, "ma200w_slope": 0.0}

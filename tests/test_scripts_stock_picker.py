@@ -497,3 +497,34 @@ def test_growth_profile_with_a_value_gate_page_is_the_value_page(tmp_path, capsy
     text = _dom_text(data, tmp_path, capsys)
     assert "Deep picks" in text and "Deep growth picks" not in text
     assert "price against value (V)" in text and "upside to the best case (U)" not in text
+
+
+def _themed() -> dict:
+    data = pick_input()
+    data["themes"] = [{"theme": "Clinic software", "crowding": "overlooked", "crowding_why": "4 analysts on the median name.", "why_now": "A 2027 rule change.",
+                       "segments": ["Health Information Services"], "prospects": [{"ticker": "OTHER", "name": "OTHER Inc", "market_cap": 2.1e9, "why": "trajectory: 7 of 8 quarters up"}],
+                       "evidence": [{"claim": "CMS final rule", "source": "CMS, Federal Register", "date": "2026-11-02"}]}]
+    data["candidates"][3].update(origin="theme", themes=["Clinic software"])
+    return data
+
+
+def test_render_pick_shows_themes_when_there_are_any(tmp_path, capsys) -> None:
+    rc, res = _render(_themed(), tmp_path, capsys)
+    assert rc == 0 and res["themes"] == 1
+    html = (tmp_path / "p.html").read_text()
+    assert "Clinic software" in html and "CMS final rule" in html
+    rc, res = _render(pick_input(), tmp_path, capsys)
+    assert rc == 0 and res["themes"] == 0
+
+
+@pytest.mark.parametrize("mutate, needle", [
+    (lambda d: d["themes"][0].update(crowding="hot"), "crowding"),
+    (lambda d: d["themes"][0].pop("theme"), "theme has no name"),
+    (lambda d: d["themes"][0]["evidence"][0].pop("source"), "source"),
+    (lambda d: d["themes"][0]["prospects"][0].pop("ticker"), "prospect has no ticker"),
+])
+def test_render_pick_validates_themes(mutate, needle, tmp_path, capsys) -> None:
+    data = _themed()
+    mutate(data)
+    rc, res = _render(data, tmp_path, capsys)
+    assert rc == 2 and needle in res["error"], res

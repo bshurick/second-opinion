@@ -394,3 +394,28 @@ def test_save_commands_carry_style(tmp_path, data_dir, capsys) -> None:
     rc, out = run_json(assemble, ["--run", str(vrun), "--finalists", finalists_arg()], capsys)
     assert rc == 0, out
     assert out["save_commands"] and all(shlex.split(c)[-2:] == ["--style", "value"] for c in out["save_commands"])
+
+
+def test_themes_reach_the_page_and_the_funnel(tmp_path, capsys) -> None:
+    run = make_run(tmp_path)
+    (run / "context").mkdir(exist_ok=True)
+    (run / "context" / "themes.json").write_text(json.dumps({"as_of": "2026-11-10", "themes": [
+        {"theme": "Grid buildout", "crowding": "crowded", "why_now": "w", "segments": ["Electrical Equipment"],
+         "prospects": [{"ticker": "SAFE", "name": "Safe", "market_cap": 2e9, "why": "trajectory"}],
+         "evidence": [{"claim": "c", "source": "EIA", "date": "2026-11-01"}]}]}))
+    pool = json.loads((run / "pool.json").read_text())
+    pool["names"].append({"ticker": "SAFE", "held": False, "themes": ["Grid buildout"]})
+    (run / "pool.json").write_text(json.dumps(pool))
+    funnel, out = _funnel(run, tmp_path, capsys)
+    assert list(funnel)[:2] == ["Themes scouted", "Industries scanned"] and funnel["Themes scouted"] == 1
+    pick = json.loads((run / "pick.json").read_text())
+    assert pick["themes"][0]["theme"] == "Grid buildout"
+    assert {c["ticker"]: c["themes"] for c in pick["candidates"]}["SAFE"] == ["Grid buildout"]
+
+
+def test_a_malformed_theme_file_is_left_off_the_page(tmp_path, capsys) -> None:
+    run = make_run(tmp_path)
+    (run / "context").mkdir(exist_ok=True)
+    (run / "context" / "themes.json").write_text("[]")
+    funnel, out = _funnel(run, tmp_path, capsys)
+    assert "Themes scouted" not in funnel and "THEME_FILE_SKIPPED" in {f["code"] for f in out["flags"]}

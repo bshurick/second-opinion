@@ -57,6 +57,7 @@ REFERENCE_FILES = [
     "valuation/references/deep-roles.md",
     "stock-screener/references/picker-roles.md",
     "stock-screener/references/primary-sources.md",
+    "stock-screener/references/picker-flags.md",
     "portfolio-analysis/references/portfolio-research.md",
     "portfolio-analysis/references/deep-review-roles.md",
     "real-estate/references/deep-roles.md",

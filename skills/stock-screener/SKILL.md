@@ -53,6 +53,13 @@ Saved picks are re-checked later against the valuation they were picked on, with
 - **Gap.** Expected growth minus the growth the price implies.
 - **No capital-spending figure.** The company has no free cash flow and fails the cash tests. It does not pass on operating cash flow.
 
+### The price against its own trend
+
+- `ma200w_gap` is the latest weekly close against the average of the last 200 weekly closes, less 1 (negative below the line). `ma200w_slope` is that average against its value 52 weeks earlier, less 1. Each is null without 200 or 252 weeks of history.
+- `screen.py` reports both, and so do each `prospects.py` row's `trend` and each card's `trend`. No preset filters on them: `--set max_ma200w_gap=0` or `--set min_ma200w_slope=0` does, and a missing figure fails.
+- Look-backs run on 2026-11-16 found no consistent edge. Value survivors below the line did worse than those above it from 2022-07 (+13% against +61%) and 2023-07 (+20% against +27%), and better from 2024-07 (+49% against +11%). Nearly every growth survivor had a rising slope, so the slope did not separate them.
+- They describe the price against its own history, not against the business's value. Run `lookback.py` (its `summary.by_ma200w`) before leaning on either.
+
 ### What `lookback.py` reports
 
 - It dates the screen 1 July after `--year` (default three years back) and prices it as of that day.
@@ -81,11 +88,12 @@ The saved depth decides the default; when it is deep, the session's depth rule s
 
 - **Pipeline.**
   1. `pick_prep.py` writes the macro snapshot and runs the financial screens, including a small-cap pass.
-  2. Three industry scanners research the sectors and name each industry's prospects.
+  2. In a growth run, a theme scout reads current dated news for three to five themes that may drive fast growth, marks how crowded each already is, and names each theme's prospects. Then three industry scanners research the sectors and name each industry's prospects.
   3. `pool.py` merges and health-checks the candidates, and `cards.py` fetches each one's research pack.
   4. Quick reads score each candidate, and three to five finalists get a deep valuation (the valuation skill's Deep steps).
   5. `pick_assemble.py` applies the gate and builds the page.
 - **Where candidates come from.** Each industry contributes its prospects: companies chosen on trajectory over 8 quarters, free cash flow, price and how overlooked they are (the tests `prospects.py` runs), not on size. Prospects and screen survivors from every industry enter the pool; the industry verdict feeds the `tailwind` score and never removes a name.
+  - In a growth run the theme scout's prospects (`context/themes.json`) join the pool too, with `origin` `theme` and `themes` naming the theme. They add to the scan and the screens and never narrow them.
 - **Subagents read, they do not fetch.** Each tool call costs a subagent time. Everything a script can fetch is on disk before a subagent starts: `context/macro.md` for the scanners, and a research pack per company for the quick readers.
 - **The research pack.** `cards.py` builds `cards/<TICKER>/` for every pool name: SEC financials, the Yahoo profile, valuation inputs, the quick value, sentiment with the analyst consensus, the latest eight earnings releases, red-flag passages, and an `INDEX.md` naming each file and the resolved script commands. `cards/<TICKER>.data.json` holds the headline fields.
 - **The gate (`gate.py`).**
@@ -102,7 +110,7 @@ The saved depth decides the default; when it is deep, the session's depth rule s
   - `ok` is false over 2x net debt to EBITDA or under 6x interest coverage. A name that fails starts its `value_hint` at 3 at most, and is not a finalist.
   - Debt is how most gate failures happened: it turns a revenue decline into a large loss for the shares.
   - `ok` is null for a financial, REIT or utility, which is judged on its yardstick.
-- **Size.** A run with three finalists (the default) dispatches about 25 to 35 subagents and plans 127 web searches, most of them inside deep valuation.
+- **Size.** A run with three finalists (the default) dispatches about 25 to 35 subagents and plans 127 web searches, most of them inside deep valuation. A growth run adds the theme scout: one more subagent and 6 more searches (133).
 - **Search plans.** The session has one shared pool of about 200 web searches. `pick_prep.py --finalists N` starts the run's `budget.json` on `budget.py`'s plan `picker-N`:
 
   | Finalists | Plan | `scanners` | `quick_reads` | `valuations` | Total |
@@ -110,6 +118,8 @@ The saved depth decides the default; when it is deep, the session's depth rule s
   | 3 (default) | `picker-3` | 18 (6 each) | 40 (1 per company) | 69 (23 each) | 127 |
   | 4 | `picker-4` | 18 (6 each) | 40 (1 per company) | 92 (23 each) | 150 |
   | 5 | `picker-5` | 18 (6 each) | 40 (1 per company) | 95 (19 each, no second thread round) | 153 |
+
+  - A growth run uses `picker-growth-N`: the same caps plus `scout` 6 (133, 156 and 159).
 
   - Each finalist's valuation keeps its own `budget.json` in `DIR/deep-SYMBOL/` on the plan `valuation-picker`: 23 searches, the valuation plan with `industry` at 4.
   - `pick_assemble.py` sums the finalists' own budgets into the `valuations` figure, so the run's `budget.json` records only `scanners` and `quick_reads`.
@@ -122,11 +132,12 @@ The saved depth decides the default; when it is deep, the session's depth rule s
   | `context/macro.md`, `context/macro.json` | `pick_prep.py` | The run date, then one dated line per FRED series: rates, unemployment, oil and gas prices, and the change over a year in CPI, retail sales and manufacturing output |
   | `screen/<name>.json` | `pick_prep.py` | `screen.py`'s output per screen: `value`, `quality` and `smallcap` for the value profile, `growth` (without its cash and dilution tests) and `smallcap` for growth |
   | `budget.json` | `budget.py` | The search plan and what each stage has used |
+  | `context/themes.json`, `context/themes.md` | Theme scout (growth runs) | The themes with their crowding, prospects and dated evidence, and the notes behind them |
   | `industries/group<N>.json`, `.md` | Industry scanners | The industry objects, and the notes behind them |
   | `screen/health.json` | `pool.py` | `screen.py`'s health check of the pool |
-  | `pool.json` | `pool.py` | `names` (the kept rows, each with `origin`, `held`, `industry`, `industry_verdict`, `health`), `dropped`, `trimmed`, `counts`, `batches` |
+  | `pool.json` | `pool.py` | `names` (the kept rows, each with `origin`, `held`, `industry`, `industry_verdict`, `themes`, `health`), `dropped`, `trimmed`, `counts`, `batches` |
   | `cards/<TICKER>/` | `cards.py` | The company's research pack, with its `INDEX.md` |
-  | `cards/<TICKER>.data.json` | `cards.py` | The pool row plus `quick_value`, `value_hint`, `red_flags`, `direction`, `analysts`, `insiders`, `flags`, `sentiment_flags`, `missing`, `index` |
+  | `cards/<TICKER>.data.json` | `cards.py` | The pool row plus `quick_value`, `value_hint`, `red_flags`, `direction`, `trend`, `analysts`, `insiders`, `flags`, `sentiment_flags`, `missing`, `index` |
   | `cards/<TICKER>.json`, `.md` | Quick readers | The scored card, and its notes |
   | `picks-notes.json` | The coordinator | A thesis and a "bad pick" sentence per finalist, `missing_roles`, `notes`, `profile` |
   | `gate.json`, `gate.out.json`, `pick.json`, `page.html` | `pick_assemble.py` | The gate's input and output, the page's input, and the page |
@@ -145,31 +156,7 @@ The saved depth decides the default; when it is deep, the session's depth rule s
   | `incomplete` | No four years of US-GAAP history: too new, or files IFRS, like many foreign leaders |
   | `unchecked` | The health screen itself failed (`HEALTH_CHECK_FAILED`) |
 
-- **Picker flags.** Each script prints `flags` as `{"code", "message"}`. What to do with each:
-
-  | Flag or field | Printed by | What to do |
-  |---|---|---|
-  | `SCREEN_PRICING_INCOMPLETE` | `pick_prep.py` | Yahoo rate-limited a screen, so its survivors are not the preset's. Wait a few minutes and run the same `pick_prep.py` command on the same folder. |
-  | `PRICING_INCOMPLETE` | `pool.py` | A screen file still carries the rate limit. Wait a few minutes, rerun `pick_prep.py` on the same folder, then `pool.py`. |
-  | `SCREEN_FAILED` | `pick_prep.py` | One screen wrote no file and the others were kept. Go on, and name the screen in the reply's Flags. |
-  | `MACRO_SERIES_UNAVAILABLE` | `pick_prep.py` | FRED did not return a series, and `macro.md` leaves it out. Go on. |
-  | `BUDGET_KEPT` | `pick_prep.py` | The folder already had a budget, and its count carries on. Expected on a rerun. |
-  | `BUDGET_UNAVAILABLE` | `pick_prep.py` | No budget was started. Run `budget.py DIR/pick-DATE init --plan picker-N`. If that fails, stop and show its `error`: the valuation skill is not installed. |
-  | `POOL_TRIMMED` | `pool.py` | More than 40 candidates were cut to 40. Say how many in the reply's Flags (`counts.trimmed`). |
-  | `HEALTH_CHECK_FAILED` | `pool.py` | Every name stayed, as `unchecked`. Rerun `pool.py` once. If it flags again, go on: the quick readers judge health, and the reply's Flags say the health check did not run. |
-  | `INDUSTRY_FILE_SKIPPED`, `SCREEN_FILE_SKIPPED`, `PROSPECT_SKIPPED` | `pool.py`, `pick_assemble.py` | A file is not JSON or not the expected shape, or a prospect has no ticker. Repair a scanner's `industries/group<N>.json` from its `.md` notes and rerun the script; for a screen file, rerun `pick_prep.py`. |
-  | `YAHOO_RATE_LIMITED` | `cards.py` | Wait a few minutes, then run the `cards.py --run … --symbols … --force` command its `message` prints. |
-  | `PACK_FAILED` and `failed` | `cards.py` | Run `cards.py --run DIR/pick-DATE` once more; it fetches only the names without a pack from today. A name still in `failed` gets no quick read: leave it out of its batch and name it in the reply's Flags. |
-  | `NEWS_UNAVAILABLE` in a card's `sentiment_flags` | `cards.py` | Nothing to rerun. That company's quick reader spends its one search on news, as its brief says. |
-  | `CURRENCY_MISMATCH` in a card's `red_flags.inputs_flags` | `cards.py` | Nothing to rerun. The statements are in another currency than the share price (a foreign filer), so the pack's `quick_value.basis` and the card's `value_hint` are null. The quick reader scores `value` from multiples. |
-  | `LEVERAGE_HIGH` | `cards.py` | Nothing to rerun. The named cards fail the balance-sheet check (`leverage.why` in each data file says which test). They get quick reads but are not finalists. Name them in the reply's Flags. |
-  | `DEBT_CHANGED_SINCE_ANNUAL` in a card's `leverage.flags` | `cards.py` | Nothing to rerun. Debt is over 1.5x the last annual balance sheet's (a deal or refinancing since), so the 10-K's leverage figures in `edgar.json` are stale. The check uses today's debt. |
-  | `THIN_EDGAR_HISTORY` in a card's `red_flags.inputs_flags` | `cards.py` | Nothing to rerun. `edgar.json` has no annual rows or no 10-K was found (a foreign filer, or filings under a predecessor registrant), so health and direction rest on fewer figures. The card says so. |
-  | `HEALTH_NOT_CHECKED` | `pick_assemble.py` | The health screen did not run, so the page's funnel leaves out "Health check passed" and goes from the merged pool to "Kept for quick read". Say in the reply's Flags that the health check did not run. |
-  | `THESIS_MISSING` | `pick_assemble.py` | Add the pick's `thesis` to `picks-notes.json` and rerun. |
-  | `PICK_NOTE_DROPPED` | `pick_assemble.py` | Expected: the notes entry of a finalist that failed the gate was left off the page. |
-  | `CARD_SKIPPED`, `FINALIST_WITHOUT_CARD` | `pick_assemble.py` | A `cards/<TICKER>.json` is not valid JSON, or a finalist has none. Repair or write the card from its `.md` notes and rerun. |
-  | `CASE_PAGE_MISSING` | `pick_assemble.py` | Run the valuation skill's `render_deep.py --case DIR/deep-SYMBOL` for that pick before its save command. |
+- **Picker flags.** Each script prints `flags` as `{"code", "message"}`. `references/picker-flags.md` says what to do with each; read it whenever a picker script prints a flag.
 
 ### Re-checking picks
 
@@ -223,6 +210,7 @@ The saved depth decides the default; when it is deep, the session's depth rule s
 ### Reference files
 
 - `references/picker-roles.md` holds the brief for each deep-picker subagent: Shared rules, Industry scanner, Quick reader. Name its absolute path and the two sections in each prompt.
+- `references/picker-flags.md` holds what to do with each flag a deep-picker script prints.
 - `references/primary-sources.md` catalogs the dated government, trade-body and macro pages the subagents fetch before they search. The subagents read it; the coordinator does not need it, since `pick_prep.py` writes `context/macro.md`.
 
 ### Limits
@@ -312,6 +300,7 @@ The funnel has five steps, in order. Say which step you are on.
       | "nothing that is still falling" | `--set min_momentum=0` |
       | "no energy" | `--set exclude_sectors=Energy` |
       | "only improving businesses" | `--set min_f_score=7` |
+      | "below its long-term trend" | `--set max_ma200w_gap=0` |
 
    3. Run `screen.py` once.
    4. If the survivors number fewer than about 5 or more than about 60, loosen or tighten with `--set` and rerun. Name the test that did the most narrowing (the biggest drop in `funnel`).
@@ -353,8 +342,12 @@ The scripts do the fetching and the file assembly. Do not write `macro.md`, `poo
    - The screens run one after another and can take several minutes. Give the Bash call its longest timeout, or run it in the background and wait for it.
    - If it exits 4, stop as in step 1.
    - Read `screens`, `budget` and `flags` from what it prints, not from the files.
-   - If `flags` is not empty, do what the Picker flags table in Background says before going on. `SCREEN_PRICING_INCOMPLETE` means wait a few minutes and run the same command again.
-5. Dispatch three Industry scanner agents (general-purpose) in one message, one per sector group in `references/picker-roles.md`. Keep each prompt to these items:
+   - If `flags` is not empty, do what `references/picker-flags.md` says before going on. `SCREEN_PRICING_INCOMPLETE` means wait a few minutes and run the same command again.
+5. **Growth run only:** first dispatch one Theme scout agent (general-purpose). Its prompt is the scanner prompt's items below, with the Theme scout section in place of Industry scanner and no group number.
+   - Wait for it, then run `budget.py DIR/pick-DATE add scout=N` with the searches it reported.
+   - If it failed or wrote no `context/themes.json`, keep "theme scout" for `missing_roles` and go on: the scan and the screens cover the market without it.
+
+   Then dispatch three Industry scanner agents (general-purpose) in one message, one per sector group in `references/picker-roles.md`. Keep each prompt to these items:
    - the absolute path of `references/picker-roles.md` and its two sections to read: Shared rules and Industry scanner
    - the run folder, today's date and the group number
    - the search cap of 6, as a hard limit
@@ -364,7 +357,7 @@ The scripts do the fetching and the file assembly. Do not write `macro.md`, `poo
 7. Run `pool.py --run DIR/pick-DATE`, adding `--held SYM,SYM` for the held symbols.
    - It merges the prospects and the screen survivors, trims to 40 names, runs the health check and writes `pool.json`.
    - Read `counts`, `batches`, `dropped` and `flags` from what it prints.
-   - If `flags` is not empty, do what the Picker flags table says.
+   - If `flags` is not empty, do what `references/picker-flags.md` says.
    - Keep the `dropped` names and their `failed_tests` for the reply.
 8. Run `cards.py --run DIR/pick-DATE`. It builds three packs at a time and takes several minutes for a full pool, so give the Bash call its longest timeout, or run it in the background and wait for it.
    - If `flags` carries `YAHOO_RATE_LIMITED`, wait a few minutes and run the command its `message` prints.
@@ -382,6 +375,7 @@ The scripts do the fetching and the file assembly. Do not write `macro.md`, `poo
     - in a growth run, read each candidate's `yardstick` in its data file before choosing: a `growth_for_upside` well above its `benchmark` means the best case must beat the consensus for years, which is how the 2026-11-15 run's NVDA, ALAB and DAVE failed
     - in a growth run, at least one finalist covered by at most 15 analysts (`analysts.count`) or worth under $20B, when one with an `upside` of 3 or more survives: the most-watched names are the ones the price has caught up with
     - at least one contrarian when one survives; no more than two from one industry, and no more than two riding the same theme (AI data-center spending, GLP-1 drugs, one customer) whatever their industry labels
+    - in a growth run, no more than one finalist from a theme the scout marked `crowded`
     - held names allowed, and marked. Keep the rest of the ranking: step 12 draws on it
 12. Run the valuation skill's **Deep** steps on the finalists in two waves: two finalists first, then the rest.
     - When the first wave is done, read why each failed or passed (`returns.out.json` and the case's `ledger.json`) before starting the second. Swap a second-wave finalist for the next name in the ranking when it shares the first wave's reason for failing: the same theme, or a price that already assumes more growth than its benchmark. Say the swap in `notes`.
@@ -401,7 +395,7 @@ The scripts do the fetching and the file assembly. Do not write `macro.md`, `poo
 14. Run `pick_assemble.py --run DIR/pick-DATE --finalists SYM=URL,SYM=URL`, pairing each finalist with its deep-valuation page link. In a value run add `--hurdle R` or `--floor R` when the person changed them; in a growth run add `--min-upside R` when the person gave a multiple (`--hurdle` and `--floor` exit 2 there).
     - It runs the gate, and writes `gate.json`, `gate.out.json`, `pick.json` and `page.html`.
     - If it exits 2, fix what the `error` names (a finalist without a finished valuation, or a card it rejects) and rerun. Nothing was written.
-    - If `flags` is not empty, do what the Picker flags table says.
+    - If `flags` is not empty, do what `references/picker-flags.md` says.
 15. Publish `DIR/pick-DATE/page.html` (the `out` path) with the Artifact tool: icon search, description "Deep picks as of DATE" ("Deep growth picks as of DATE" for a growth run).
 16. Run each command in `save_commands` exactly as printed. Each saves one pick for re-checks and carries `--style growth` or `--style value`.
 17. Reply in the deep-picker format. Take the picks from `picks`, the near misses from `near_misses`, and each one's returns and failed test from `gate.out.json` (`central.irr`, `worst.irr`, `reasons`; for a growth run also `best_multiple` and `best.irr`).
@@ -445,7 +439,7 @@ The scripts do the fetching and the file assembly. Do not write `macro.md`, `poo
    | Preset | Ranking columns |
    |---|---|
    | `growth`, `quality`, `garp` | Expected · Price implies · Gap |
-   | `value` | Cash yield · P/E · Piotroski |
+   | `value` | Cash yield · P/E · Piotroski · vs 200-wk avg |
    | `magic` | Return on capital · Earnings yield |
    | `graham` | P/E · P/E × P/B |
    | `payout` | Payout yield |
@@ -460,8 +454,8 @@ The scripts do the fetching and the file assembly. Do not write `macro.md`, `poo
 1. A table of the picks: ticker, central and worst return a year at today's price, the stress test's return when there is one, a one-line thesis, and the deep-valuation link. Put the `pass_flagged` warning beside any flagged pick. When nothing passed, say so plainly.
    - **Growth run:** the table's columns are ticker · best-case multiple and return a year (`best_multiple`, `best.irr`) · central value against the price · worst return a year, labelled not gated · thesis · link.
 2. The near misses, each with the test it failed, and the stress test's return when a finalist has one (`stress.irr` in `gate.out.json`), labelled not gated.
-3. One line on the industry picture: the favored and contrarian industries.
-4. **Flags**: missing roles, the searches line from `pick.json`'s `notes` and anything cut to stay within the plan, script flags the Picker flags table says to name, names the health check could not cover, and concentration against the person's portfolio. Or "None".
+3. One line on the industry picture: the favored and contrarian industries. In a growth run, a second line on the themes: each theme with its crowding.
+4. **Flags**: missing roles, the searches line from `pick.json`'s `notes` and anything cut to stay within the plan, script flags `references/picker-flags.md` says to name, names the health check could not cover, and concentration against the person's portfolio. Or "None".
    - **Growth run with no pass:** when a finalist's `best_multiple` came within 0.25 of the multiple, name it and the multiple it reached, and say once that the multiple is the setting `picker.growth.min_upside` (or `--min-upside` for one run). State it as a fact about the setting; the choice is the person's.
 5. One sentence, once: the picks are general information at the stated assumptions, not financial, tax, or legal advice.
 
@@ -479,7 +473,7 @@ The scripts do the fetching and the file assembly. Do not write `macro.md`, `poo
 
 **For a look-back:** in chat, every time.
 
-1. A small table of the result.
+1. A small table of the result, with `summary.by_ma200w` as its own lines (below and above the 200-week line, rising and falling slope, each with its count and median return).
 2. Its flags.
 3. The caveats: it is one period, companies delisted since are missing, and past value is approximated.
 

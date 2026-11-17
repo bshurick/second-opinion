@@ -30,7 +30,8 @@ Writes into the run folder, all four or none:
     pick.json      render_pick.py's input (see its docstring)
     page.html      render_pick.py's page
 
-``pick.json``: ``gate`` (gate.out.json); ``funnel`` (Industries scanned, Screen survivors, Merged
+``pick.json``: ``gate`` (gate.out.json); ``funnel`` (Themes scouted when a growth run's theme scout
+wrote ``context/themes.json``, Industries scanned, Screen survivors, Merged
 pool, Health check passed, Kept for quick read, Quick reads, Finalists, Picks: the pool stages
 come from pool.json's counts and are left out without it. "Health check passed" counts only the
 names whose health is ``passed`` (``counts.health.passed``, or the pool rows' own ``health`` when
@@ -38,7 +39,9 @@ the counts have none); "Kept for quick read" is ``counts.kept``, which also hold
 incomplete, not-found and judge-in-quick-read names. When the health screen did not run (every
 name ``unchecked``) or nothing says who passed, the "Health check passed" stage is left out, and
 in the first case a note and the flag HEALTH_NOT_CHECKED say so); ``industries`` (every list in ``industries/*.json`` joined,
-by file name); ``candidates`` (each card, plus ``held`` from the pool and ``finalist``);
+by file name); ``themes`` (``context/themes.json``'s list, empty without the file; a malformed file
+is left off and flagged THEME_FILE_SKIPPED); ``candidates`` (each card, plus ``held`` and ``themes``
+from the pool and ``finalist``);
 ``picks``, ``missing_roles`` and ``notes`` from the notes file; ``profile`` ("growth" or "value" from
 ``run.json`` when it exists, else the notes file's); ``as_of`` (today
 unless ``--as-of``). A ``picks`` entry for a finalist that failed the gate, or for a symbol that
@@ -271,6 +274,14 @@ def run(args: list[str]) -> dict:
         pool = None
         flags.append({"code": "POOL_MISSING", "message": "no pool.json: the funnel leaves out the pool stages and no candidate is marked held"})
     held = {_match(r.get("ticker")): bool(r.get("held")) for r in (pool or {}).get("names") or [] if isinstance(r, dict)}
+    themed = {_match(r.get("ticker")): list(r.get("themes") or []) for r in (pool or {}).get("names") or [] if isinstance(r, dict)}
+    themes: list[dict] = []
+    if (run_dir / "context" / "themes.json").exists():
+        data = _read(run_dir / "context" / "themes.json")
+        if isinstance(data, dict) and isinstance(data.get("themes"), list):
+            themes = data["themes"]
+        else:
+            flags.append({"code": "THEME_FILE_SKIPPED", "message": "context/themes.json is not a JSON object with a list of themes; it is not on the page"})
     candidates: list[dict] = []
     for path in sorted((run_dir / "cards").glob("*.json")):
         if path.name.endswith(".data.json"):
@@ -280,13 +291,14 @@ def run(args: list[str]) -> dict:
             flags.append({"code": "CARD_SKIPPED", "message": f"cards/{path.name} is not a JSON object; it is not among the candidates"})
             continue
         ticker = str(card.get("ticker") or path.stem).strip().upper()
-        candidates.append({**card, "ticker": card.get("ticker") or ticker, "held": held.get(_match(ticker), bool(card.get("held"))), "finalist": ticker in symbols})
+        candidates.append({**card, "ticker": card.get("ticker") or ticker, "held": held.get(_match(ticker), bool(card.get("held"))), "finalist": ticker in symbols,
+                           "themes": themed.get(_match(ticker), [])})
     carded = {str(c["ticker"]).upper() for c in candidates}
     uncarded = [s for s in symbols if s not in carded]
     if uncarded:
         flags.append({"code": "FINALIST_WITHOUT_CARD", "message": f"no cards/<TICKER>.json for {', '.join(uncarded)}; the Candidates table leaves them out"})
     counts = (pool or {}).get("counts") or {}
-    funnel = [{"stage": "Industries scanned", "count": len(industries)}]
+    funnel = ([{"stage": "Themes scouted", "count": len(themes)}] if themes else []) + [{"stage": "Industries scanned", "count": len(industries)}]
     whole = lambda v: isinstance(v, int) and not isinstance(v, bool)  # noqa: E731
     for stage, key in (("Screen survivors", "screen_survivors"), ("Merged pool", "merged")):
         if whole(counts.get(key)):
@@ -311,7 +323,7 @@ def run(args: list[str]) -> dict:
     if line:
         notes.append(line)
 
-    pick = {"as_of": as_of, "profile": style if run_file.is_file() else notes_in.get("profile"), "gate": gate_out, "funnel": funnel, "industries": industries,
+    pick = {"as_of": as_of, "profile": style if run_file.is_file() else notes_in.get("profile"), "gate": gate_out, "funnel": funnel, "themes": themes, "industries": industries,
             "candidates": candidates, "picks": picks, "missing_roles": list(notes_in.get("missing_roles") or []), "notes": notes}
 
     # 4. the page, by render_pick.py's own build (it validates pick.json); nothing is written before it accepts

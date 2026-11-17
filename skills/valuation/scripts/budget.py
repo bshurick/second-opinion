@@ -21,6 +21,7 @@ Plans and caps:
     picker-3          scanners 18, quick_reads 40, valuations 69                                           (127)
     picker-4          scanners 18, quick_reads 40, valuations 92                                           (150)
     picker-5          scanners 18, quick_reads 40, valuations 95                                           (153)
+    picker-growth-N   picker-N with scout 6 (a growth run's theme scout)                       (133, 156, 159)
 
 Every command prints::
 
@@ -67,6 +68,8 @@ PLANS: dict[str, dict[str, int]] = {
     "picker-4": {"scanners": 18, "quick_reads": 40, "valuations": 92},
     "picker-5": {"scanners": 18, "quick_reads": 40, "valuations": 95},
 }
+# A growth run starts with a theme scout: the same plan with its six searches added.
+PLANS.update({f"picker-growth-{n}": {"scout": 6, **PLANS[f"picker-{n}"]} for n in (3, 4, 5)})
 MAX_THREADS = 4
 MAX_THREADS_ROUND2 = 2
 SEARCHES_PER_THREAD = 2

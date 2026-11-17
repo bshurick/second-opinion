@@ -8,7 +8,8 @@ from scripts_util import load_script, run_json
 budget = load_script("valuation/scripts/budget.py")
 
 
-@pytest.mark.parametrize("plan,total", [("valuation", 25), ("valuation-picker", 23), ("picker-3", 127), ("picker-4", 150), ("picker-5", 153)])
+@pytest.mark.parametrize("plan,total", [("valuation", 25), ("valuation-picker", 23), ("picker-3", 127), ("picker-4", 150), ("picker-5", 153),
+                                        ("picker-growth-3", 133), ("picker-growth-4", 156), ("picker-growth-5", 159)])
 def test_init_totals(tmp_path, capsys, plan, total):
     rc, out = run_json(budget, [str(tmp_path), "init", "--plan", plan], capsys)
     assert rc == 0, out
