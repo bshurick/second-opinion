@@ -61,7 +61,13 @@ INDICES = {
     "macro": {"gold": {"last": 3400.0, "day_change_pct": 0.2}, "dollar": {"last": 101.2, "day_change_pct": -0.1}, "oil": {"last": 70.5, "day_change_pct": 1.4}, "bitcoin": {"last": 110000.0, "day_change_pct": 2.0}, "vix_3m": {"last": 17.0, "day_change_pct": -1.0}},
     "spreads": {"10y_13w": 0.7, "5y_13w": 0.4, "30y_5y": 0.6, "30y_13w": 1.0},
     "breadth": {"rsp_spy_1m": -0.5, "rsp_spy_3m": -1.2, "sectors_above_50sma": 7, "sectors_total": 11, "note": "proxy"},
-    "vix_percentile_1y": 40.0,
+    "vix_percentile_1y": 0.4,  # indices.py gives a 0-1 fraction
+    "trend": {"symbol": "^GSPC", "as_of": "2026-09-07", "last": 6500.12, "history_from": "1950-01-02", "weeks": 3990,
+              "wma_100": {"average": 5900.0, "gap_pct": 10.17, "percentile": 57, "level": "neutral", "median_gap_pct": 9.1, "share_below_pct": 22, "gaps_from": "1951-11-26"},
+              "wma_200": {"average": 5100.0, "gap_pct": 27.45, "percentile": 80, "level": "extended", "median_gap_pct": 16.6, "share_below_pct": 15, "gaps_from": "1953-10-26", "band_low_pct": 3.8, "band_high_pct": 28.2},
+              "wma_50": {"average": 6300.0, "gap_pct": 3.18, "percentile": 40, "level": "neutral", "median_gap_pct": 5.0, "share_below_pct": 27, "gaps_from": "1950-12-15"},
+              "series": [{"date": "2026-08-28", "close": 6450.0, "wma_50": 6280.0, "wma_100": 5890.0, "wma_200": 5095.0}, {"date": "2026-09-04", "close": 6500.12, "wma_50": 6300.0, "wma_100": 5900.0, "wma_200": 5100.0}],
+              "levels": {}, "note": "n"},
 }
 FLOWS = {
     "as_of": "2026-09-14T15:00:00Z",
@@ -106,7 +112,7 @@ def test_market_render_builds_a_page_from_indices_and_flows(tmp_path, capsys) ->
     assert html.startswith("<title>Market Flows</title>") and "<html" not in html and "<body" not in html
     assert "window.DATA = " in html and "const FA" in html and '"flows"' in html and '"indices"' in html
     assert "</script> INDEX" not in html and "<\\/script> INDEX" in html
-    assert "S&amp;P 500 6,500.12 (+0.4%) · VIX 15.2 (1y percentile 40) · 10y 4.95% · positioning as of 2026-09-08 · ETF flows as of 2026-09-11 · retail money funds $3,009B (2026-08-03)" in html
+    assert "S&amp;P 500 6,500.12 (+0.4%) · vs 200-week average +27.4% (extended) · VIX 15.2 (1y percentile 40) · 10y 4.95% · positioning as of 2026-09-08 · ETF flows as of 2026-09-11 · retail money funds $3,009B (2026-08-03)" in html
     for section in ("Indices", "Positioning", "Crowdedness", "Sectors", "ETF flows", "Cash on the sidelines", "Short volume", "Flags", "not financial advice"):
         assert section in html
     assert "prefers-color-scheme: dark" in html and 'data-theme="dark"' in html and "http" not in html.split("</style>")[1].split("<script>")[0]
@@ -330,3 +336,30 @@ def test_market_page_rejects_a_link_to_a_snapshot_only_section(tmp_path, capsys)
     assert rc == 2
     assert "holdings-card" in res["error"]
     assert not out.exists()
+
+
+def test_market_page_headline_carries_the_200_week_trend(tmp_path, capsys) -> None:
+    import json
+
+    (tmp_path / "indices.json").write_text(json.dumps(INDICES))
+    rc, _ = run_json(load_script("market-analysis/scripts/render.py"), ["--indices", str(tmp_path / "indices.json"), "--out", str(tmp_path / "p.html")], capsys)
+    html = (tmp_path / "p.html").read_text()
+    assert rc == 0 and "vs 200-week average +27.4% (extended)" in html
+
+
+def test_market_page_without_a_trend_still_renders(tmp_path, capsys) -> None:
+    import json
+
+    (tmp_path / "indices.json").write_text(json.dumps({**INDICES, "trend": None}))
+    rc, _ = run_json(load_script("market-analysis/scripts/render.py"), ["--indices", str(tmp_path / "indices.json"), "--out", str(tmp_path / "p.html")], capsys)
+    assert rc == 0 and "200-week average +" not in (tmp_path / "p.html").read_text()
+
+
+def test_market_page_puts_the_trend_chart_between_the_tiles_and_the_indices(tmp_path, capsys) -> None:
+    import json
+
+    (tmp_path / "indices.json").write_text(json.dumps(INDICES))
+    rc, _ = run_json(load_script("market-analysis/scripts/render.py"), ["--indices", str(tmp_path / "indices.json"), "--out", str(tmp_path / "p.html")], capsys)
+    html = (tmp_path / "p.html").read_text()
+    assert rc == 0 and html.index('id="tiles"') < html.index('id="trend-card"') < html.index('id="idx-card"')
+    assert "-week average`" not in html  # the trend no longer adds tiles

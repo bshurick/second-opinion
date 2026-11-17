@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -173,7 +173,7 @@ def snapshot_yf(monkeypatch):
 
 def test_index_snapshot_shape(snapshot_yf) -> None:
     out = market.index_snapshot()
-    assert set(out) == {"as_of", "indices", "sectors", "rates", "macro", "spreads", "breadth", "vix_percentile_1y"}
+    assert set(out) == {"as_of", "indices", "sectors", "rates", "macro", "spreads", "breadth", "vix_percentile_1y", "trend"}
     row = out["indices"][0]
     assert set(row) == {"symbol", "name", "last", "day_change_pct", "week_change_pct"}
     assert out["indices"][0]["last"] == 5069.0
@@ -181,9 +181,11 @@ def test_index_snapshot_shape(snapshot_yf) -> None:
     assert out["sectors"][0]["last"] == 169.0 and out["sectors"][0]["week_change_pct"] == pytest.approx(5 / 164 * 100, abs=1e-3)
 
 
-def test_index_snapshot_one_batched_download(snapshot_yf) -> None:
+def test_index_snapshot_one_batched_daily_download_plus_the_weekly_trend(snapshot_yf) -> None:
     market.index_snapshot()
-    assert len(snapshot_yf) == 1
+    assert [c["interval"] for c in snapshot_yf] == ["1d", "1d"]
+    trend = snapshot_yf[1]
+    assert trend["symbols"] == ["^GSPC"] and trend["start"] == "1950-01-01"
     call = snapshot_yf[0]
     assert set(call["symbols"]) == SNAPSHOT_ALL_SYMBOLS
     assert call["group_by"] == "ticker" and call["auto_adjust"] is False and call["interval"] == "1d"
@@ -469,3 +471,100 @@ def test_recent_news_raises_the_first_error_when_both_fail(monkeypatch) -> None:
         market.recent_news("XYZ")
     _news_yf(monkeypatch, [], RuntimeError("search down"))
     assert market.recent_news("XYZ") == []
+
+
+# --- S&P 500 weekly trend ---------------------------------------------------------
+
+
+def _weekly_dates(n: int) -> list[str]:
+    start = date(1950, 1, 2)
+    return [(start + timedelta(weeks=i)).isoformat() for i in range(n)]
+
+
+def test_trend_gap_is_close_over_simple_average_and_ranked_in_its_own_history() -> None:
+    # 500 flat weeks at 100, then a step to 150: every earlier gap is 0, today's is the largest.
+    closes = [100.0] * 500 + [150.0]
+    out = market.trend_from_closes(_weekly_dates(501), closes)
+    w100 = out["wma_100"]
+    assert w100["average"] == pytest.approx((99 * 100 + 150) / 100, abs=0.01)
+    assert w100["gap_pct"] == pytest.approx((150 / 100.5 - 1) * 100, abs=0.01)
+    assert w100["percentile"] == 100 and w100["level"] == "extended"
+    assert w100["median_gap_pct"] == 0.0 and w100["share_below_pct"] == 0
+    assert w100["band_low_pct"] == 0.0 and w100["band_high_pct"] == 0.0  # every earlier gap is 0
+    assert w100["gaps_from"] == _weekly_dates(501)[99]
+    assert out["wma_200"]["gap_pct"] == pytest.approx((150 / 100.25 - 1) * 100, abs=0.01)
+    assert out["wma_50"]["gap_pct"] == pytest.approx((150 / 101.0 - 1) * 100, abs=0.01)
+    assert out["as_of"] == _weekly_dates(501)[-1] and out["last"] == 150.0 and out["weeks"] == 501
+    # the chart series: the last five years, each average null until its window fills
+    assert len(out["series"]) == 260 and out["series"][-1] == {"date": _weekly_dates(501)[-1], "close": 150.0, "wma_50": 101.0, "wma_100": 100.5, "wma_200": 100.25}
+    short = market.trend_from_closes(_weekly_dates(150), [100.0] * 150)["series"]
+    assert short[0]["wma_100"] is None and short[99]["wma_100"] == 100.0 and short[-1]["wma_200"] is None
+
+
+def test_trend_levels_split_at_the_20th_and_80th_percentiles() -> None:
+    assert market._trend_level(80) == "extended" and market._trend_level(79.9) == "neutral"
+    assert market._trend_level(20) == "depressed" and market._trend_level(20.1) == "neutral"
+    # a drop to the lowest gap on record reads as depressed
+    out = market.trend_from_closes(_weekly_dates(501), [100.0] * 500 + [60.0])
+    assert out["wma_200"]["level"] == "depressed" and out["wma_200"]["percentile"] == 0
+    assert out["levels"] == {"extended": "percentile >= 80", "neutral": "between 20 and 80", "depressed": "percentile <= 20"}
+
+
+def test_trend_window_without_enough_history_is_null() -> None:
+    out = market.trend_from_closes(_weekly_dates(400), [100.0] * 400)
+    assert out["wma_100"] is not None and out["wma_200"] is None  # 200 + 260 weeks needed
+    assert market.trend_from_closes([], []) is None
+
+
+def test_trend_note_says_it_is_not_a_valuation() -> None:
+    out = market.trend_from_closes(_weekly_dates(501), [100.0] * 501)
+    assert "not what the market is worth" in out["note"]
+    assert not any(w in out["note"].lower() for w in ("overvalued", "undervalued", "recommend", "should"))
+
+
+def test_sp500_trend_reads_a_real_weekly_frame(monkeypatch) -> None:
+    pd = pytest.importorskip("pandas")
+    idx = pd.bdate_range("1950-01-02", periods=501 * 5)  # 501 Monday-Friday weeks
+    cols = pd.MultiIndex.from_product([["^GSPC"], ["Open", "Close"]])
+    df = pd.DataFrame(index=idx, columns=cols, dtype="float64")
+    df[("^GSPC", "Close")] = [100.0] * (500 * 5 + 2) + [150.0, float("nan"), float("nan")]  # week in progress: Wednesday
+    monkeypatch.setattr(market, "_yf", lambda: SimpleNamespace(download=lambda *a, **k: df))
+    out = market.sp500_trend()
+    assert out["weeks"] == 501 and out["history_from"] == "1950-01-06"  # weeks dated on their last close
+    assert out["as_of"] == idx[-3].strftime("%Y-%m-%d") and out["last"] == 150.0
+    assert out["wma_100"]["level"] == "extended"
+
+
+def test_weekly_closes_keep_the_last_close_of_each_week() -> None:
+    dates = ["2026-11-05", "2026-11-06", "2026-11-09", "2026-11-13", "2026-11-16"]
+    assert market.weekly_closes(dates, [1.0, 2.0, 3.0, 4.0, 5.0]) == (["2026-11-06", "2026-11-13", "2026-11-16"], [2.0, 4.0, 5.0])
+
+
+def test_sp500_trend_failure_degrades_to_null(monkeypatch) -> None:
+    def boom(*a, **k):
+        raise RuntimeError("yahoo down")
+
+    monkeypatch.setattr(market, "_yf", lambda: SimpleNamespace(download=boom))
+    assert market.sp500_trend() is None
+
+
+
+def test_trend_level_always_agrees_with_the_percentile_it_is_shown_with() -> None:
+    # A deterministic random walk, read at many end points: whatever the unrounded rank, the
+    # level must be the one the shown (rounded) percentile implies, so "80 / neutral" never appears.
+    import random
+
+    rng = random.Random(7)
+    closes = [100.0]
+    for _ in range(900):
+        closes.append(closes[-1] * (1 + rng.gauss(0.0015, 0.02)))
+    dates = _weekly_dates(len(closes))
+    seen = 0
+    for end in range(500, len(closes) + 1, 7):
+        out = market.trend_from_closes(dates[:end], closes[:end])
+        for n in (50, 100, 200):
+            w = out[f"wma_{n}"]
+            if w:
+                seen += 1
+                assert w["level"] == market._trend_level(w["percentile"]), (end, n, w)
+    assert seen > 100

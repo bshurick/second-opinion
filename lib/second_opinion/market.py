@@ -27,6 +27,35 @@ _SNAPSHOT_3M_BARS = 63
 _SNAPSHOT_SMA_DAYS = 50
 _VIX_PERCENTILE_MIN_CLOSES = 200
 
+# The S&P 500 against its own weekly averages. 1950 is where Yahoo's daily ^GSPC history
+# becomes a continuous record. Weekly closes are built from daily closes (the last close of
+# each Monday-Friday week) because Yahoo's own weekly bars move their date labels and drop
+# the week in progress at times, which left the reading on the prior Friday's close.
+TREND_SYMBOL = "^GSPC"
+TREND_START = "1950-01-01"
+TREND_WINDOWS = (50, 100, 200)
+# Level cut-offs on the gap's percentile within its own history. A price index drifts up,
+# so the average lags below it and the typical gap is positive (median about +5% for the
+# 50-week, +9% for the 100-week and +17% for the 200-week since 1950). Ranking the gap against its own history
+# centres "neutral" on that typical gap instead of on zero.
+TREND_LOW_PCTILE = 20
+TREND_HIGH_PCTILE = 80
+TREND_MIN_GAPS = 260
+# Weeks of close-and-average history carried for the page's chart: five years.
+TREND_SERIES_WEEKS = 260
+TREND_NOTE = (
+    "The gap is the S&P 500's latest close against its 50-, 100- and 200-week simple moving "
+    "averages of weekly closes, ranked against every week since 1950. It measures how far price "
+    "has run from its own trend, not what the market is worth: earnings, rates and valuation "
+    "multiples are not in it. 'extended' is a gap at or above its 80th percentile, 'depressed' at "
+    "or below its 20th, 'neutral' between. Since 1950 none of the three has said much about the "
+    "next five years (rank correlation near zero). Over the next year they split: an extended "
+    "50-week gap, close to the 200-day average traders watch, was followed by a down year less "
+    "often than a depressed one (about one in five against one in four), which reads as momentum; "
+    "an extended 100- or 200-week gap was followed by a down year more often (about one in three "
+    "against one in five), with similar average returns."
+)
+
 SECTOR_CACHE_FILE = "sector-cache.json"
 
 COLUMN_MAP = {"Date": "date", "Datetime": "date", "Open": "open", "High": "high", "Low": "low", "Close": "close", "Volume": "volume", "Dividends": "dividends", "Stock Splits": "stock_splits"}
@@ -197,6 +226,106 @@ def _vix_percentile_1y(series: list[float]) -> float | None:
     return round(sum(1 for c in series if c <= last) / len(series), 4)
 
 
+def _trend_level(percentile: float) -> str:
+    if percentile >= TREND_HIGH_PCTILE:
+        return "extended"
+    if percentile <= TREND_LOW_PCTILE:
+        return "depressed"
+    return "neutral"
+
+
+def trend_from_closes(dates: list[str], closes: list[float]) -> dict[str, Any] | None:
+    """The last weekly close against each window's simple moving average, ranked in history.
+
+    ``gap_pct`` is close / average - 1 in percent; ``percentile`` is the share of every
+    earlier-or-equal week's gap strictly below today's (the indicators.py definition);
+    ``share_below_pct`` is how often the close has sat under that average at all;
+    ``band_low_pct`` and ``band_high_pct`` are the gaps at the level cut-offs, so the average
+    times (1 + band / 100) draws the neutral zone. A window
+    without ``TREND_MIN_GAPS`` gaps of history degrades to null. ``series`` is the last
+    ``TREND_SERIES_WEEKS`` weeks of ``{date, close, wma_50, wma_100, wma_200}`` for a chart,
+    an average null until its window has filled.
+    """
+    if not closes or len(dates) != len(closes):
+        return None
+    out: dict[str, Any] = {"symbol": TREND_SYMBOL, "as_of": dates[-1], "last": closes[-1], "history_from": dates[0], "weeks": len(closes)}
+    averages: dict[int, list[float | None]] = {}
+    for n in TREND_WINDOWS:
+        ma: list[float | None] = [None] * len(closes)
+        if len(closes) >= n:
+            running = sum(closes[:n])
+            ma[n - 1] = running / n
+            for i in range(n, len(closes)):
+                running += closes[i] - closes[i - n]
+                ma[i] = running / n
+        averages[n] = ma
+    for n in TREND_WINDOWS:
+        if len(closes) < n + TREND_MIN_GAPS:
+            out[f"wma_{n}"] = None
+            continue
+        ma = averages[n]
+        gaps = [(closes[i] / ma[i] - 1) * 100 for i in range(n - 1, len(closes))]
+        today = gaps[-1]
+        pct = 100.0 * sum(1 for g in gaps if g < today) / len(gaps)
+        ordered = sorted(gaps)
+        mid = len(ordered) // 2
+        median = ordered[mid] if len(ordered) % 2 else (ordered[mid - 1] + ordered[mid]) / 2
+        out[f"wma_{n}"] = {
+            "average": round(ma[-1], 2),
+            "gap_pct": round(today, 2),
+            "percentile": round(pct),
+            "level": _trend_level(round(pct)),  # the level agrees with the percentile shown
+            "median_gap_pct": round(median, 2),
+            "share_below_pct": round(100.0 * sum(1 for g in gaps if g < 0) / len(gaps)),
+            "band_low_pct": round(ordered[int(len(ordered) * TREND_LOW_PCTILE / 100)], 2),
+            "band_high_pct": round(ordered[min(len(ordered) - 1, int(len(ordered) * TREND_HIGH_PCTILE / 100))], 2),
+            "gaps_from": dates[n - 1],
+        }
+    start = max(0, len(closes) - TREND_SERIES_WEEKS)
+    out["series"] = [
+        {"date": dates[i], "close": round(closes[i], 2), **{f"wma_{n}": (round(averages[n][i], 2) if averages[n][i] is not None else None) for n in TREND_WINDOWS}}
+        for i in range(start, len(closes))
+    ]
+    out["levels"] = {"extended": f"percentile >= {TREND_HIGH_PCTILE}", "neutral": f"between {TREND_LOW_PCTILE} and {TREND_HIGH_PCTILE}", "depressed": f"percentile <= {TREND_LOW_PCTILE}"}
+    out["note"] = TREND_NOTE
+    return out
+
+
+def weekly_closes(dates: list[str], closes: list[float]) -> tuple[list[str], list[float]]:
+    """The last daily close of each ISO (Monday-Sunday) week, dated on that close's own day.
+
+    The week in progress is included at its latest close, so the reading moves with today's price.
+    """
+    out_d: list[str] = []
+    out_c: list[float] = []
+    last_key = None
+    for d, c in zip(dates, closes):
+        key = date.fromisoformat(d).isocalendar()[:2]
+        if key == last_key:
+            out_d[-1], out_c[-1] = d, c
+        else:
+            out_d.append(d)
+            out_c.append(c)
+            last_key = key
+    return out_d, out_c
+
+
+def sp500_trend() -> dict[str, Any] | None:
+    """The S&P 500's weekly trend gaps from one daily download since 1950; null on any failure."""
+    try:
+        df = _yf().download([TREND_SYMBOL], start=TREND_START, interval="1d", group_by="ticker", auto_adjust=False, progress=False, threads=False)
+        if df is None or getattr(df, "empty", True):
+            return None
+        cols = df.columns
+        series = df[TREND_SYMBOL]["Close"] if getattr(cols, "nlevels", 1) > 1 else df["Close"]
+        series = series.dropna()
+        dates = [d.strftime("%Y-%m-%d") for d in series.index]
+        closes = [round(float(v), 4) for v in series.tolist()]
+    except Exception:  # noqa: BLE001 - a trend failure degrades to null, never the snapshot
+        return None
+    return trend_from_closes(*weekly_closes(dates, closes))
+
+
 def index_snapshot() -> dict[str, Any]:
     """Indices, sector ETFs, rates, macro futures/ETFs, yield spreads and breadth
     proxies from ONE batched Yahoo download.
@@ -209,8 +338,10 @@ def index_snapshot() -> dict[str, Any]:
     sectors_above_50sma, sectors_total, note} — RSP/SPY relative returns and the
     count of sector ETFs above their 50-day SMA; proxies, not full market breadth)
     and ``vix_percentile_1y`` (fraction 0-1; where ^VIX's last close sits in its
-    trailing-year distribution). Missing data degrades one row or one field to
-    null — never the whole snapshot.
+    trailing-year distribution), and ``trend`` (``sp500_trend()``: the S&P 500's gap
+    to its 50-, 100- and 200-week averages ranked since 1950, from a second, daily
+    download grouped into weeks). Missing data degrades one row or one field to null — never the
+    whole snapshot.
     """
     symbols = {**{s: s for s in INDEX_SYMBOLS}, **{s: s for s in SECTOR_ETFS}, **{s: s for s in RATE_SYMBOLS}}
     symbols.update({sym: sym for _, (sym, _) in MACRO_SYMBOLS.items()})
@@ -252,6 +383,7 @@ def index_snapshot() -> dict[str, Any]:
             "note": "proxies, not full market breadth",
         },
         "vix_percentile_1y": _vix_percentile_1y(_snapshot_bars(closes, "^VIX")),
+        "trend": sp500_trend(),
     }
 
 

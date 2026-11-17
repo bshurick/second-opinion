@@ -11,6 +11,7 @@ Reports the big picture: market status, index levels, sector trends, news, upcom
 | Question | Source |
 |---|---|
 | Levels and day/week changes | `indices.py` |
+| How far the S&P 500 sits from its 50-, 100- and 200-week averages, against history | `indices.py` `trend` |
 | Where the yield curve and financial conditions sit against their own full history | `indicators.py` |
 | Earnings and ex-dividend dates | `earnings.py` |
 | Who is buying and selling | `flows.py` |
@@ -26,6 +27,10 @@ Reports the big picture: market status, index levels, sector trends, news, upcom
 - Yields and spreads are in percentage points.
 - Breadth and the RSP/SPY relative returns are proxies, not full market breadth.
 - Missing data turns a row or field into null. It never fails the snapshot.
+- `trend` comes from a second download of the S&P 500's daily closes back to 1950, grouped into weeks. The week in progress counts at today's close. A failed download makes `trend` null.
+- For each of `wma_200`, `wma_100` and `wma_50` it gives `gap_pct` (last weekly close against the simple average, in percent), `percentile` (share of all weeks since the window filled with a smaller gap), `level`, `median_gap_pct` and `share_below_pct` (how often the index has closed under that average).
+- `band_low_pct` and `band_high_pct` are the gaps at the 20th and 80th percentiles, which bound the neutral zone. `series` holds the last five years of weekly closes and averages for the page's chart.
+- `level` is `extended` at a percentile of 80 or more, `depressed` at 20 or less, and `neutral` between. The cut-offs sit on the gap's own history because the index drifts up, so the average lags below it and the typical gap is positive (about +17% for the 200-week, +9% for the 100-week, +5% for the 50-week).
 
 **`indicators.py`**
 
@@ -56,8 +61,9 @@ It answers "who is moving money where" from public reporting regimes, not from p
 
 One self-contained HTML page for the Artifact tool, light and dark themes, no external scripts. It holds:
 
-- Stat tiles: S&P 500, VIX and its one-year percentile, the 10-year yield and 10y−13w spread, breadth, S&P futures net positioning for asset managers, leveraged funds and small traders, sector ETF five-observation flow, retail money-fund cash.
-- An indices/rates/macro table.
+- Five stat tiles: the S&P 500 with its 200-week level, the VIX and its one-year percentile, the 10-year yield and 10y−13w spread, breadth, and S&P futures positioning as each trader class's percentile (asset managers, leveraged funds, small traders).
+- A line chart of the S&P 500's weekly close over five years against its 200-week average, with the 200-week neutral zone shaded and the 100- and 50-week averages drawn faint as context, and a table of each gap's level, percentile and typical gap.
+- An indices, rates and macro table grouped by kind: stocks and volatility, Treasury yields (moves in basis points), and commodities, currency and crypto, each value with its unit.
 - A crowdedness heatmap of every contract's percentile per trader class, with a sortable contracts table. Clicking a contract opens its weekly history chart and class table.
 - A sectors table joining sector ETF moves, sector futures positioning and sector ETF flows.
 - The ETF flow bars with a short-history note, the money-fund line, and the short-volume table when present.
@@ -65,6 +71,14 @@ One self-contained HTML page for the Artifact tool, light and dark themes, no ex
 - With `--summary`, a headline analysis card at the top. The model writes its text and the script holds it to the limits.
 
 **How to read the numbers.** These are context, not timing advice.
+
+- The 200-, 100- and 50-week gaps measure how far price has run from its own trend. They are not a valuation, so `extended` is never "overvalued" and `depressed` is never "undervalued": earnings, rates and multiples are not in the number.
+- Since 1950 none of the three gaps has said much about the next five years: rank correlations are near zero.
+- Over the next year the windows split. For the 100- and 200-week, `extended` readings were followed by a down year about one time in three, `depressed` ones about one in five, with similar average returns.
+- The 50-week runs the other way. It is close to the 200-day average traders watch, and an `extended` 50-week gap was followed by a down year less often (about one in five) than a `depressed` one (about one in four). That reads as momentum, as the 200-day studies also find.
+- Closes below the 200-week average itself are rare, about one week in six since 1950, and have mostly come in bear markets: long stretches in 1969–71, 1973–76, 2001–04 and 2008–10, brief ones in 1962, 1966, 1982, 2011, 2020 and 2022. The 1987 crash never closed a week below it.
+- The 200-week average is known from a line attributed to Charlie Munger about buying quality stocks near it. That line concerned single stocks, not the index.
+- When the windows disagree, the 200-week reflects the run over about four years, the 100-week about two and the 50-week about one. A `neutral` 50- or 100-week beside an `extended` 200-week means most of the distance was covered earlier.
 
 - An inverted (negative) 10y−13w spread has historically preceded recessions, with long and variable lags.
 - VIX in the top quartile of its 1-year range signals elevated fear, and the bottom quartile complacency. Neither is a signal to trade.
@@ -99,7 +113,7 @@ Run with the Bash tool. Every script prints JSON.
 
 | Script | What it does |
 |---|---|
-| `indices.py` | Indices, sector ETFs, Treasury yields and spreads, gold, dollar, oil, bitcoin, VIX and breadth proxies. Takes no arguments. |
+| `indices.py` | Indices, sector ETFs, Treasury yields and spreads, gold, dollar, oil, bitcoin, VIX, breadth proxies, and the S&P 500's 50-, 100- and 200-week trend. Takes no arguments. |
 | `indicators.py` | The yield curve, financial conditions and the VIX, each ranked against its whole history. Takes no arguments. |
 | `earnings.py` | Next earnings date and next ex-dividend date per symbol. Takes 1-20 symbols. |
 | `flows.py` | CFTC positioning by trader class, sector ETF flows, retail money-fund cash, and FINRA short volume. |
@@ -127,8 +141,9 @@ Pick the case that matches the request. If a question touches individual stocks 
 
 1. Check market status: open or closed, and session times.
 2. Run `indices.py` for the key indicators: S&P, Dow, Russell, Nasdaq, VIX, Treasury yields and spreads, gold, the dollar, oil and bitcoin.
-3. If the question is where the curve, financial conditions or the VIX sit against history, run `indicators.py`. Quote each reading against its own median, and report the rank and what the indicator is.
-4. Summarize the current market tone: risk-on or risk-off, and the notable moves.
+3. Quote the S&P 500's trend among the headline numbers: for the 200-, 100- and 50-week averages in that order, give the `level`, `gap_pct`, `percentile` and `median_gap_pct`, e.g. "200-week: extended, +28.9% (81st percentile since 1950; median +16.6%)". Use the level words only, never "overvalued" or "undervalued". If `trend` is null, say the trend could not be read.
+4. If the question is where the curve, financial conditions or the VIX sit against history, run `indicators.py`. Quote each reading against its own median, and report the rank and what the indicator is.
+5. Summarize the current market tone: risk-on or risk-off, and the notable moves.
 
 **News and events**
 
@@ -170,7 +185,7 @@ Use this case for "who is buying", "is money leaving equities", "are institution
 A small card at the top of the page: a headline, "What stands out", "What to look into", and a folded "What this means for you". The file is `{"headline", "stands_out", "look_into", "for_you"}`.
 
 - Limits, which `render.py` enforces: `headline` 20 words, `stands_out` 90, `look_into` 90, `for_you` 70. `for_you` is optional and the rest are required.
-- Links take the form `[Sectors](sec-card)`, in `look_into` only, to these ids: `idx-card`, `pos-card`, `sec-card`, `etf-card`, `cash-card`, `short-card`, `flags-section`.
+- Links take the form `[Sectors](sec-card)`, in `look_into` only, to these ids: `trend-card`, `idx-card`, `pos-card`, `sec-card`, `etf-card`, `cash-card`, `short-card`, `flags-section`.
 - Every number comes from this run's script output, quoted as the script gives it.
 - Lead with what is unusual today, not a tour of the page. Say plainly when nothing stands out.
 - Separate data from inference, using words like "may" for inference.
@@ -201,7 +216,7 @@ What to look for on this page:
 
 1. The artifact link on its own line.
 2. The summary's `headline`, on one line. "What stands out" on the page carries the reading the compliance rules require.
-3. One line: S&P 500 `last` (`day_change_pct`) · VIX `last` (1y percentile) · 10y `last` · positioning as of `positioning.report_date` · ETF flows as of `etf_flows.as_of` · retail money funds `cash.latest`B.
+3. One line: S&P 500 `last` (`day_change_pct`) · 200-week `trend.wma_200.level` (`gap_pct`) · VIX `last` (1y percentile) · 10y `last` · positioning as of `positioning.report_date` · ETF flows as of `etf_flows.as_of` · retail money funds `cash.latest`B.
 4. One sentence on what the picture cannot show.
 5. One line when `for_you` was left out, saying why: the accounts could not be read today, or the page is shared. Old holdings are never presented as current.
 

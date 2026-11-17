@@ -380,16 +380,22 @@ const FA = (() => {
     if (opts.zeroLine) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(0).toFixed(1)}" y2="${Y(0).toFixed(1)}" stroke="var(--muted)" stroke-dasharray="2 3"/>`;
     bands.forEach((b, i) => { const lo = b.lo.filter(p => isNum(p[1])), hi = b.hi.filter(p => isNum(p[1]));
       const path = hi.map((p, j) => (j ? 'L' : 'M') + X(+p[0]).toFixed(1) + ' ' + Y(p[1]).toFixed(1)).join('') + lo.slice().reverse().map(p => 'L' + X(+p[0]).toFixed(1) + ' ' + Y(p[1]).toFixed(1)).join('') + 'Z';
-      g += `<path d="${path}" fill="${b.color || S[i % 8]}" opacity="0.18"/>`; });
+      g += `<path d="${path}" fill="${b.color || S[i % 8]}" opacity="${b.opacity ?? 0.18}"/>`; });
     series.forEach((s, i) => { const pts = s.points.filter(p => isNum(p[1])); const color = s.color || S[i % 8];
       const d = pts.map((p, j) => (j ? 'L' : 'M') + X(+p[0]).toFixed(1) + ' ' + Y(p[1]).toFixed(1)).join('');
       if (s.area && pts.length) g += `<path d="${d}L${X(+pts[pts.length - 1][0]).toFixed(1)} ${Y(opts.zeroLine ? 0 : y0).toFixed(1)}L${X(+pts[0][0]).toFixed(1)} ${Y(opts.zeroLine ? 0 : y0).toFixed(1)}Z" fill="${color}" opacity="0.12"/>`;
-      g += `<path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>`;
-      if (pts.length && opts.endLabels !== false) { const last = pts[pts.length - 1]; g += `<text x="${W - m.r + 8}" y="${(Y(last[1]) + 4).toFixed(1)}" font-size="11.5" font-weight="600" fill="var(--ink)">${esc(s.name)}</text>`; } });
+      g += `<path d="${d}" fill="none" stroke="${color}" stroke-width="${s.width ?? 2}"${s.dash ? ` stroke-dasharray="${s.dash}"` : ''}${s.opacity != null ? ` opacity="${s.opacity}"` : ''}${s.dash ? ' stroke-linecap="round"' : ''} stroke-linejoin="round"/>`;
+      if (pts.length && (s.endLabel ?? opts.endLabels !== false)) { const last = pts[pts.length - 1]; g += `<text x="${W - m.r + 8}" y="${(Y(last[1]) + 4).toFixed(1)}" font-size="11.5" font-weight="600" fill="var(--ink)">${esc(s.name)}</text>`; } });
     g += `<line id="cx" x1="0" x2="0" y1="${m.t}" y2="${m.t + ih}" stroke="var(--muted)" stroke-dasharray="3 3" opacity="0"/>`;
     g += `<rect id="hit" x="${m.l}" y="${m.t}" width="${iw}" height="${ih}" fill="transparent"/></svg>`;
     root.innerHTML = g;
-    if (series.length > 1) { const lg = el('div', {class: 'legend'}); series.forEach((s, i) => lg.appendChild(el('span', {}, `<i style="background:${s.color || S[i % 8]}"></i>${esc(s.name)}`))); root.appendChild(lg); }
+    if (series.length > 1) { const lg = el('div', {class: 'legend'});
+      const styled = series.some(s => s.width != null || s.dash);
+      series.forEach((s, i) => { const c = s.color || S[i % 8];
+        const sw = styled ? `<svg width="22" height="10" style="display:inline-block;vertical-align:middle;overflow:visible"><line x1="1" x2="21" y1="5" y2="5" stroke="${c}" stroke-width="${s.width ?? 2}"${s.dash ? ` stroke-dasharray="${s.dash}"` : ''}${s.opacity != null ? ` opacity="${s.opacity}"` : ''} stroke-linecap="round"/></svg>` : `<i style="background:${c}"></i>`;
+        lg.appendChild(el('span', {}, `${sw}${esc(s.name)}`)); });
+      bands.forEach((b, i) => { if (b.legend) lg.appendChild(el('span', {}, `<i style="background:${b.color || S[i % 8]};opacity:${Math.min(1, (b.opacity ?? 0.18) * 2.5)}"></i>${esc(b.legend)}`)); });
+      root.appendChild(lg); }
     const svg = root.querySelector('svg'), hit = svg.querySelector('#hit'), cx = svg.querySelector('#cx');
     hit.addEventListener('mousemove', ev => { const r = svg.getBoundingClientRect(); const px = (ev.clientX - r.left) * W / r.width; const xv = x0 + (px - m.l) / iw * (x1 - x0);
       cx.setAttribute('x1', px); cx.setAttribute('x2', px); cx.setAttribute('opacity', 1);

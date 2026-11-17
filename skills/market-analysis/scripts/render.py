@@ -2,10 +2,9 @@
 """Usage: render.py [--in flows.json] [--indices indices.json] --out page.html [--summary summary.json]
 
 Turns a ``flows.py`` result and/or an ``indices.py`` result (at least one) into one self-contained
-interactive HTML page for the Artifact tool: stat tiles (S&P 500, VIX and its one-year percentile,
-the 10-year yield and the 10y-13w spread, breadth, S&P futures net positioning per trader class,
-sector ETF five-observation flow, retail money-fund cash; a tile whose source delivered nothing is
-left out), an indices/rates/macro table, the
+interactive HTML page for the Artifact tool: stat tiles (S&P 500 with its 200-week level, VIX and its one-year percentile,
+the 10-year yield and the 10y-13w spread, breadth, and one S&P futures tile with each trader class's percentile; a tile whose source delivered nothing is
+left out), a chart of the S&P 500's weekly close with its 50-, 100- and 200-week averages and a table of each gap's level, an indices/rates/macro table, the
 positioning block (a crowdedness heatmap of every contract's percentile per trader class, a sortable
 contracts table; clicking a contract opens its weekly net-position chart when flows.py ran with
 ``--history``, else its class table), a sectors table joining sector ETF moves, sector futures
@@ -40,7 +39,7 @@ from second_opinion.errors import InvalidInput  # noqa: E402
 TITLE = "Market Flows"
 
 # The sections a headline analysis link may point to.
-TARGETS = ("idx-card", "pos-card", "sec-card", "etf-card", "cash-card", "short-card", "flags-section")
+TARGETS = ("trend-card", "idx-card", "pos-card", "sec-card", "etf-card", "cash-card", "short-card", "flags-section")
 
 BODY = """
 <h1>Market Flows</h1>
@@ -48,7 +47,8 @@ BODY = """
 <div id="explain"></div>
 {{SUMMARY}}
 <div class="tiles" id="tiles"></div>
-<section class="card" id="idx-card"><h2>Indices, rates and macro</h2><p class="sub">Where the market closed and how far it moved over the day and the week. Yields are in percentage points.</p><div class="twrap" id="indices"></div><p class="note" id="idx-note"></p></section>
+<section class="card" id="trend-card"><h2>S&amp;P 500 against its weekly averages</h2><p class="sub" id="trend-sub">The weekly close over five years against its <span class="term" data-term="200-week average" tabindex="0">200-week moving average</span>. The shaded zone is where the 200-week gap is neutral: above it is extended, below it depressed. The 100- and 50-week averages are context; the 50-week is a momentum line. The table ranks today's gap to each average against every week since 1950.</p><div id="trend-chart"></div><div class="twrap" id="trend-table"></div><p class="note" id="trend-note"></p></section>
+<section class="card" id="idx-card"><h2>Indices, rates and macro</h2><p class="sub">Where the market closed and how far it moved over the day and the week. Stock indexes and prices move in percent; Treasury yields move in basis points (1 bp = 0.01 percentage point).</p><div class="twrap" id="indices"></div><p class="note" id="idx-note"></p></section>
 <section class="card" id="pos-card"><h2 id="pos-h">Positioning</h2><p class="sub" id="pos-sub">Who holds the futures: the net position of each trader class per contract, its change over the week, and where the latest reading sits within the window (0 = most net-short of the window, 100 = most net-long). Click a contract for its history.</p>
   <h3 id="crowd-h">Crowdedness</h3><p class="sub" id="crowd-sub">Percentile of each class's net position within the window. Deep red is the most net-long the class has been over the window, deep blue the most net-short; both are crowded readings.</p><div id="crowd"></div>
   <div class="twrap" id="positioning" style="margin-top:12px"></div><p class="note" id="pos-note"></p></section>
@@ -77,6 +77,7 @@ SCRIPT = r"""
     'asset managers': ['Pensions, insurers, endowments and mutual funds: the slow institutional money, which is usually net long stock index futures.', 'https://www.cftc.gov/MarketReports/CommitmentsofTraders/ExplanatoryNotes/index.htm'],
     'leveraged funds': ['Hedge funds and commodity trading advisers, which are usually net short index futures as a hedge against the stocks they own.', 'https://www.cftc.gov/MarketReports/CommitmentsofTraders/ExplanatoryNotes/index.htm'],
     'dealers': ['Banks and broker-dealers that sell futures to clients and hedge the other side; their position is the mirror of everyone else.', 'https://www.cftc.gov/MarketReports/CommitmentsofTraders/ExplanatoryNotes/index.htm'],
+    'other reportables': ['Large traders the CFTC requires to report who fit none of the other groups, such as corporate treasuries and proprietary trading firms; a small, mixed group with no structural lean.', 'https://www.cftc.gov/MarketReports/CommitmentsofTraders/ExplanatoryNotes/index.htm'],
     'small traders': ['Positions too small for the CFTC to require reporting; the closest public proxy for retail.', 'https://www.cftc.gov/MarketReports/CommitmentsofTraders/ExplanatoryNotes/index.htm'],
     'net position': ['Contracts held long minus contracts held short by a trader class.', 'https://www.investopedia.com/terms/n/net-position.asp'],
     'open interest': ['The number of futures contracts outstanding; every contract has one long and one short.', 'https://www.investopedia.com/terms/o/openinterest.asp'],
@@ -87,9 +88,12 @@ SCRIPT = r"""
     'short volume': ['The share of a day\'s trading that was a short sale; in ETFs it is mostly market makers hedging, so compare a symbol only with its own history.', 'https://www.investopedia.com/terms/s/shortsale.asp'],
     'yield spread': ['The difference between a long and a short Treasury yield; below zero (inverted) has historically preceded recessions, with long and variable lags.', 'https://www.investopedia.com/terms/y/yieldspread.asp'],
     'breadth': ['How many stocks or sectors are joining a move; a rise carried by few names is narrow.', 'https://www.investopedia.com/terms/m/market_breadth.asp'],
+    'moving average': ['The average weekly close over the last 50, 100 or 200 weeks (about one, two and four years; 50 weeks is close to the 200-day average). The gap says how far price has run from its own trend; it is not a valuation and has said little about returns that followed.', 'https://www.investopedia.com/terms/m/movingaverage.asp'],
+    '200-week average': ['The average weekly close over about four years, a long-term trend line. It is known from a line attributed to Charlie Munger, that quality stocks bought near it beat the market. The S&P 500 has closed below it about one week in six since 1950, mostly in bear markets. Read the gap against its typical size, not against zero.', 'https://www.investopedia.com/terms/m/movingaverage.asp'],
+    'time below': ['The share of weeks since 1950 that the S&P 500 closed below this average. Closes below the long averages are rare and have mostly come in bear markets.', 'https://www.investopedia.com/terms/m/movingaverage.asp'],
     'vix': ['The market\'s expected volatility over the next 30 days, implied by S&P 500 option prices; high means fear.', 'https://www.investopedia.com/terms/v/vix.asp'],
   });
-  const CLASSES = [['asset_managers', 'Asset managers', 'asset managers'], ['leveraged_funds', 'Leveraged funds', 'leveraged funds'], ['dealers', 'Dealers', 'dealers'], ['other_reportables', 'Other reportables', null], ['small_traders', 'Small traders', 'small traders']];
+  const CLASSES = [['asset_managers', 'Asset managers', 'asset managers'], ['leveraged_funds', 'Leveraged funds', 'leveraged funds'], ['dealers', 'Dealers', 'dealers'], ['other_reportables', 'Other reportables', 'other reportables'], ['small_traders', 'Small traders', 'small traders']];
   const classLabel = ([, label, term]) => term ? F.term(term, label) : F.esc(label);
   const pos = W && W.positioning && !W.positioning.error ? W.positioning : null;
   const etf = W && W.etf_flows && !W.etf_flows.error ? W.etf_flows : null;
@@ -103,25 +107,30 @@ SCRIPT = r"""
   const tiles = [];
   if (I) {
     const spx = find(I.indices, '^GSPC'), vix = find(I.indices, '^VIX'), tnx = find(I.rates, '^TNX');
-    if (spx) tiles.push(['S&P 500', n2(spx.last), `day ${p1(spx.day_change_pct)} · week ${p1(spx.week_change_pct)}`]);
-    if (vix) tiles.push([FA.term('vix', 'VIX'), n2(vix.last), `1-year ${FA.term('percentile')} ${p0(I.vix_percentile_1y)} · day ${p1(vix.day_change_pct)}`]);
+    const t200 = I.trend && I.trend.wma_200;
+    if (spx) tiles.push(['S&P 500', n2(spx.last), `day ${p1(spx.day_change_pct)} · week ${p1(spx.week_change_pct)}${t200 && isNum(t200.gap_pct) ? ` · ${FA.term('200-week average', '200-week')} ${F.esc(t200.level)} (${t200.gap_pct >= 0 ? '+' : ''}${t200.gap_pct.toFixed(1)}%)` : ''}`]);
+    if (vix) tiles.push([FA.term('vix', 'VIX'), n2(vix.last), `1-year ${FA.term('percentile')} ${isNum(I.vix_percentile_1y) ? p0(I.vix_percentile_1y * 100) : '—'} · day ${p1(vix.day_change_pct)}`]);
     if (tnx && isNum(tnx.last)) tiles.push(['10-year yield', n2(tnx.last) + '%', `10y−13w ${FA.term('yield spread', 'spread')} ${isNum((I.spreads || {})['10y_13w']) ? n2(I.spreads['10y_13w']) + ' pts' : '—'}`]);
     if (I.breadth) tiles.push([FA.term('breadth', 'Breadth'), `${I.breadth.sectors_above_50sma ?? '—'} of ${I.breadth.sectors_total ?? '—'}`, `sectors above 50-day average · RSP−SPY 1m ${p1(I.breadth.rsp_spy_1m)}`]);
   }
   const es = byCode['13874A'];
-  if (es) { const c = es.classes; tiles.push([FA.term('asset managers', 'Asset managers, S&P futures'), sgn0(c.asset_managers.net), `${FA.term('net position', 'net')} contracts · week ${sgn0(c.asset_managers.net_change)} · ${FA.term('percentile')} ${p0(c.asset_managers.percentile)}`]);
-    tiles.push([FA.term('leveraged funds', 'Leveraged funds, S&P futures'), sgn0(c.leveraged_funds.net), `week ${sgn0(c.leveraged_funds.net_change)} · percentile ${p0(c.leveraged_funds.percentile)}`]);
-    tiles.push([FA.term('small traders', 'Small traders, S&P futures'), sgn0(c.small_traders.net), `week ${sgn0(c.small_traders.net_change)} · percentile ${p0(c.small_traders.percentile)}`]); }
-  if (etf) { const funds = (etf.funds || []).filter(f => isNum(f.flow_5d_usd) && f.ticker !== 'SPY'); if (funds.length) { const sum = funds.reduce((a, f) => a + f.flow_5d_usd, 0); tiles.push([FA.term('creation', 'Sector ETF flows'), big(sum), `net over the last 5 observations, ${funds.length} funds · as of ${F.esc(etf.as_of || '—')}`]); } }
-  if (cash && isNum(cash.latest)) tiles.push([FA.term('money market fund', 'Retail money funds'), '$' + n0(cash.latest) + 'B', `week ${sgn0(cash.change_1w)}B · 13w ${sgn0(cash.change_13w)}B · 52w ${sgn0(cash.change_52w)}B · ${F.esc(cash.date || '—')}`]);
+  // one positioning tile: where each class's S&P futures net position sits in its own year
+  if (es) { const c = es.classes; tiles.push([`S&amp;P futures ${FA.term('percentile')}`, `${p0(c.asset_managers.percentile)} · ${p0(c.leveraged_funds.percentile)} · ${p0(c.small_traders.percentile)}`, `${FA.term('asset managers')} · ${FA.term('leveraged funds')} · ${FA.term('small traders')}, report of ${F.esc(es.report_date || '—')}`]); }
   setHtml('tiles', tiles.map(([k, v, d]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d}</div></div>`).join(''));
   // indices table
   if (I) {
-    const rows = [];
-    (I.indices || []).forEach(r => rows.push({kind: 'Index', ...r}));
-    (I.rates || []).forEach(r => rows.push({kind: 'Rate', ...r}));
-    Object.entries(I.macro || {}).forEach(([k, r]) => { if (r) rows.push({kind: 'Macro', symbol: k, name: {gold: 'Gold', dollar: 'US dollar index', oil: 'WTI crude', bitcoin: 'Bitcoin', vix_3m: 'VIX 3-month'}[k] || k, ...r}); });
-    F.table(g('indices'), [{key: 'name', label: 'Name', left: true, fmt: v => `<b>${F.esc(v)}</b>`}, {key: 'kind', label: 'Type', fmt: F.esc}, {key: 'last', label: 'Last', fmt: n2}, {key: 'day_change_pct', label: 'Day', fmt: p1, cls: F.cls}, {key: 'week_change_pct', label: 'Week', fmt: p1, cls: F.cls}], rows, {sortKey: 'kind', desc: false});
+    // grouped by grain, each value carrying its own unit; yield moves in basis points
+    const MACRO = [['gold', 'Gold', '$'], ['oil', 'WTI crude', '$'], ['dollar', 'US dollar index', ''], ['bitcoin', 'Bitcoin', '$'], ['vix_3m', 'VIX 3-month', '']];
+    const bp = (last, pct) => isNum(last) && isNum(pct) ? last - last / (1 + pct / 100) : null;   // pct is the change of the yield itself
+    const bpFmt = v => isNum(v) ? `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v * 100).toFixed(1)} bp` : '—';
+    const money = (v, cur) => isNum(v) ? cur + F.num(v, v >= 1000 ? 0 : 2) : '—';
+    const row = (name, last, day, week, dayCls, weekCls) => `<tr><td class="l"><b>${F.esc(name)}</b></td><td>${last}</td><td class="${dayCls}">${day}</td><td class="${weekCls}">${week}</td></tr>`;
+    const groups = [
+      ['Stocks and volatility', (I.indices || []).map(r => row(r.name, n2(r.last), p1(r.day_change_pct), p1(r.week_change_pct), F.cls(r.day_change_pct), F.cls(r.week_change_pct)))],
+      ['Treasury yields', (I.rates || []).map(r => { const d = bp(r.last, r.day_change_pct), w = bp(r.last, r.week_change_pct); return row(r.name, isNum(r.last) ? r.last.toFixed(2) + '%' : '—', bpFmt(d), bpFmt(w), F.cls(d), F.cls(w)); })],
+      ['Commodities, currency and crypto', MACRO.filter(([k]) => (I.macro || {})[k]).map(([k, name, cur]) => { const r = I.macro[k]; return row(name, cur ? money(r.last, cur) : n2(r.last), p1(r.day_change_pct), p1(r.week_change_pct), F.cls(r.day_change_pct), F.cls(r.week_change_pct)); })]];
+    setHtml('indices', '<table><thead><tr><th class="l">Name</th><th>Last</th><th>Day</th><th>Week</th></tr></thead>' +
+      groups.filter(([, rs]) => rs.length).map(([label, rs]) => `<tbody><tr><th class="l" colspan="4" style="padding-top:14px;color:var(--ink2)">${F.esc(label)}</th></tr>${rs.join('')}</tbody>`).join('') + '</table>');
     const sp = I.spreads || {};
     setHtml('idx-note', `${FA.term('yield spread', 'Spreads')} (pts): 10y−13w ${n2(sp['10y_13w'])} · 5y−13w ${n2(sp['5y_13w'])} · 30y−5y ${n2(sp['30y_5y'])} · 30y−13w ${n2(sp['30y_13w'])}${I.breadth ? ` · ${FA.term('breadth', 'breadth')}: RSP−SPY 3m ${p1(I.breadth.rsp_spy_3m)}` : ''} · as of ${F.esc(I.as_of || '—')}`);
   } else hide('idx-card');
@@ -130,6 +139,8 @@ SCRIPT = r"""
     setHtml('pos-h', `${FA.term('net position', 'Positioning')} · report of ${F.esc(pos.report_date || '—')}`);
     setHtml('crowd-h', FA.term('crowded', 'Crowdedness'));
     F.heatmap(g('crowd'), {rows: contracts.map(c => c.label), cols: CLASSES.map(c => c[1]), values: contracts.map(c => CLASSES.map(([k]) => isNum(c.classes[k].percentile) ? c.classes[k].percentile - 50 : null)), diverging: true, min: -50, max: 50, fmt: v => (v + 50).toFixed(0)});
+    g('crowd').querySelectorAll('thead th').forEach((th, i) => { const cl = CLASSES[i - 1]; if (cl) th.innerHTML = classLabel(cl); });
+    F.armTerms(g('crowd'));
     const rows = contracts.map(c => ({code: c.code, label: c.label, group: c.group, report_date: c.report_date, weeks_behind: c.weeks_behind, open_interest: c.open_interest,
       am_net: c.classes.asset_managers.net, am_chg: c.classes.asset_managers.net_change, am_pct: c.classes.asset_managers.percentile,
       lev_net: c.classes.leveraged_funds.net, lev_chg: c.classes.leveraged_funds.net_change, lev_pct: c.classes.leveraged_funds.percentile,
@@ -195,10 +206,37 @@ SCRIPT = r"""
     F.table(g('short'), [{key: 'symbol', label: 'Symbol', left: true, fmt: v => `<b>${F.esc(v)}</b>`}, {key: 'date', label: 'Date', fmt: F.esc}, {key: 'short_ratio', label: 'Short ratio', fmt: v => isNum(v) ? v.toFixed(1) + '%' : '—'}, {key: 'short_ratio_avg', label: `Avg ${shortv.days ?? ''}d`, fmt: v => isNum(v) ? v.toFixed(1) + '%' : '—'}, {key: 'ratio_vs_avg', label: 'vs avg', fmt: v => isNum(v) ? (v > 0 ? '+' : '') + v.toFixed(1) + ' pts' : '—', cls: F.cls}, {key: 'short_volume', label: 'Short volume', fmt: n0}, {key: 'total_volume', label: 'Total volume', fmt: n0}, {key: 'days', label: 'Days', fmt: v => String(v ?? '—')}], shortv.symbols, {sortKey: 'ratio_vs_avg'});
     const th = g('short').querySelector('th[data-key="short_ratio"]'); if (th) th.innerHTML = FA.term('short volume', 'Short ratio'); F.armTerms(g('short'));
   }
+  // trend chart
+  const T = I && I.trend;
+  if (T && (T.series || []).length) {
+    const WIN = [[50], [100], [200]];
+    const pts = k => T.series.map(r => [Date.parse(r.date), r[k]]);
+    const w200 = T.wma_200, bands = [];
+    if (w200 && isNum(w200.band_low_pct) && isNum(w200.band_high_pct)) {
+      const edge = pct => T.series.map(r => [Date.parse(r.date), isNum(r.wma_200) ? r.wma_200 * (1 + pct / 100) : null]);
+      bands.push({lo: edge(w200.band_low_pct), hi: edge(w200.band_high_pct), color: F.S[1], opacity: 0.13, legend: '200-week neutral zone (20th–80th percentile gap)'});
+    }
+    // hierarchy: the 200-week and its zone carry the reading; the close is context; the 100- and 50-week recede
+    F.lines(g('trend-chart'), {series: [
+        {name: '50-week (momentum)', points: pts('wma_50'), color: 'var(--muted)', width: 1.25, dash: '1 4', opacity: 0.9, endLabel: false},
+        {name: '100-week', points: pts('wma_100'), color: 'var(--muted)', width: 1.25, dash: '6 4', opacity: 0.9, endLabel: false},
+        {name: 'S&P 500', points: pts('close'), color: 'var(--ink2)', width: 1.75, endLabel: false},
+        {name: '200-week', points: pts('wma_200'), color: F.S[1], width: 3.5, endLabel: true}],
+      bands, xIsDate: true, height: 320, yFmt: v => F.num(v, 0), aria: 'S&P 500 weekly close with its 200-week moving average and neutral zone, and its 100- and 50-week averages'});
+    const sg = v => isNum(v) ? (v >= 0 ? '+' : '') + v.toFixed(1) + '%' : '—';
+    const rows = WIN.map(([n]) => [n, T[`wma_${n}`]]).filter(([, w]) => w);
+    setHtml('trend-table', '<table><thead><tr><th class="l">Average</th><th class="l">Level</th><th>Average value</th><th>Gap</th><th>' + FA.term('percentile', 'Percentile') + ' since ' + F.esc(String(T.history_from || '').slice(0, 4)) + '</th><th>Typical gap</th><th>' + FA.term('time below', 'Time below average') + '</th></tr></thead><tbody>' +
+      rows.map(([n, w]) => `<tr><td class="l">${n === 200 ? FA.term('200-week average', '200-week') : n + '-week'}</td><td class="l"><b>${F.esc(w.level)}</b></td><td>${n0(w.average)}</td><td class="${F.cls(w.gap_pct)}">${sg(w.gap_pct)}</td><td>${p0(w.percentile)}</td><td>${sg(w.median_gap_pct)}</td><td>${isNum(w.share_below_pct) ? w.share_below_pct + '% of weeks' : '—'}</td></tr>`).join('') + '</tbody></table>');
+    setHtml('trend-note', `Weekly closes as of ${F.esc(T.as_of || '—')}; the week in progress counts at its latest close. Levels: extended at or above the 80th percentile of the gap's own history, depressed at or below the 20th, neutral between. The gap measures distance from trend, not value, and since 1950 it has said little about the returns that followed.`);
+  } else hide('trend-card');
   // card help
   const ord = v => { if (!isNum(v)) return '—'; const n = Math.round(v), t = n % 100; return n + (t >= 11 && t <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th'); };
   const help = (id, spec) => { const c = g(id); if (c && !c.hidden) F.help(c, spec); };
   const sp2 = I && I.spreads ? I.spreads['10y_13w'] : null;
+  help('trend-card', {lead: 'How far the S&P 500 has run from its own trend over about one, two and four years.',
+    sections: [{title: 'About the 200-week average', html: '<p>The 200-week average is the mean of the last 200 weekly closes, about four years. It is known to many investors from a line attributed to Charlie Munger: that buying high-quality stocks at their 200-week average would beat the S&P 500 by a wide margin. That line was about single stocks, not the index.</p><p>For the S&P 500 it has worked as a deep floor. Since 1950 the index has closed below it about one week in six, in long stretches during 1969–71, 1973–76, 2001–04 and 2008–10, and briefly in 1962, 1966, 1982, 2011, 2020 and 2022. The 1987 crash never closed a week below it.</p>'},
+      {title: 'How to read it', html: '<p>The index drifts up, so it normally sits well above this line: the typical gap since 1950 is about +17%. The shaded zone is the middle 60% of that history. Above the zone is extended, inside it neutral, below it depressed; below the line itself is the rare case.</p><p>Since 1950, extended readings were followed by a down year about one time in three and depressed ones about one in five, with similar average returns, and the gap said almost nothing about the next five years. It shows how far price has run from its trend. It is not a valuation and not a timing signal.</p>'},
+      {title: 'Reading the levels', html: '<p>The index drifts up over time, so it usually sits above these averages: the typical gap is the yardstick, not zero. Extended means the gap is in the top fifth of its history since 1950, depressed the bottom fifth.</p><p>This is not a valuation. Since 1950, extended 100- and 200-week gaps were followed by a down year somewhat more often, an extended 50-week gap less often, and none said much about the next five years.</p>'}]});
   help('idx-card', {lead: 'Where the main stock indexes, interest rates and a few macro prices closed, and how far they moved over the day and the week.',
     sections: [{title: 'The spread line', html: `<p>A spread is one yield minus another. The 10-year minus the 13-week Treasury yield${isNum(sp2) ? ` is ${n2(sp2)} points` : ''}: positive is the usual shape, with long loans paying more; negative (an inverted curve) has often come before recessions, with a variable lag.</p>`}]});
   const c0 = contracts[0], am0 = c0 && c0.classes && c0.classes.asset_managers;
@@ -244,6 +282,11 @@ def _signed(v: object, dp: int = 1) -> str:
     return f"{v:+.{dp}f}%" if isinstance(v, (int, float)) and not isinstance(v, bool) else "—"
 
 
+def _pct100(v: object) -> object:
+    """indices.py gives vix_percentile_1y as a 0-1 fraction; the page shows it on a 0-100 scale."""
+    return v * 100 if isinstance(v, (int, float)) and not isinstance(v, bool) else v
+
+
 def _find(rows: object, symbol: str) -> dict:
     return next((r for r in (rows or []) if isinstance(r, dict) and r.get("symbol") == symbol), {}) if isinstance(rows, list) else {}
 
@@ -255,8 +298,12 @@ def _headline(indices: dict | None, flows: dict | None) -> str:
         spx, vix, tnx = _find(indices.get("indices"), "^GSPC"), _find(indices.get("indices"), "^VIX"), _find(indices.get("rates"), "^TNX")
         if spx:
             parts.append(f"S&P 500 {_num(spx.get('last'))} ({_signed(spx.get('day_change_pct'))})")
+        trend = indices.get("trend") or {}
+        w200 = trend.get("wma_200") or {}
+        if isinstance(w200.get("gap_pct"), (int, float)):
+            parts.append(f"vs 200-week average {_signed(w200.get('gap_pct'))} ({w200.get('level')})")
         if vix:
-            parts.append(f"VIX {_num(vix.get('last'), 1)} (1y percentile {_num(indices.get('vix_percentile_1y'), 0)})")
+            parts.append(f"VIX {_num(vix.get('last'), 1)} (1y percentile {_num(_pct100(indices.get('vix_percentile_1y')), 0)})")
         if isinstance(tnx.get("last"), (int, float)):
             parts.append(f"10y {_num(tnx.get('last'))}%")
     if flows:
