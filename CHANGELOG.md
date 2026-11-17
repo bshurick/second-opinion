@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.14.0
+
+- deep valuation: the page opens with an About card. It carries the company's profile facts from `baseline/fundamentals.json`, a business summary written by the valuation's research, and a five-year weekly share-price chart. `render_deep.py --case` fetches the history from Yahoo and writes both into `page.json`, so a later `--in` run reproduces the page without a fetch. A failed fetch publishes the page without the chart and adds `PRICE_HISTORY_UNAVAILABLE`. Without a written summary the card shows Yahoo's description, clipped at 90 words. `blocks.json` gains an optional top-level `company` object; an input without it renders as before.
+
 ## 1.13.0
 
 - every skill: a shared **Writing** block closes each `## Rules`, and every subagent role file carries the same rules. Spell out each acronym and shorthand at first use, with labels (scenario names, headlines, column headers) counting as a first use. Cut adjectives and adverbs that carry no fact. Use the active voice. Keep sentences under about 25 words. Give each list a heading or lead-in, or write it as prose or a table with headers. A deep valuation had named its central scenario "slower comps" without saying comps meant comparable-store sales. `tests/test_skills_structure.py` pins the rules verbatim.

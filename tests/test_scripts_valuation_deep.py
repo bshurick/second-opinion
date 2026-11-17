@@ -6,6 +6,7 @@ from __future__ import annotations
 import io
 import json
 import sys
+from datetime import date, timedelta
 
 import pytest
 from page_dom import assert_page_help, render_and_audit, requires_chrome
@@ -288,6 +289,27 @@ def test_model_pipes_into_returns(capsys, monkeypatch) -> None:
 RENDER = "valuation/scripts/render_deep.py"
 SAMPLE = PLUGIN_ROOT / "docs/samples/valuation-deep.json"
 
+HISTORY = {"symbol": "ACME", "period": "5y", "interval": "1wk", "prices": [
+    {"date": "2021-11-19", "close": 15.0, "open": 14.0},
+    {"date": "2021-11-26", "close": 16.5},
+    {"date": "2021-12-03", "close": None},
+    {"date": "2021-12-10", "close": 17.2},
+]}
+
+
+@pytest.fixture(autouse=True)
+def market_history(monkeypatch):
+    """No network in this module: every --case render sees the same history."""
+    from second_opinion import market
+    calls = []
+
+    def fake(symbol, **kwargs):
+        calls.append((symbol, kwargs))
+        return HISTORY
+
+    monkeypatch.setattr(market, "price_history", fake)
+    return calls
+
 
 def page_input() -> dict:
     p = base_input(
@@ -305,6 +327,16 @@ def page_input() -> dict:
                "against": [{"claim": "Volumes fell 6%", "source": "10-Q Item 2", "date": "2026-08-01"}],
                "consequence": {"segment": "Core", "field": "margin", "change": "10% in Squeeze"}, "thread": "threads/1-pricing.md"}]
     return {"symbol": "ACME", "price": 20.0, "as_of": "2026-10-05", "model": model, "returns": rets, "ledger": ledger,
+            "company": {
+                "summary": "Acme makes industrial fasteners for builders in North America. It sells through distributors and earns a gross margin near 30%.",
+                "name": "Acme Corporation", "sector": "Industrials", "industry": "Tools and Accessories",
+                "country": "United States", "employees": 12345, "market_cap": 4.2e9,
+                "website": "https://acme.example",
+                "description": "Acme Corporation makes industrial fasteners and sells them through distributors in North America.",
+            },
+            "price_history": {"symbol": "ACME", "period": "5y", "interval": "1wk", "prices": [
+                {"date": (date(2021, 11, 19) + timedelta(weeks=i)).isoformat(),
+                 "close": round(15 + 2 * ((i % 26) / 26) + i * 0.01, 2)} for i in range(261)]},
             "blocks": [{"type": "segments", "scenario": "Base"}, {"type": "drivers", "segment": "Core", "field": "fcff"},
                        {"type": "ledger"}, {"type": "track_record", "rows": [{"period": "FY2025", "metric": "Revenue growth", "guided": "8%", "actual": "5%", "source": "8-K 2026-02-10"}]},
                        {"type": "forensics", "items": [{"finding": "Receivables up 20% vs revenue up 5%", "severity": "medium", "source": "10-K 2026-02-20"}]},
@@ -347,6 +379,73 @@ def test_render_deep_rejects_undated_claim(tmp_path, capsys, monkeypatch) -> Non
     src.write_text(json.dumps(data))
     rc, res = run_json(load_script(RENDER), ["--in", str(src), "--out", str(tmp_path / "p.html")], capsys)
     assert rc == 2 and "B1" in res["error"] and "date" in res["error"]
+
+
+@pytest.mark.parametrize("mutate, needle", [
+    (lambda d: d["company"].__setitem__("summary", "word " * 81), "81 words"),
+    (lambda d: d["company"].__setitem__("summary", "You should buy the shares."), "forbidden word"),
+    (lambda d: d.__setitem__("company", "Acme"), "company must be an object"),
+])
+def test_render_deep_rejects_bad_company(mutate, needle, tmp_path, capsys) -> None:
+    data = page_input()
+    mutate(data)
+    src = tmp_path / "page.json"
+    src.write_text(json.dumps(data))
+    rc, res = run_json(load_script(RENDER), ["--in", str(src), "--out", str(tmp_path / "p.html")], capsys)
+    assert rc == 2 and needle in res["error"]
+
+
+@pytest.mark.parametrize("mutate, needle", [
+    (lambda d: d["price_history"].__setitem__("prices", "x"), "prices must be a list"),
+    (lambda d: d["price_history"]["prices"].append({"date": "2026-01-01", "close": "high"}), "close must be a number"),
+    (lambda d: d["price_history"]["prices"].append({"close": 3}), "needs a date"),
+])
+def test_render_deep_rejects_bad_price_history(mutate, needle, tmp_path, capsys) -> None:
+    data = page_input()
+    mutate(data)
+    src = tmp_path / "page.json"
+    src.write_text(json.dumps(data))
+    rc, res = run_json(load_script(RENDER), ["--in", str(src), "--out", str(tmp_path / "p.html")], capsys)
+    assert rc == 2 and needle in res["error"]
+
+
+def test_render_deep_rejects_bad_flags(tmp_path, capsys) -> None:
+    data = page_input()
+    data["flags"] = [{"code": "X"}]
+    src = tmp_path / "page.json"
+    src.write_text(json.dumps(data))
+    rc, res = run_json(load_script(RENDER), ["--in", str(src), "--out", str(tmp_path / "p.html")], capsys)
+    assert rc == 2 and "flags[0]" in res["error"]
+
+
+def test_clean_history_drops_rows_without_a_close() -> None:
+    mod = load_script(RENDER)
+    hist = mod._clean_history({"symbol": "ACME", "period": "5y", "interval": "1wk", "prices": [
+        {"date": "2021-11-19", "close": 15.0, "volume": 9},
+        {"date": "2021-11-26", "close": None},
+        {"close": 16.0},
+    ]})
+    assert hist == {"symbol": "ACME", "period": "5y", "interval": "1wk",
+                    "prices": [{"date": "2021-11-19", "close": 15.0}]}
+    assert mod._clean_history({"prices": []}) is None
+
+
+def test_clean_history_drops_rows_without_an_iso_date() -> None:
+    mod = load_script(RENDER)
+    hist = mod._clean_history({"prices": [
+        {"date": "not-a-date", "close": 10.0},
+        {"date": "2021-11-19", "close": 15.0},
+    ]})
+    assert hist == {"prices": [{"date": "2021-11-19", "close": 15.0}]}
+
+
+def test_render_deep_rejects_a_price_point_with_a_bad_date(tmp_path, capsys) -> None:
+    data = page_input()
+    data["price_history"]["prices"].append({"date": "not-a-date", "close": 10.0})
+    src = tmp_path / "page.json"
+    src.write_text(json.dumps(data))
+    rc, res = run_json(load_script(RENDER), ["--in", str(src), "--out", str(tmp_path / "p.html")], capsys)
+    assert rc == 2 and "price_history.prices[261]" in res["error"] and "date" in res["error"]
 
 
 def test_render_deep_sample_is_current(capsys, monkeypatch) -> None:
@@ -740,6 +839,66 @@ def test_render_deep_central_without_returns_row_shows_dash(tmp_path) -> None:
     assert 'Central return / yr</div><div class="v">—</div>' in _dom(data, tmp_path)
 
 
+@requires_chrome
+def test_render_deep_about_card_shows_company_and_chart(tmp_path) -> None:
+    import re
+    dom = _dom(page_input(), tmp_path)
+    card = re.search(r'id="about-card".*?</section>', dom, re.S).group(0)
+    assert "About Acme Corporation" in card
+    assert "Industrials" in card and "Tools and Accessories" in card and "United States" in card
+    assert "12,345 employees" in card and "$4.2B market cap" in card
+    assert "Acme makes industrial fasteners" in card
+    assert 'aria-label="ACME five-year weekly share price"' in card
+
+
+@requires_chrome
+def test_render_deep_without_company_or_history_has_no_about_card(tmp_path) -> None:
+    data = page_input()
+    data.pop("company")
+    data.pop("price_history")
+    assert 'id="about-card"' not in _dom(data, tmp_path)
+
+
+@requires_chrome
+def test_render_deep_one_price_point_draws_no_chart(tmp_path) -> None:
+    import re
+    data = page_input()
+    data["price_history"]["prices"] = data["price_history"]["prices"][:1]
+    card = re.search(r'id="about-card".*?</section>', _dom(data, tmp_path), re.S).group(0)
+    assert "<svg" not in card
+
+
+@requires_chrome
+def test_render_deep_about_card_falls_back_to_the_yahoo_description(tmp_path) -> None:
+    import re
+    data = page_input()
+    data["company"].pop("summary")
+    data["company"]["description"] = " ".join(f"word{i}" for i in range(120))
+    card = re.search(r'id="about-card".*?</section>', _dom(data, tmp_path), re.S).group(0)
+    assert "word89" in card and "word90" not in card and "Business description from Yahoo Finance." in card
+
+
+@requires_chrome
+def test_render_deep_about_card_with_summary_only(tmp_path) -> None:
+    import re
+    data = page_input()
+    data["company"] = {"summary": "Acme sells fasteners."}
+    data.pop("price_history")
+    card = re.search(r'id="about-card".*?</section>', _dom(data, tmp_path), re.S).group(0)
+    assert "Acme sells fasteners." in card and "employee" not in card and "<svg" not in card
+
+
+@requires_chrome
+def test_render_deep_shows_renderer_flags_and_keeps_the_about_card(tmp_path) -> None:
+    import re
+    data = page_input()
+    data["flags"] = [{"code": "PRICE_HISTORY_UNAVAILABLE", "message": "Yahoo price history failed: Yahoo down"}]
+    dom = _dom(data, tmp_path)
+    flags = re.search(r'<ul class="flags" id="flags">(.*?)</ul>', dom, re.S).group(1)
+    assert "PRICE_HISTORY_UNAVAILABLE" in flags and "Yahoo down" in flags
+    assert 'id="about-card"' in dom
+
+
 # --- render_deep.py --case ---------------------------------------------------------------------
 
 
@@ -749,10 +908,16 @@ def case_dir(tmp_path, *, ledger_as_object: bool = False, drop: tuple[str, ...] 
     data["ledger"][0]["takeaway"] = "Buybacks of $2.9B a year outrun free cash flow of $100M."
     case = tmp_path / "deep-ACME"
     case.mkdir()
+    profile = {"info": {"name": "Acme Corporation", "sector": "Industrials", "industry": "Tools and Accessories",
+                        "country": "United States", "website": "https://acme.example", "employees": 12345,
+                        "market_cap": 4.2e9, "description": "Acme sells fasteners."}}
+    (case / "baseline").mkdir()
+    (case / "baseline" / "fundamentals.json").write_text(json.dumps(profile))
     files = {
         "model.out.json": data["model"], "returns.out.json": data["returns"],
         "ledger.json": {"ledger": data["ledger"]} if ledger_as_object else data["ledger"],
-        "blocks.json": {"blocks": data["blocks"], "as_of": data["as_of"], "notes": data["notes"], "missing_roles": data["missing_roles"]},
+        "blocks.json": {"blocks": data["blocks"], "company": {"summary": "Acme sells fasteners to builders."},
+                        "as_of": data["as_of"], "notes": data["notes"], "missing_roles": data["missing_roles"]},
     }
     for name, body in files.items():
         if name not in drop:
@@ -780,6 +945,45 @@ def test_render_deep_case_builds_page_json_and_html(ledger_as_object, tmp_path, 
     # the page.json it wrote is the existing --in shape
     rc, again = run_json(load_script(RENDER), ["--in", str(case / "page.json"), "--out", str(tmp_path / "again.html")], capsys)
     assert rc == 0 and (tmp_path / "again.html").read_text() == html
+
+
+def test_render_deep_case_carries_profile_and_history(tmp_path, capsys, market_history) -> None:
+    case, _ = case_dir(tmp_path)
+    rc, res = run_json(load_script(RENDER), ["--case", str(case)], capsys)
+    assert rc == 0, res
+    page_json = json.loads((case / "page.json").read_text())
+    assert page_json["company"]["summary"] == "Acme sells fasteners to builders."
+    assert page_json["company"]["name"] == "Acme Corporation" and page_json["company"]["employees"] == 12345
+    assert page_json["price_history"]["prices"] == [
+        {"date": "2021-11-19", "close": 15.0}, {"date": "2021-11-26", "close": 16.5},
+        {"date": "2021-12-10", "close": 17.2}]
+    assert market_history == [("ACME", {"period": "5y", "interval": "1wk"})]
+
+
+def test_render_deep_case_fetch_failure_still_publishes(tmp_path, capsys, monkeypatch) -> None:
+    from second_opinion import market
+    case, _ = case_dir(tmp_path)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("Yahoo down")
+
+    monkeypatch.setattr(market, "price_history", boom)
+    rc, res = run_json(load_script(RENDER), ["--case", str(case)], capsys)
+    assert rc == 0, res
+    page_json = json.loads((case / "page.json").read_text())
+    assert "price_history" not in page_json and page_json["company"]["summary"]
+    assert {"code": "PRICE_HISTORY_UNAVAILABLE", "message": "Yahoo price history failed: Yahoo down"} in page_json["flags"]
+    assert "Yahoo down" in (case / "page.html").read_text()
+
+
+def test_render_deep_case_summary_without_a_profile_still_renders(tmp_path, capsys) -> None:
+    case, _ = case_dir(tmp_path)
+    (case / "baseline" / "fundamentals.json").unlink()
+    rc, res = run_json(load_script(RENDER), ["--case", str(case)], capsys)
+    assert rc == 0, res
+    page_json = json.loads((case / "page.json").read_text())
+    assert page_json["company"] == {"summary": "Acme sells fasteners to builders."}
+    assert len(page_json["price_history"]["prices"]) == 3
 
 
 @pytest.mark.parametrize("missing", ["blocks.json", "model.out.json"])

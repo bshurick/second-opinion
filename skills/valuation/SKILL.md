@@ -174,8 +174,8 @@ Each deep run keeps its work in `DIR/deep-SYMBOL/`, where DIR is the session scr
 | `model.json` | The `model.py` input: the filled skeleton. `_notes` stays in it; `deep_run.py` drops top-level keys that start with `_`. |
 | `model.out.json`, `returns.out.json`, `runs.json` | Written by `deep_run.py`: the `model.py` output, the `returns.py` output, and one entry per run |
 | `custom/*.py` | Calculations the engine cannot express, each printing JSON |
-| `blocks.json` | The page's blocks: `{"blocks": [...], "as_of"?, "notes"?, "missing_roles"?}` |
-| `page.json`, `page.html` | Written by `render_deep.py --case` from `model.out.json`, `returns.out.json`, `ledger.json` and `blocks.json` |
+| `blocks.json` | The page's blocks and the company summary: `{"blocks": [...], "company": {"summary"}, "as_of"?, "notes"?, "missing_roles"?}` |
+| `page.json`, `page.html` | Written by `render_deep.py --case` from `model.out.json`, `returns.out.json`, `ledger.json`, `blocks.json` and `baseline/fundamentals.json` |
 
 - A pack source that fails is named in `missing` with the reason under Missing in `INDEX.md`, and the run goes on.
 - The pack's `summary.flags` carries `CURRENCY_MISMATCH` and `THIN_EDGAR_HISTORY` when they fired. Each message is in `summary.flag_notes` and at the top of `INDEX.md`.
@@ -191,7 +191,12 @@ Each deep run keeps its work in `DIR/deep-SYMBOL/`, where DIR is the session scr
 - Its `unmatched` lists each scenario with no same-named scenario in the other run (`name`, `run`, `value_per_share`), and any entry raises `SCENARIOS_CHANGED`.
 - Its `position` says where the price sits among the scenario values: `brackets_price`, `all_above_price` (every value is above the price) or `all_below_price`.
 
-`render_deep.py` always opens with the scenario table and the price against the scenarios. After that it shows the blocks you list, in your order. `segments`, `drivers`, `ledger`, `track_record`, `forensics`, `skepticism`, `sensitivity`, `custom` and `text` are described in its docstring. A ledger claim without a source and a date is exit 2.
+`render_deep.py` opens with an About card, then the scenario table and the price against the scenarios.
+
+- The About card shows the company name, profile facts and a business summary, then a five-year weekly share-price chart. The facts come from `baseline/fundamentals.json`, and the summary is the one you write in `blocks.json`; without one the card shows Yahoo's business description.
+- A failed chart fetch leaves the chart out and adds `PRICE_HISTORY_UNAVAILABLE` to the flags.
+- After the scenarios, the page shows the blocks you list, in your order. `segments`, `drivers`, `ledger`, `track_record`, `forensics`, `skepticism`, `sensitivity`, `custom` and `text` are described in its docstring.
+- A ledger claim without a source and a date is exit 2.
 
 ### Reference files
 
@@ -248,12 +253,12 @@ Run with the Bash tool. All print JSON on stdout.
 | `budget.py` | The search budget in `budget.json`. `add` records the searches each role used in a round. With only the folder it prints the status. |
 | `model.py` | Segment-by-segment, scenario-by-scenario valuation with the path to the horizon and `returns_input`. `deep_run.py` runs it. |
 | `deep_run.py` | One pass of the arithmetic: `model.py` on `model.json`, then `returns.py` on its `returns_input`. Writes `model.out.json`, `returns.out.json` and `runs.json`, and prints the scenarios with `max_move`, `round2_due` and `position`. |
-| `render_deep.py` | The deep-mode page: scenario table, price strip, then the chosen blocks. `--case` assembles `page.json` from the case folder and writes `page.html` beside it. |
+| `render_deep.py` | The deep-mode page: an About card with the company profile, business summary and five-year weekly share-price chart, the scenario table, the price strip, then the chosen blocks. `--case` assembles `page.json` from the case folder and `baseline/fundamentals.json`, fetches the price history, and writes `page.html` beside it. |
 | `picks.py save-deep` | The stock-screener skill's pick store: keeps the deep valuation as the baseline its re-checks measure against. |
 
 | Exit code | Meaning | What to show |
 |---|---|---|
-| 2 | Bad input. For `render.py`, no script result is present. For `render_deep.py`, a missing `model.out.json` or `blocks.json`, an unknown block, or an undated ledger claim. For `deep_prep.py`, a ticker the SEC does not list or an `--industry` file that does not exist. For `deep_run.py`, no `model.json`, a `--compare-to` run that `runs.json` does not have, or a model that `model.py` or `returns.py` rejects; nothing is written. For `budget.py`, an unknown role or no `budget.json`. | `error` |
+| 2 | Bad input. For `render.py`, no script result is present. For `render_deep.py`, a missing `model.out.json` or `blocks.json`, an unknown block, an undated ledger claim, a company summary over 80 words or with an advice word, or a malformed price history. For `deep_prep.py`, a ticker the SEC does not list or an `--industry` file that does not exist. For `deep_run.py`, no `model.json`, a `--compare-to` run that `runs.json` does not have, or a model that `model.py` or `returns.py` rejects; nothing is written. For `budget.py`, an unknown role or no `budget.json`. | `error` |
 | 4 | `intrinsic-inputs.py` and `deep_prep.py`. `SKILL_MISSING`: the fundamental-research skill is not installed. `CONFIG_MISSING`: a script reported that EDGAR is not configured. | `error` |
 | 5 | A data source (Yahoo, EDGAR) returned an error. For `deep_prep.py`, `EDGAR_UNREADABLE`: the SEC refused the requests or is down, so the pack has no `edgar.json`. | `error` |
 | 6 | Python dependencies missing | `error`, and say the get-started skill repairs it |
@@ -383,6 +388,7 @@ Run with the Bash tool. All print JSON on stdout.
     - Keep a list of the changes you rejected, each with one line on why.
 12. Write `blocks.json`: the blocks that tell this company's story, in the order a reader needs them, with `missing_roles` and any `notes`. Then run `render_deep.py --case DIR/deep-SYMBOL`.
     - It takes the model, the returns and the ledger from the case files, so do not copy them into `blocks.json` and do not write `page.json` by hand.
+    - Write `company.summary`: two or three sentences, at most 80 words, on what the business sells, to whom, where, and how it earns, taken from the research pack. Do not give advice.
     - A `custom` block carries the JSON its script printed as `result`.
     - If it exits 2, fix the block or ledger entry the `error` names and rerun.
 13. Publish `DIR/deep-SYMBOL/page.html` with the Artifact tool: icon chart, description "Deep valuation: SYMBOL at PRICE". Republish the same path on later runs.

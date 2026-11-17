@@ -8,7 +8,11 @@ analyst picked) into one self-contained HTML page for the Artifact tool.
 ``--case DIR`` assembles the input from the case folder and writes ``DIR/page.json`` (the input
 shape below) and ``DIR/page.html``. It reads ``model.out.json`` and ``returns.out.json`` (deep_run.py's
 files; symbol and price come from the model output), ``ledger.json`` (a list of entries, or an object
-with ``ledger``) and ``blocks.json``: ``{"blocks": [...], "as_of"?, "notes"?, "missing_roles"?}``.
+with ``ledger``), ``blocks.json``: ``{"blocks": [...], "company"?: {"summary"}, "as_of"?, "notes"?,
+"missing_roles"?}``, and ``baseline/fundamentals.json`` for the profile facts (its ``info`` block).
+It then fetches five years of weekly closes from Yahoo and stores them as ``price_history``. A
+failed fetch leaves the chart out, publishes the page, and adds ``PRICE_HISTORY_UNAVAILABLE`` to
+``flags``.
 ``as_of`` defaults to today. A missing ``model.out.json`` or ``blocks.json`` is exit 2 naming the
 file; without ``ledger.json`` the ledger is empty, and without ``returns.out.json`` the returns are
 null. Nothing is written when the input is invalid. ``--case`` takes neither ``--in`` nor ``--out``.
@@ -21,7 +25,18 @@ Input (``--in``, or stdin)::
                  (a short label, at most 60 characters), "takeaway" (the one-sentence conclusion),
                  "effect_per_share" (optional), "for": [{"claim", "source", "date"}],
                  "against": [...], "consequence": {"segment", "field", "change"}, "thread"}],
+     "company": {"summary" (at most 80 words, no advice), "name", "sector", "industry", "country",
+                 "employees", "market_cap", "website", "description" (the fallback text)},
+     "price_history": {"symbol", "period", "interval", "prices": [{"date", "close"}]},
+     "flags": [{"code", "message"}],
      "blocks": [{"type": ...}, ...], "missing_roles": ["industry"], "notes": ["..."]}
+
+The page opens with an About card when ``company`` or ``price_history`` is present: the profile
+facts, the business summary (or ``description`` clipped to 90 words), and a five-year weekly share
+price chart. A summary longer than 80 words or one carrying an advice word is exit 2; so is a price
+point without an ISO date, or with a close that is neither a number nor null. Rows with a null close
+are dropped. ``flags`` are shown after the model's, the returns', the missing roles' and the notes'
+flags.
 
 The first scenario in model.scenarios is the central case: the page labels it "Central", pins it first
 in the scenario table and headlines its value and return. The other scenarios are alternatives and
@@ -74,7 +89,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
 
-from second_opinion import output, page  # noqa: E402
+from second_opinion import market, output, page, summary_card  # noqa: E402
 from second_opinion.errors import InvalidInput  # noqa: E402
 
 BLOCK_FIELDS = {
@@ -86,6 +101,8 @@ DRIVER_FIELDS = {"operating": ("revenue", "ebit", "fcff"), "residual_income": ("
 IF_TRUE = ("up", "down")
 HEADLINE_MAX = 60  # a label a reader scans, e.g. "Questionable SMB growth"; the sentence goes in takeaway
 VERDICTS = ("supported", "doubtful", "contradicted", "unknowable", "open")
+COMPANY_WORDS = 80  # the business summary a reader takes in before the valuation
+FACT_KEYS = ("name", "sector", "industry", "country", "employees", "market_cap", "website", "description")
 
 BODY = """
 <style>
@@ -112,6 +129,7 @@ table.plain{border-collapse:collapse;width:100%;font-size:13px}table.plain th,ta
 <h1 id="h1">Deep valuation</h1>
 <p class="sub" id="sub"></p>
 <div id="intro"></div>
+<div id="about"></div>
 <div class="tiles" id="headline"></div>
 <section class="card wrap" id="sc-card"><h2>Scenarios</h2><p class="sub">Each row is one possible future for the business, what a share is worth if it happens, and what buying at today’s price would earn a year.</p><div class="twrap" id="sc"></div><p class="sub" id="implied" style="margin-top:12px"></p></section>
 <section class="card" id="strip-card"><h2>Price against the scenarios</h2><p class="sub">Where today’s price sits among the values the scenarios give.</p><div id="strip"></div></section>
@@ -129,6 +147,34 @@ SCRIPT = r"""
   g('h1').textContent = `${D.symbol || ''} deep valuation`.trim();
   g('sub').textContent = `Price ${money(price)}${D.as_of ? ' · as of ' + D.as_of : ''} · ${scs.length} scenarios · ${M.horizon}-year horizon`;
   F.intro(g('intro'), {lead: `What one share of ${esc(D.symbol || 'this company')} could be worth under ${scs.length} different futures, built segment by segment from the company’s filings, and what buying at ${money(price)} would earn a year in each. The central case is the scenario the research found most consistent with the evidence; the others are alternatives and are not averaged.`});
+  // about: the company's profile, business summary and five-year weekly share price
+  const CO = D.company || {}, PH = D.price_history || {}, PP = PH.prices || [];
+  const clip = (t, n) => { const w = String(t || '').trim().split(/\s+/); return w.length > n ? w.slice(0, n).join(' ') + '…' : w.join(' '); };
+  if (CO.name || CO.summary || CO.description || PP.length > 1) {
+    const card = F.el('section', {class: 'card', id: 'about-card'});
+    card.innerHTML = `<h2>About ${esc(CO.name || D.symbol || 'the company')}</h2>`;
+    const facts = [CO.sector, CO.industry, CO.country].filter(Boolean).map(esc);
+    if (F.isNum(CO.employees)) facts.push(`${esc(F.num(CO.employees, 0))} employees`);
+    if (F.isNum(CO.market_cap)) facts.push(`${esc(F.moneyC(CO.market_cap))} market cap`);
+    if (CO.website) facts.push(`<a href="${esc(CO.website)}" target="_blank" rel="noopener">Website</a>`);
+    if (facts.length) card.insertAdjacentHTML('beforeend', `<p class="sub" style="margin:0 0 10px">${facts.join(' · ')}</p>`);
+    const text = CO.summary ? esc(CO.summary) : CO.description ? esc(clip(CO.description, 90)) : '';
+    if (text) card.insertAdjacentHTML('beforeend', `<p style="font-size:14px;margin:0 0 6px">${text}</p>
+      <p class="muted" style="font-size:12px;margin:0 0 10px">${CO.summary ? 'Business summary written from this valuation’s research.' : 'Business description from Yahoo Finance.'}</p>`);
+    if (PP.length > 1) {
+      const box = F.el('div', {id: 'price-chart'}); card.appendChild(box);
+      F.lines(box, {series: [{name: D.symbol || 'Price', points: PP.map(p => [Date.parse(p.date), p.close]), color: F.S[0], area: true}],
+        xIsDate: true, yFmt: v => F.money(v, 2), height: 260, aria: `${D.symbol || 'Share'} five-year weekly share price`});
+      const last = PP[PP.length - 1], end = Date.parse(last.date);
+      const yr = PP.filter(p => end - Date.parse(p.date) <= 366 * 864e5);
+      const vals = (yr.length > 1 ? yr : PP).map(p => p.close).filter(F.isNum);
+      if (vals.length) card.insertAdjacentHTML('beforeend', `<p class="sub" style="font-size:12px;margin:6px 0 0">Five years of weekly closes from Yahoo Finance, through ${esc(last.date)}. ${yr.length > 1 ? 'Range over the last 52 weeks' : 'Range since ' + esc(PP[0].date)}: ${esc(F.money(Math.min(...vals)))} to ${esc(F.money(Math.max(...vals)))}.</p>`);
+    }
+    g('about').appendChild(card);
+    F.help(card, {lead: 'What the company does and how its shares have traded, before the valuation below.',
+      sections: [{title: 'Where this comes from', html: '<p>The profile facts, and the business description when the research wrote no summary, come from Yahoo Finance. A summary written by this valuation’s research takes the place of the description.</p>'},
+                 {title: 'The chart', html: '<p>One point per week for five years, ending at the latest close Yahoo returned when this page was built.</p>'}]});
+  }
   const gated = scs.filter((s, i) => i === 0 || (!s.stress && !s.reference)), ST = scs.find((s, i) => i > 0 && s.stress && !s.reference);
   const C = scs[0], cr = ret[C.name] || {}, worst = gated.reduce((a, s) => s.value_per_share < a.value_per_share ? s : a, gated[0]), wr = ret[worst.name] || {};
   const allv = scs.filter((s, i) => i === 0 || !s.reference).map(s => s.value_per_share).filter(F.isNum), irrTxt = r => F.isNum(r.irr) ? pct(r.irr) : '—';
@@ -279,7 +325,7 @@ SCRIPT = r"""
       F.help(c, {lead: 'A short write-up of something from the research that matters for the value.'});
     }
   }
-  const flags = [...(M.flags || []), ...(R.flags || []), ...(D.missing_roles || []).map(r => ({code: 'RESEARCH_MISSING', message: `The ${r} research did not complete, so its findings are absent.`})), ...(D.notes || []).map(n => ({code: 'NOTE', message: n}))];
+  const flags = [...(M.flags || []), ...(R.flags || []), ...(D.missing_roles || []).map(r => ({code: 'RESEARCH_MISSING', message: `The ${r} research did not complete, so its findings are absent.`})), ...(D.notes || []).map(n => ({code: 'NOTE', message: n})), ...(D.flags || [])];
   g('flags').innerHTML = flags.length ? flags.map(f => `<li><b>${esc(f.code)}</b>${esc(f.message)}</li>`).join('') : '<li class="muted">None</li>';
 })();
 """
@@ -288,6 +334,33 @@ SCRIPT = r"""
 class _Parser(argparse.ArgumentParser):
     def error(self, message: str) -> None:  # type: ignore[override]
         raise InvalidInput(f"render_deep.py: {message}")
+
+
+def _iso_date(value: object) -> bool:
+    """True for a date the page can parse: an ISO 8601 date string such as 2021-11-19."""
+    if not isinstance(value, str) or not value:
+        return False
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _clean_history(raw: dict | None) -> dict | None:
+    """The page's price history: points with an ISO date and a numeric close, trimmed to those two fields."""
+    if not isinstance(raw, dict):
+        return None
+    prices = [
+        {"date": p["date"], "close": float(p["close"])}
+        for p in raw.get("prices") or []
+        if isinstance(p, dict) and _iso_date(p.get("date"))
+        and isinstance(p.get("close"), (int, float)) and not isinstance(p.get("close"), bool)
+    ]
+    if not prices:
+        return None
+    out = {"symbol": raw.get("symbol"), "period": raw.get("period"), "interval": raw.get("interval"), "prices": prices}
+    return {k: v for k, v in out.items() if v is not None}
 
 
 def _validate(data: dict) -> None:
@@ -351,6 +424,49 @@ def _validate(data: dict) -> None:
                 for f in ("claim", "source", "date"):
                     if not c.get(f):
                         raise InvalidInput(f"ledger {eid}: a claim under {side!r} has no {f}")
+    company = data.get("company")
+    if company is not None:
+        if not isinstance(company, dict):
+            raise InvalidInput("company must be an object")
+        summary = company.get("summary")
+        if summary is not None:
+            if not isinstance(summary, str) or not summary.strip():
+                raise InvalidInput("company.summary must be a non-empty string")
+            words = len(summary.split())
+            if words > COMPANY_WORDS:
+                raise InvalidInput(f"company.summary is {words} words; the limit is {COMPANY_WORDS}")
+            found = summary_card.FORBIDDEN_VERB_RE.search(summary)
+            if found:
+                raise InvalidInput(f"company.summary uses the forbidden word {found.group(0)!r}")
+        for key in ("name", "sector", "industry", "country", "website", "description"):
+            value = company.get(key)
+            if value is not None and not isinstance(value, str):
+                raise InvalidInput(f"company.{key} must be a string")
+        for key in ("employees", "market_cap"):
+            value = company.get(key)
+            if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float))):
+                raise InvalidInput(f"company.{key} must be a number")
+    history = data.get("price_history")
+    if history is not None:
+        if not isinstance(history, dict):
+            raise InvalidInput("price_history must be an object")
+        prices = history.get("prices")
+        if not isinstance(prices, list):
+            raise InvalidInput("price_history.prices must be a list")
+        for i, point in enumerate(prices):
+            if not isinstance(point, dict) or not _iso_date(point.get("date")):
+                raise InvalidInput(f"price_history.prices[{i}] needs a date as YYYY-MM-DD")
+            close = point.get("close")
+            if close is not None and (isinstance(close, bool) or not isinstance(close, (int, float))):
+                raise InvalidInput(f"price_history.prices[{i}].close must be a number or null")
+    flags = data.get("flags")
+    if flags is not None:
+        if not isinstance(flags, list):
+            raise InvalidInput("flags must be a list")
+        for i, flag in enumerate(flags):
+            if not isinstance(flag, dict) or not isinstance(flag.get("code"), str) or not flag["code"] \
+                    or not isinstance(flag.get("message"), str):
+                raise InvalidInput(f"flags[{i}] needs code and message strings")
 
 
 def ledger_effect(entry: dict) -> str | None:
@@ -368,12 +484,16 @@ def ledger_effect(entry: dict) -> str | None:
 
 def build(data: dict) -> tuple[str, str, dict]:
     _validate(data)
+    data["price_history"] = _clean_history(data.get("price_history"))
+    if data["price_history"] is None:
+        data.pop("price_history", None)
     data["ledger"] = [{**e, "effect": ledger_effect(e)} for e in data.get("ledger") or []]
     symbol = str(data.get("symbol") or "")
     title = f"{symbol} Deep Valuation".strip()
     markup = page.render(title, data, BODY, SCRIPT)
     model, rets = data["model"], data.get("returns") or {}
-    flags = len(model.get("flags") or []) + len(rets.get("flags") or []) + len(data.get("missing_roles") or []) + len(data.get("notes") or [])
+    flags = len(model.get("flags") or []) + len(rets.get("flags") or []) + len(data.get("flags") or []) \
+        + len(data.get("missing_roles") or []) + len(data.get("notes") or [])
     counts = {"helps": 0, "hurts": 0, "unsettled": 0, "unmarked": 0}
     for e in data["ledger"]:
         counts[e["effect"] or "unmarked"] += 1
@@ -393,6 +513,32 @@ def _case_file(case: Path, name: str, *, required: bool):
         raise InvalidInput(f"could not read {path} ({name}): {exc}") from exc
 
 
+def _company(case: Path, spec: dict) -> dict | None:
+    """The About card's facts (Yahoo's profile) and the summary written in blocks.json."""
+    profile = _case_file(case / "baseline", "fundamentals.json", required=False)
+    info = profile.get("info") if isinstance(profile, dict) and isinstance(profile.get("info"), dict) else {}
+    company = {k: info[k] for k in FACT_KEYS if info.get(k) not in (None, "")}
+    extra = spec.get("company")
+    if isinstance(extra, dict) and isinstance(extra.get("summary"), str) and extra["summary"].strip():
+        company["summary"] = extra["summary"]
+    return company or None
+
+
+def _fetch_price_history(symbol: str) -> tuple[dict | None, dict | None]:
+    """Five years of weekly closes from Yahoo, trimmed for the page; (history, flag) with one of them None."""
+    if not symbol:
+        return None, {"code": "PRICE_HISTORY_UNAVAILABLE", "message": "the model names no symbol"}
+    try:
+        raw = market.price_history(symbol, period="5y", interval="1wk")
+    except Exception as exc:  # noqa: BLE001 — a failed fetch leaves the chart out, not the page
+        return None, {"code": "PRICE_HISTORY_UNAVAILABLE", "message": f"Yahoo price history failed: {exc}"}
+    history = _clean_history(raw)
+    if not history or len(history["prices"]) < 2:
+        return None, {"code": "PRICE_HISTORY_UNAVAILABLE",
+                      "message": f"Yahoo returned no usable price history for {symbol}"}
+    return history, None
+
+
 def case_input(case: Path) -> dict:
     """The page input (the --in shape) assembled from a case folder's files."""
     model = _case_file(case, "model.out.json", required=True)
@@ -410,6 +556,14 @@ def case_input(case: Path) -> dict:
         raise InvalidInput(f"{case / 'ledger.json'} (ledger.json) must be a list of entries, or an object with ledger")
     data = {"symbol": model.get("symbol"), "price": model.get("price"), "as_of": str(spec.get("as_of") or date.today().isoformat()),
             "model": model, "returns": _case_file(case, "returns.out.json", required=False), "ledger": ledger, "blocks": spec["blocks"]}
+    company = _company(case, spec)
+    if company:
+        data["company"] = company
+    history, flag = _fetch_price_history(str(model.get("symbol") or ""))
+    if history:
+        data["price_history"] = history
+    if flag:
+        data["flags"] = [flag]
     for key in ("missing_roles", "notes"):
         if spec.get(key):
             data[key] = spec[key]
