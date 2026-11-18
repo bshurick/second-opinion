@@ -43,6 +43,12 @@ TREND_HIGH_PCTILE = 80
 TREND_MIN_GAPS = 260
 # Weeks of close-and-average history carried for the page's chart: five years.
 TREND_SERIES_WEEKS = 260
+# Weeks carried instead when the page's zoomed chart is asked for (``daily``): twenty years.
+TREND_LONG_SERIES_WEEKS = 1040
+# Sessions of daily close-and-average history carried for the page's zoomed chart: about a year.
+TREND_DAILY_DAYS = 260
+# Holdings carried per sector fund for the page's sector modal; Yahoo publishes ten.
+SECTOR_TOP_HOLDINGS = 10
 TREND_NOTE = (
     "The gap is the S&P 500's latest close against its 50-, 100- and 200-week simple moving "
     "averages of weekly closes, ranked against every week since 1950. It measures how far price "
@@ -234,7 +240,27 @@ def _trend_level(percentile: float) -> str:
     return "neutral"
 
 
-def trend_from_closes(dates: list[str], closes: list[float]) -> dict[str, Any] | None:
+def _trend_daily(week_dates: list[str], week_closes: list[float], day_dates: list[str], day_closes: list[float]) -> list[dict[str, Any]]:
+    """The last ``TREND_DAILY_DAYS`` sessions as ``{date, close, wma_50, wma_100, wma_200}``.
+
+    Each day's averages are the weekly averages as they stood at that day's close: the day's
+    close stands in for its own week's close, the way the week in progress does in the headline
+    reading. So the last row equals the last row of the weekly ``series``.
+    """
+    prefix = [0.0]
+    for c in week_closes:
+        prefix.append(prefix[-1] + c)
+    week_of = {date.fromisoformat(d).isocalendar()[:2]: i for i, d in enumerate(week_dates)}
+    rows: list[dict[str, Any]] = []
+    for d, c in zip(day_dates[-TREND_DAILY_DAYS:], day_closes[-TREND_DAILY_DAYS:]):
+        w = week_of.get(date.fromisoformat(d).isocalendar()[:2])
+        if w is None:
+            continue
+        rows.append({"date": d, "close": round(c, 2), **{f"wma_{n}": (round((prefix[w] - prefix[w - n + 1] + c) / n, 2) if w >= n - 1 else None) for n in TREND_WINDOWS}})
+    return rows
+
+
+def trend_from_closes(dates: list[str], closes: list[float], daily: tuple[list[str], list[float]] | None = None) -> dict[str, Any] | None:
     """The last weekly close against each window's simple moving average, ranked in history.
 
     ``gap_pct`` is close / average - 1 in percent; ``percentile`` is the share of every
@@ -244,7 +270,9 @@ def trend_from_closes(dates: list[str], closes: list[float]) -> dict[str, Any] |
     times (1 + band / 100) draws the neutral zone. A window
     without ``TREND_MIN_GAPS`` gaps of history degrades to null. ``series`` is the last
     ``TREND_SERIES_WEEKS`` weeks of ``{date, close, wma_50, wma_100, wma_200}`` for a chart,
-    an average null until its window has filled.
+    an average null until its window has filled. With ``daily`` (the daily dates and closes the
+    weeks were built from), ``daily`` holds the last ``TREND_DAILY_DAYS`` sessions in the same shape
+    and ``series`` grows to ``TREND_LONG_SERIES_WEEKS`` weeks.
     """
     if not closes or len(dates) != len(closes):
         return None
@@ -281,11 +309,13 @@ def trend_from_closes(dates: list[str], closes: list[float]) -> dict[str, Any] |
             "band_high_pct": round(ordered[min(len(ordered) - 1, int(len(ordered) * TREND_HIGH_PCTILE / 100))], 2),
             "gaps_from": dates[n - 1],
         }
-    start = max(0, len(closes) - TREND_SERIES_WEEKS)
+    start = max(0, len(closes) - (TREND_LONG_SERIES_WEEKS if daily is not None else TREND_SERIES_WEEKS))
     out["series"] = [
         {"date": dates[i], "close": round(closes[i], 2), **{f"wma_{n}": (round(averages[n][i], 2) if averages[n][i] is not None else None) for n in TREND_WINDOWS}}
         for i in range(start, len(closes))
     ]
+    if daily is not None:
+        out["daily"] = _trend_daily(dates, closes, *daily)
     out["levels"] = {"extended": f"percentile >= {TREND_HIGH_PCTILE}", "neutral": f"between {TREND_LOW_PCTILE} and {TREND_HIGH_PCTILE}", "depressed": f"percentile <= {TREND_LOW_PCTILE}"}
     out["note"] = TREND_NOTE
     return out
@@ -310,8 +340,12 @@ def weekly_closes(dates: list[str], closes: list[float]) -> tuple[list[str], lis
     return out_d, out_c
 
 
-def sp500_trend() -> dict[str, Any] | None:
-    """The S&P 500's weekly trend gaps from one daily download since 1950; null on any failure."""
+def sp500_trend(daily: bool = False) -> dict[str, Any] | None:
+    """The S&P 500's weekly trend gaps from one daily download since 1950; null on any failure.
+
+    ``daily`` adds the last year of daily closes with the averages as they stood each day and
+    lengthens the weekly ``series`` from five years to twenty.
+    """
     try:
         df = _yf().download([TREND_SYMBOL], start=TREND_START, interval="1d", group_by="ticker", auto_adjust=False, progress=False, threads=False)
         if df is None or getattr(df, "empty", True):
@@ -323,10 +357,38 @@ def sp500_trend() -> dict[str, Any] | None:
         closes = [round(float(v), 4) for v in series.tolist()]
     except Exception:  # noqa: BLE001 - a trend failure degrades to null, never the snapshot
         return None
-    return trend_from_closes(*weekly_closes(dates, closes))
+    return trend_from_closes(*weekly_closes(dates, closes), daily=(dates, closes) if daily else None)
 
 
-def index_snapshot() -> dict[str, Any]:
+def _row_history(dated: list[tuple[str, float]]) -> dict[str, Any]:
+    """A row's daily closes as ``[date, close]`` pairs with the high, low and change over them."""
+    values = [c for _, c in dated]
+    return {
+        "history": [[d, c] for d, c in dated],
+        "high_1y": max(values),
+        "low_1y": min(values),
+        "change_1y_pct": round((values[-1] / values[0] - 1) * 100, 4) if values[0] else None,
+    }
+
+
+def top_holdings(symbol: str, limit: int = SECTOR_TOP_HOLDINGS) -> list[dict[str, Any]] | None:
+    """A fund's largest holdings from Yahoo as ``{symbol, name, weight_pct}``, largest first; null on any failure.
+
+    Yahoo publishes the top ten and gives them no date.
+    """
+    try:
+        df = _ticker(symbol).funds_data.top_holdings
+        rows = [
+            {"symbol": str(sym), "name": str(row["Name"]), "weight_pct": round(float(row["Holding Percent"]) * 100, 2)}
+            for sym, row in df.iterrows()
+        ]
+    except Exception:  # noqa: BLE001 - a holdings failure degrades to null, never the snapshot
+        return None
+    rows.sort(key=lambda r: -r["weight_pct"])
+    return rows[:limit] or None
+
+
+def index_snapshot(history: bool = False, holdings: bool = False) -> dict[str, Any]:
     """Indices, sector ETFs, rates, macro futures/ETFs, yield spreads and breadth
     proxies from ONE batched Yahoo download.
 
@@ -342,6 +404,11 @@ def index_snapshot() -> dict[str, Any]:
     to its 50-, 100- and 200-week averages ranked since 1950, from a second, daily
     download grouped into weeks). Missing data degrades one row or one field to null — never the
     whole snapshot.
+
+    ``history`` adds to every row its daily closes over the snapshot's trailing year
+    (``history`` as ``[date, close]`` pairs, ``high_1y``, ``low_1y``, ``change_1y_pct``) and
+    ``trend.daily``. ``holdings`` adds ``top_holdings`` to each sector row, one Yahoo lookup per
+    sector fund. Both are for the page's charts and modals and are off by default.
     """
     symbols = {**{s: s for s in INDEX_SYMBOLS}, **{s: s for s in SECTOR_ETFS}, **{s: s for s in RATE_SYMBOLS}}
     symbols.update({sym: sym for _, (sym, _) in MACRO_SYMBOLS.items()})
@@ -355,7 +422,18 @@ def index_snapshot() -> dict[str, Any]:
         last = series[-1] if series else None
         day = round((series[-1] / series[-2] - 1) * 100, 4) if len(series) >= 2 else None
         week = round((series[-1] / series[-6] - 1) * 100, 4) if len(series) >= 6 else None
-        return {"symbol": symbol, "name": name, "last": last, "day_change_pct": day, "week_change_pct": week}
+        out = {"symbol": symbol, "name": name, "last": last, "day_change_pct": day, "week_change_pct": week}
+        if history:
+            dated = _dated_closes(df, symbol)
+            if len(dated) > 1:
+                out.update(_row_history(dated))
+        return out
+
+    def sector_row(symbol: str, name: str) -> dict[str, Any]:
+        out = row(symbol, name)
+        if holdings:
+            out["top_holdings"] = top_holdings(symbol)
+        return out
 
     spreads: dict[str, float | None] = {}
     for key, (long_sym, short_sym) in RATE_SPREADS.items():
@@ -371,7 +449,7 @@ def index_snapshot() -> dict[str, Any]:
     return {
         "as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "indices": [row(s, n) for s, n in INDEX_SYMBOLS.items()],
-        "sectors": [row(s, n) for s, n in SECTOR_ETFS.items()],
+        "sectors": [sector_row(s, n) for s, n in SECTOR_ETFS.items()],
         "rates": [row(s, n) for s, n in RATE_SYMBOLS.items()],
         "macro": {cat: row(sym, name) for cat, (sym, name) in MACRO_SYMBOLS.items()},
         "spreads": spreads,
@@ -383,7 +461,7 @@ def index_snapshot() -> dict[str, Any]:
             "note": "proxies, not full market breadth",
         },
         "vix_percentile_1y": _vix_percentile_1y(_snapshot_bars(closes, "^VIX")),
-        "trend": sp500_trend(),
+        "trend": sp500_trend(daily=True) if history else sp500_trend(),
     }
 
 
@@ -409,6 +487,22 @@ def _closes(df: Any, symbol: str) -> list[float]:
     except (KeyError, TypeError):
         return []
     return [round(float(v), 4) for v in series.dropna().tolist()]
+
+
+def _dated_closes(df: Any, symbol: str) -> list[tuple[str, float]]:
+    """``(date, close)`` pairs for ``symbol`` from a download frame; empty when it has none or carries no dates."""
+    try:
+        cols = df.columns
+        if getattr(cols, "nlevels", 1) > 1:
+            if symbol not in cols.get_level_values(0):
+                return []
+            series = df[symbol]["Close"]
+        else:
+            series = df["Close"]
+        series = series.dropna()
+        return [(d.strftime("%Y-%m-%d"), round(float(v), 4)) for d, v in zip(series.index, series.tolist())]
+    except Exception:  # noqa: BLE001 - history is optional; the row keeps its levels without it
+        return []
 
 
 def day_changes(symbols: list[str], hub: Any = None) -> dict[str, dict[str, Any]]:

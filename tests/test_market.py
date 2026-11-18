@@ -568,3 +568,81 @@ def test_trend_level_always_agrees_with_the_percentile_it_is_shown_with() -> Non
                 seen += 1
                 assert w["level"] == market._trend_level(w["percentile"]), (end, n, w)
     assert seen > 100
+
+
+# --- page data: daily history and sector holdings ----------------------------------
+
+
+def test_trend_daily_counts_each_day_as_its_weeks_close() -> None:
+    # 300 flat weeks at 100; the last week has three sessions closing 100, 110, 150.
+    weeks = _weekly_dates(300)
+    last_monday = date.fromisoformat(weeks[-1])
+    days = [(last_monday + timedelta(days=i)).isoformat() for i in range(3)]
+    out = market.trend_from_closes(weeks[:-1] + [days[-1]], [100.0] * 299 + [150.0], daily=(weeks[:-1] + days, [100.0] * 299 + [100.0, 110.0, 150.0]))
+    daily = out["daily"]
+    assert len(daily) == market.TREND_DAILY_DAYS
+    assert daily[-2] == {"date": days[1], "close": 110.0, "wma_50": 100.2, "wma_100": 100.1, "wma_200": 100.05}
+    assert daily[-1] == out["series"][-1]  # the last day is the headline reading
+    long = market.trend_from_closes(_weekly_dates(1200), [100.0] * 1200, daily=(_weekly_dates(1200), [100.0] * 1200))
+    assert len(long["series"]) == market.TREND_LONG_SERIES_WEEKS == 1040  # twenty years of weeks for the page
+    assert "daily" not in market.trend_from_closes(weeks, [100.0] * 300)
+
+
+def test_trend_daily_average_is_null_until_its_window_fills() -> None:
+    weeks = _weekly_dates(120)
+    out = market.trend_from_closes(weeks, [100.0] * 120, daily=(weeks, [100.0] * 120))
+    assert out["daily"][-1]["wma_100"] == 100.0 and out["daily"][-1]["wma_200"] is None
+    assert out["daily"][0]["wma_50"] is None and out["daily"][49]["wma_50"] == 100.0
+
+
+def _dated_frame(pd, symbols: list[str], n: int = 30):
+    idx = pd.bdate_range("2026-01-05", periods=n)
+    df = pd.DataFrame(index=idx, columns=pd.MultiIndex.from_product([symbols, ["Close"]]), dtype="float64")
+    for s in symbols:
+        df[(s, "Close")] = _ramp(100.0, n)
+    return df, idx
+
+
+def test_index_snapshot_history_adds_daily_closes_to_every_row(monkeypatch) -> None:
+    pd = pytest.importorskip("pandas")
+    df, idx = _dated_frame(pd, sorted(SNAPSHOT_ALL_SYMBOLS))
+    monkeypatch.setattr(market, "_yf", lambda: SimpleNamespace(download=lambda *a, **k: df))
+    seen: list[bool] = []
+    monkeypatch.setattr(market, "sp500_trend", lambda daily=False: seen.append(daily))
+    out = market.index_snapshot(history=True)
+    row = out["indices"][0]
+    assert set(row) == {"symbol", "name", "last", "day_change_pct", "week_change_pct", "history", "high_1y", "low_1y", "change_1y_pct"}
+    assert len(row["history"]) == 30 and row["history"][-1] == [idx[-1].strftime("%Y-%m-%d"), 129.0] and row["history"][0][1] == 100.0
+    assert row["high_1y"] == 129.0 and row["low_1y"] == 100.0 and row["change_1y_pct"] == 29.0
+    assert all("history" in r for r in out["sectors"] + out["rates"] + list(out["macro"].values()))
+    assert "top_holdings" not in out["sectors"][0]  # holdings are their own flag
+    assert seen == [True]
+
+
+def test_index_snapshot_without_history_keeps_the_bare_row(snapshot_yf) -> None:
+    out = market.index_snapshot()
+    assert set(out["sectors"][0]) == {"symbol", "name", "last", "day_change_pct", "week_change_pct"}
+    assert "daily" not in (out["trend"] or {})
+
+
+def test_index_snapshot_history_degrades_when_the_frame_has_no_dates(snapshot_yf) -> None:
+    out = market.index_snapshot(history=True)  # the fake frame carries closes only
+    assert "history" not in out["indices"][0] and out["indices"][0]["last"] == 5069.0
+
+
+def test_top_holdings_are_percent_weights_largest_first(monkeypatch) -> None:
+    pd = pytest.importorskip("pandas")
+    df = pd.DataFrame({"Name": ["Chevron Corp", "Exxon Mobil Corp", "ConocoPhillips"], "Holding Percent": [0.1829, 0.2429, 0.0727]}, index=pd.Index(["CVX", "XOM", "COP"], name="Symbol"))
+    monkeypatch.setattr(market, "_ticker", lambda s: SimpleNamespace(funds_data=SimpleNamespace(top_holdings=df)))
+    assert market.top_holdings("XLE", limit=2) == [{"symbol": "XOM", "name": "Exxon Mobil Corp", "weight_pct": 24.29}, {"symbol": "CVX", "name": "Chevron Corp", "weight_pct": 18.29}]
+
+
+def test_top_holdings_failure_is_null_and_never_fails_the_snapshot(monkeypatch, snapshot_yf) -> None:
+    def boom(symbol):
+        raise RuntimeError("yahoo down")
+
+    monkeypatch.setattr(market, "_ticker", boom)
+    assert market.top_holdings("XLE") is None
+    out = market.index_snapshot(holdings=True)
+    assert [r["top_holdings"] for r in out["sectors"]] == [None] * 11
+    assert "top_holdings" not in out["indices"][0]

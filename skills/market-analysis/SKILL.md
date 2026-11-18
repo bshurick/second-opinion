@@ -30,6 +30,9 @@ Reports the big picture: market status, index levels, sector trends, news, upcom
 - `trend` comes from a second download of the S&P 500's daily closes back to 1950, grouped into weeks. The week in progress counts at today's close. A failed download makes `trend` null.
 - For each of `wma_200`, `wma_100` and `wma_50` it gives `gap_pct` (last weekly close against the simple average, in percent), `percentile` (share of all weeks since the window filled with a smaller gap), `level`, `median_gap_pct` and `share_below_pct` (how often the index has closed under that average).
 - `band_low_pct` and `band_high_pct` are the gaps at the 20th and 80th percentiles, which bound the neutral zone. `series` holds the last five years of weekly closes and averages for the page's chart.
+- `--history` adds each row's daily closes over the trailing year (`history`, with `high_1y`, `low_1y` and `change_1y_pct`) and `trend.daily`, a year of daily S&P 500 closes. It also lengthens `trend.series` from five years of weeks to twenty. Each day in `trend.daily` carries the three averages with that day's close counted as its week's close.
+- `--holdings` adds `top_holdings` to each sector row: Yahoo's ten largest holdings of the sector fund with each one's share of the fund. Yahoo gives the list no date. A failed lookup makes that row's list null.
+- Both flags feed the page. Leave them off when reading the levels, because they add about 400 KB of output.
 - `level` is `extended` at a percentile of 80 or more, `depressed` at 20 or less, and `neutral` between. The cut-offs sit on the gap's own history because the index drifts up, so the average lags below it and the typical gap is positive (about +17% for the 200-week, +9% for the 100-week, +5% for the 50-week).
 
 **`indicators.py`**
@@ -55,6 +58,7 @@ It answers "who is moving money where" from public reporting regimes, not from p
 - **Contracts covered:** the S&P 500, Nasdaq 100, Russell 2000 and Dow futures, all eleven S&P sector index futures, 2- and 10-year notes, the Ultra bond, the dollar index, VIX and bitcoin.
 - **Stale contracts.** A contract's `weeks_behind` says how many weeks older its latest report is than the newest one. Thin sector futures drop out of the report for weeks at a time.
 - **Short ETF history.** The local ETF series starts the first day `flows.py` runs. Flows are null until a second day has been recorded. `observations` and `first_observation` say how much history exists.
+- **Flow windows count readings, not days.** Each flow carries the date it starts from (`flow_5d_from`) and the calendar days it spans (`flow_5d_span_days`); the 1- and 20-observation flows carry the same pair. Quote a flow with its dates.
 - **A dead source.** A block whose source fails becomes `{"error", "code"}` on its own. One dead source never fails the run.
 
 **The page `render.py` builds**
@@ -63,10 +67,11 @@ One self-contained HTML page for the Artifact tool, light and dark themes, no ex
 
 - Five stat tiles: the S&P 500 with its 200-week level, the VIX and its one-year percentile, the 10-year yield and 10y−13w spread, breadth, and S&P futures positioning as each trader class's percentile (asset managers, leveraged funds, small traders).
 - A line chart of the S&P 500's weekly close over five years against its 200-week average, with the 200-week neutral zone shaded and the 100- and 50-week averages drawn faint as context, and a table of each gap's level, percentile and typical gap.
-- An indices, rates and macro table grouped by kind: stocks and volatility, Treasury yields (moves in basis points), and commodities, currency and crypto, each value with its unit.
+- Range buttons on that chart, with `--history` data: daily closes over the latest week, month, three months or year, and weekly closes over 5, 10 or 20 years. The three shorter ranges scale to the close and name any average that falls off the scale.
+- An indices, rates and macro table grouped by kind: stocks and volatility, Treasury yields (moves in basis points), and commodities, currency and crypto, each value with its unit. With `--history` data, clicking a name opens its chart of daily closes with the same range buttons.
 - A crowdedness heatmap of every contract's percentile per trader class, with a sortable contracts table. Clicking a contract opens its weekly history chart and class table.
-- A sectors table joining sector ETF moves, sector futures positioning and sector ETF flows.
-- The ETF flow bars with a short-history note, the money-fund line, and the short-volume table when present.
+- A sectors table joining sector ETF moves, sector futures positioning and sector ETF flows. Clicking a sector opens its fund's ten largest holdings (`--holdings`) and its price chart (`--history`).
+- The fund flow bars, money in to the right of a centre line and money out to the left, with the dates the window covers, the money-fund line, and the short-volume table when present.
 - Flags and the notes.
 - With `--summary`, a headline analysis card at the top. The model writes its text and the script holds it to the limits.
 
@@ -104,7 +109,7 @@ One self-contained HTML page for the Artifact tool, light and dark themes, no ex
 Run with the Bash tool. Every script prints JSON.
 
 ```bash
-"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/market-analysis/scripts/indices.py"
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/market-analysis/scripts/indices.py" [--history] [--holdings]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/market-analysis/scripts/indicators.py"
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/market-analysis/scripts/earnings.py" SYMBOL [SYMBOL ...]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/market-analysis/scripts/flows.py" [--cot] [--etf] [--cash] [--short SYM ...] [--weeks N] [--days N] [--history]
@@ -113,7 +118,7 @@ Run with the Bash tool. Every script prints JSON.
 
 | Script | What it does |
 |---|---|
-| `indices.py` | Indices, sector ETFs, Treasury yields and spreads, gold, dollar, oil, bitcoin, VIX, breadth proxies, and the S&P 500's 50-, 100- and 200-week trend. Takes no arguments. |
+| `indices.py` | Indices, sector ETFs, Treasury yields and spreads, gold, dollar, oil, bitcoin, VIX, breadth proxies, and the S&P 500's 50-, 100- and 200-week trend. `--history` adds daily closes per row and for the trend. `--holdings` adds each sector fund's ten largest holdings. |
 | `indicators.py` | The yield curve, financial conditions and the VIX, each ranked against its whole history. Takes no arguments. |
 | `earnings.py` | Next earnings date and next ex-dividend date per symbol. Takes 1-20 symbols. |
 | `flows.py` | CFTC positioning by trader class, sector ETF flows, retail money-fund cash, and FINRA short volume. |
@@ -169,7 +174,7 @@ Pick the case that matches the request. If a question touches individual stocks 
 
 Use this case for "who is buying", "is money leaving equities", "are institutions or retail behind this move", "where is money rotating".
 
-1. Run `indices.py` and write its output to `DIR/indices.json`. DIR is the session scratchpad.
+1. Run `indices.py --history --holdings` and write its output to `DIR/indices.json`. DIR is the session scratchpad. Read the levels from the file with the `history`, `series` and `daily` lists left out.
 2. Run `flows.py --history` once and write its output to `DIR/flows.json`. Add `--short SYM` when the question names a stock.
 3. Read the accounts: run the portfolio-analysis skill's `brief.py --no-headlines` (`"${CLAUDE_PLUGIN_ROOT}/skills/portfolio-analysis/scripts/brief.py" --no-headlines > DIR/portfolio.json`, about 10 seconds). If it fails for any reason, including an expired E*Trade login or that skill not being installed, go on without `for_you`, and do not raise the login prompt for this section alone.
 4. If an earlier Market Flows page exists, check it with `get_artifact`. Leave `for_you` out unless its read mode is `owner` or the page is new. An artifact keeps its link across republishes, and the fold only hides text that is still in the HTML. If the check fails, leave `for_you` out.

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.16.0
+
+- market analysis: the trend chart has range buttons. "5 years" is the weekly chart as before, and "10 years" and "20 years" extend it; "1 week", "1 month", "3 months" and "1 year" switch to daily closes. Each day carries the 50-, 100- and 200-week averages with that day's close counted as its week's close, so the last daily point equals the headline reading. The three shorter ranges scale the axis to the close and name any average that falls off the scale.
+- market analysis: every name in the indices, rates and macro table opens a modal with its daily closes over the trailing year, the same range buttons, and the high, low and change over the period. Yield changes are in basis points.
+- market analysis: every sector in the sectors table opens a modal with its fund's ten largest holdings, each one's share of the fund, and the fund's price chart. The holdings come from Yahoo, which gives them no date.
+- market analysis: `indices.py` takes `--history` (daily closes per row, `trend.daily`, and a `trend.series` of twenty years of weeks in place of five) and `--holdings` (`top_holdings` per sector row, one Yahoo lookup per fund). Both are off by default, and the flows steps turn both on. A page built from a result without them renders as before, with no buttons.
+- market analysis: the ETF flows card is now "Fund flows" and reads in plain words. Bars run right of a centre line for money in and left for money out, in order of share of the fund, with the share and the dollars in their own columns. The card and each tooltip give the dates the window covers in place of "5 obs" and "20 obs". `flows.py` carries those dates: each flow has `flow_*_from` and `flow_*_span_days`.
+- market analysis: the daily charts label and hover on dates that have a close, formatted in UTC, so a close is never labelled a day early or on a weekend.
+
 ## 1.15.0
 
 - get-started: the first run asks every open question in one form instead of one message at a time. In Claude Code the form uses the question tool, one tab per question; elsewhere it is one numbered message answered in one reply. A question whose answer is already saved is not asked.

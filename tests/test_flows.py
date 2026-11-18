@@ -78,6 +78,18 @@ def test_etf_flow_summary_uses_the_span_of_observations_not_calendar_days() -> N
     series = {"SPY": [{"date": "2026-08-01", "nav": 700.0, "aum_usd": 7e11, "shares": 1_000_000_000}, {"date": "2026-09-11", "nav": 760.0, "aum_usd": 7.6e11 + 7.6e8, "shares": 1_001_000_000}]}
     out = flows.etf_flow_summary(series)
     assert out[0]["flow_1d_usd"] == 1_000_000 * 760.0 and out[0]["first_observation"] == "2026-08-01" and out[0]["flow_1d_span_days"] == 41
+    # every window says where it starts and how many calendar days it covers
+    assert out[0]["flow_1d_from"] == out[0]["flow_5d_from"] == out[0]["flow_20d_from"] == "2026-08-01"
+    assert out[0]["flow_5d_span_days"] == out[0]["flow_20d_span_days"] == 41
+
+
+def test_etf_flow_windows_start_at_the_reading_they_are_measured_from() -> None:
+    obs = [{"date": f"2026-09-{d:02d}", "nav": 100.0, "aum_usd": 1e9, "shares": 1_000_000 + d} for d in range(1, 9)]  # 8 readings
+    row = flows.etf_flow_summary({"XLK": obs})[0]
+    assert row["flow_1d_from"] == "2026-09-07" and row["flow_5d_from"] == "2026-09-03" and row["flow_5d_span_days"] == 5
+    assert row["flow_20d_from"] == "2026-09-01" and row["flow_20d_span_days"] == 7  # shorter than the window: from the first reading
+    one = flows.etf_flow_summary({"XLE": obs[:1]})[0]
+    assert one["flow_5d_from"] is None and one["flow_5d_span_days"] is None
 
 
 def test_cash_summary_reports_changes_over_one_four_thirteen_and_fifty_two_weeks() -> None:

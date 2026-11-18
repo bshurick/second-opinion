@@ -25,6 +25,15 @@ def test_indices_script(monkeypatch, capsys) -> None:
     assert rc == 0 and out["as_of"] == "x"
 
 
+def test_indices_script_passes_its_flags(monkeypatch, capsys) -> None:
+    seen = []
+    monkeypatch.setattr(market, "index_snapshot", lambda **kw: seen.append(kw) or {"as_of": "x", "indices": []})
+    for args in ([], ["--history"], ["--history", "--holdings"]):
+        rc, _ = run_json(load_script("market-analysis/scripts/indices.py"), args, capsys)
+        assert rc == 0
+    assert seen == [{}, {"history": True}, {"history": True, "holdings": True}]
+
+
 def test_earnings_script(monkeypatch, capsys) -> None:
     events = {"AAPL": {"next_earnings": "2026-10-29", "next_ex_dividend": "2026-11-07"}, "MSFT": {"next_earnings": "2026-10-28", "next_ex_dividend": None}, "BRK": {"next_earnings": None, "next_ex_dividend": None}}
     monkeypatch.setattr(market, "next_events", lambda s: events[s])
@@ -113,7 +122,7 @@ def test_market_render_builds_a_page_from_indices_and_flows(tmp_path, capsys) ->
     assert "window.DATA = " in html and "const FA" in html and '"flows"' in html and '"indices"' in html
     assert "</script> INDEX" not in html and "<\\/script> INDEX" in html
     assert "S&amp;P 500 6,500.12 (+0.4%) · vs 200-week average +27.4% (extended) · VIX 15.2 (1y percentile 40) · 10y 4.95% · positioning as of 2026-09-08 · ETF flows as of 2026-09-11 · retail money funds $3,009B (2026-08-03)" in html
-    for section in ("Indices", "Positioning", "Crowdedness", "Sectors", "ETF flows", "Cash on the sidelines", "Short volume", "Flags", "not financial advice"):
+    for section in ("Indices", "Positioning", "Crowdedness", "Sectors", "Fund flows", "Cash on the sidelines", "Short volume", "Flags", "not financial advice"):
         assert section in html
     assert "prefers-color-scheme: dark" in html and 'data-theme="dark"' in html and "http" not in html.split("</style>")[1].split("<script>")[0]
     assert 'id="explain"' in html and "FA.explain(" in html and "FA.term(" in html
@@ -363,3 +372,67 @@ def test_market_page_puts_the_trend_chart_between_the_tiles_and_the_indices(tmp_
     html = (tmp_path / "p.html").read_text()
     assert rc == 0 and html.index('id="tiles"') < html.index('id="trend-card"') < html.index('id="idx-card"')
     assert "-week average`" not in html  # the trend no longer adds tiles
+
+
+def _history_indices() -> dict:
+    """INDICES as ``indices.py --history --holdings`` gives it: daily closes per row, trend.daily, sector holdings."""
+    hist = [[f"2026-09-{d:02d}", 6400.0 + 10 * d] for d in range(1, 12)]
+    extra = {"history": hist, "high_1y": 6510.0, "low_1y": 6410.0, "change_1y_pct": 1.56}
+    daily = [{"date": d, "close": c, "wma_50": 6300.0, "wma_100": 5900.0, "wma_200": 5100.0} for d, c in hist]
+    return {**INDICES,
+            "indices": [{**r, **extra} for r in INDICES["indices"]],
+            "rates": [{**r, **extra} for r in INDICES["rates"]],
+            "sectors": [{**INDICES["sectors"][0], **extra, "top_holdings": [{"symbol": "AAPL", "name": "Apple Inc", "weight_pct": 15.31}, {"symbol": "NVDA", "name": "NVIDIA Corp", "weight_pct": 15.08}]}, INDICES["sectors"][1]],
+            "trend": {**INDICES["trend"], "daily": daily, "series": [{"date": "2026-09-04", "close": 6500.12, "wma_50": 6300.0, "wma_100": 5900.0, "wma_200": 5100.0}] * 600}}
+
+
+_PROBE = """<script>window.addEventListener('load', () => setTimeout(() => {
+  const q = (s, r) => [...(r || document).querySelectorAll(s)], out = {};
+  const modal = b => { b.click(); const m = document.querySelector('.overlay .modal'); const r = {text: m.innerText, chips: q('button.chip', m).map(x => x.textContent), paths: q('svg path', m).length}; m.querySelector('.x').click(); return r; };
+  const tc = document.getElementById('trend-chart');
+  out.trend = q('button.chip', tc).map(b => { b.click(); return [b.textContent, b.getAttribute('aria-pressed'), q('.legend span', tc).length, tc.querySelector('p.note').textContent]; });
+  out.names = q('#indices button[data-sym]').map(b => b.textContent);
+  out.index = out.names.length ? modal(q('#indices button[data-sym]')[0]) : null;
+  out.sectors = q('#sectors button[data-sym]').map(b => b.textContent);
+  out.sector = out.sectors.length ? modal(q('#sectors button[data-sym]')[0]) : null;
+  const s = document.createElement('script'); s.type = 'application/json'; s.id = 'probe'; s.textContent = JSON.stringify(out); document.body.appendChild(s);
+}, 200));</script>"""
+
+
+def _probe(tmp_path, capsys, indices: dict) -> dict:
+    import re
+    import subprocess
+
+    from page_dom import CHROME
+
+    (tmp_path / "indices.json").write_text(json.dumps(indices))
+    rc, _ = run_json(load_script("market-analysis/scripts/render.py"), ["--indices", str(tmp_path / "indices.json"), "--out", str(tmp_path / "p.html")], capsys)
+    assert rc == 0
+    (tmp_path / "probe.html").write_text("<!doctype html><meta charset=utf8>" + (tmp_path / "p.html").read_text() + _PROBE)
+    dom = subprocess.run([CHROME, "--headless=new", "--disable-gpu", "--no-sandbox", "--virtual-time-budget=4000", "--dump-dom", (tmp_path / "probe.html").as_uri()], capture_output=True, text=True, timeout=90).stdout
+    m = re.search(r'<script type="application/json" id="probe">(.*?)</script>', dom, re.S)
+    assert m, "the probe did not run"
+    return json.loads(m.group(1))
+
+
+@requires_chrome
+def test_market_page_zooms_the_trend_and_opens_name_and_sector_modals(tmp_path, capsys) -> None:
+    out = _probe(tmp_path, capsys, _history_indices())
+    assert [t[0] for t in out["trend"]] == ["1 week", "1 month", "3 months", "1 year", "5 years", "10 years", "20 years"]  # 600 weeks reach past 10 years
+    week = out["trend"][0]
+    assert week[1] == "true" and "Daily closes, Sep 7, 2026 to Sep 11, 2026" in week[3]
+    assert "Off this scale: 50-week average 6,300 · 100-week average 5,900 · 200-week average 5,100." in week[3]
+    assert week[2] == 0  # one line left, so no legend
+    assert out["trend"][3][2] == 5 and out["trend"][4][3] == ""  # a year and five years draw every average and the zone
+    assert out["names"] == ["S&P 500", "VIX", "10-year Treasury"]  # the macro rows carry no history here
+    assert out["index"]["chips"] == ["1 week", "1 month", "3 months", "1 year"] and out["index"]["paths"] == 1
+    assert "High over the period" in out["index"]["text"] and "11 daily closes, Sep 1, 2026 to Sep 11, 2026" in out["index"]["text"]
+    assert out["sectors"] == ["Technology"]  # Energy has neither holdings nor history
+    assert "Largest 2 holdings" in out["sector"]["text"] and "Apple Inc" in out["sector"]["text"] and "15.31%" in out["sector"]["text"]
+    assert "These 2 holdings make up 30.4% of the fund" in out["sector"]["text"] and out["sector"]["paths"] == 1
+
+
+@requires_chrome
+def test_market_page_without_history_has_no_buttons(tmp_path, capsys) -> None:
+    out = _probe(tmp_path, capsys, INDICES)
+    assert out["trend"] == [] and out["names"] == [] and out["sectors"] == []

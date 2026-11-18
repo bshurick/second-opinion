@@ -4,11 +4,13 @@
 Turns a ``flows.py`` result and/or an ``indices.py`` result (at least one) into one self-contained
 interactive HTML page for the Artifact tool: stat tiles (S&P 500 with its 200-week level, VIX and its one-year percentile,
 the 10-year yield and the 10y-13w spread, breadth, and one S&P futures tile with each trader class's percentile; a tile whose source delivered nothing is
-left out), a chart of the S&P 500's weekly close with its 50-, 100- and 200-week averages and a table of each gap's level, an indices/rates/macro table, the
+left out), a chart of the S&P 500's weekly close with its 50-, 100- and 200-week averages and a table of each gap's level (with ``indices.py --history`` data, range
+buttons zoom it to daily closes over the latest week, month, three months or year, and out to weekly closes over 10 and 20 years), an indices/rates/macro table (each name opens its daily-close chart when the row
+carries ``history``), the
 positioning block (a crowdedness heatmap of every contract's percentile per trader class, a sortable
 contracts table; clicking a contract opens its weekly net-position chart when flows.py ran with
 ``--history``, else its class table), a sectors table joining sector ETF moves, sector futures
-positioning and sector ETF flows, the ETF flow bars with an observations note while the local series
+positioning and sector ETF flows (a sector opens its fund's largest holdings from ``indices.py --holdings`` and its price chart), the ETF flow bars with an observations note while the local series
 is short, the money-fund line, the short-volume table when present, flags (dead blocks, contracts
 missing from the report, funds missing from the finder) and the script's notes. Prints
 ``{"out", "title", "indices", "contracts", "funds", "flags"}``. Exit 2 on a missing or malformed
@@ -53,7 +55,7 @@ BODY = """
   <h3 id="crowd-h">Crowdedness</h3><p class="sub" id="crowd-sub">Percentile of each class's net position within the window. Deep red is the most net-long the class has been over the window, deep blue the most net-short; both are crowded readings.</p><div id="crowd"></div>
   <div class="twrap" id="positioning" style="margin-top:12px"></div><p class="note" id="pos-note"></p></section>
 <section class="card" id="sec-card"><h2>Sectors</h2><p class="sub" id="sec-sub">Each sector three ways: the sector ETF's price move, the sector futures positioning percentile per trader class, and the sector ETF's net creations as a share of its assets.</p><div class="twrap" id="sectors"></div></section>
-<section class="card" id="etf-card"><h2>ETF flows</h2><p class="sub" id="etf-sub">Net creations (money in) or redemptions (money out) over the last five observations, as a share of each fund's assets.</p><div id="etf-bars"></div><p class="note" id="etf-note"></p></section>
+<section class="card" id="etf-card"><h2>Fund flows</h2><p class="sub" id="etf-sub">Money that went into or out of each sector's exchange-traded fund (ETF), as a share of the fund's size.</p><div id="etf-bars"></div><p class="note" id="etf-note"></p></section>
 <section class="card" id="cash-card"><h2>Cash on the sidelines</h2><p class="sub" id="cash-sub">Retail money market fund assets, weekly, over the past year. Rising means cash is leaving risk or being saved; falling means it is being deployed or spent.</p><div id="cash"></div><p class="note" id="cash-note"></p></section>
 <section class="card" id="short-card" hidden><h2>Short volume</h2><p class="sub">The share of each day's volume that was sold short, against the symbol's own average over the window. Compare a symbol with itself, not with others.</p><div class="twrap" id="short"></div></section>
 <section data-help="none" id="flags-section"><h2>Flags</h2>""" + page.FLAGS_INTRO + """<ul class="flags" id="flags"></ul><ul class="news" id="notes"></ul></section>
@@ -73,6 +75,30 @@ SCRIPT = r"""
   const big = v => { if (!isNum(v)) return '—'; const a = Math.abs(v), s = v < 0 ? '-' : ''; return a >= 1e9 ? s + '$' + (a / 1e9).toFixed(2) + 'B' : a >= 1e6 ? s + '$' + (a / 1e6).toFixed(1) + 'M' : s + '$' + F.num(a, 0); };
   const setHtml = (id, html) => { const n = g(id); n.innerHTML = html; F.armTerms(n); };
   const hide = id => { g(id).hidden = true; };
+  // dates arrive as YYYY-MM-DD and parse as UTC midnight, so they are formatted in UTC to keep the day
+  const dayFmt = x => new Date(x).toLocaleDateString('en-US', {month: 'short', day: 'numeric', timeZone: 'UTC'});
+  const fullFmt = x => new Date(x).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC'});
+  const RANGES = [['1 week', 5], ['1 month', 21], ['3 months', 63], ['1 year', 0]];   // sessions of daily closes; 0 is all of them
+  // range buttons over a chart: ranges = [[label, draw(box) -> note html]]; the one at `start` draws first
+  const ranged = (root, ranges, start) => {
+    root.innerHTML = '';
+    const bar = F.el('div', {class: 'controls', role: 'group', 'aria-label': 'Chart range'}), box = F.el('div'), note = F.el('p', {class: 'note', style: 'margin-top:6px'});
+    root.append(bar, box, note);
+    const pick = i => { bar.querySelectorAll('button').forEach((b, j) => b.setAttribute('aria-pressed', j === i ? 'true' : 'false')); note.innerHTML = ranges[i][1](box) || ''; note.hidden = !note.innerHTML; };
+    ranges.forEach(([label], i) => { const b = F.el('button', {class: 'chip', type: 'button'}, F.esc(label)); b.addEventListener('click', () => pick(i)); bar.appendChild(b); });
+    pick(start);
+  };
+  // x labels on the dates that have a close, so a short range never labels a weekend
+  const tickAt = xs => { const k = Math.min(6, xs.length); return Array.from({length: k}, (_, i) => xs[Math.round(i * (xs.length - 1) / Math.max(1, k - 1))]); };
+  // one formatter for ticks and tooltip: it names the nearest date that has a close, not the cursor's date
+  const snapFmt = (xs, fmt) => x => fmt(xs.reduce((b, v) => Math.abs(v - x) < Math.abs(b - x) ? v : b, xs[0]));
+  const NAME_BTN = 'font:inherit;font-weight:600;color:inherit;background:none;border:0;padding:0;cursor:pointer;text-decoration:underline dotted var(--muted);text-underline-offset:3px';
+  const nameBtn = (key, name) => `<button type="button" data-sym="${F.esc(key)}" style="${NAME_BTN}">${F.esc(name)}</button>`;
+  // one row's daily closes with range buttons; h = {name, r (the indices.py row), axis (y format)}
+  const priceChart = (root, h) => ranged(root, RANGES.map(([label, n]) => [label, el => { const rows = n ? h.r.history.slice(-n) : h.r.history, xs = rows.map(([d]) => Date.parse(d));
+    F.lines(el, {series: [{name: h.name, points: rows.map(([d, c]) => [Date.parse(d), c]), color: F.S[0]}], xIsDate: true, xFmt: snapFmt(xs, n ? dayFmt : fullFmt), xTicks: tickAt(xs), endLabels: false, height: 260, yFmt: h.axis, aria: `${h.name} daily closes, ${label}`});
+    return `Daily closes, ${F.esc(fullFmt(Date.parse(rows[0][0])))} to ${F.esc(fullFmt(Date.parse(rows[rows.length - 1][0])))}.`; }]), RANGES.length - 1);
+  const hasHist = r => r && Array.isArray(r.history) && r.history.length > 1;
   Object.assign(F.glossary, {
     'asset managers': ['Pensions, insurers, endowments and mutual funds: the slow institutional money, which is usually net long stock index futures.', 'https://www.cftc.gov/MarketReports/CommitmentsofTraders/ExplanatoryNotes/index.htm'],
     'leveraged funds': ['Hedge funds and commodity trading advisers, which are usually net short index futures as a hedge against the stocks they own.', 'https://www.cftc.gov/MarketReports/CommitmentsofTraders/ExplanatoryNotes/index.htm'],
@@ -124,15 +150,27 @@ SCRIPT = r"""
     const bp = (last, pct) => isNum(last) && isNum(pct) ? last - last / (1 + pct / 100) : null;   // pct is the change of the yield itself
     const bpFmt = v => isNum(v) ? `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v * 100).toFixed(1)} bp` : '—';
     const money = (v, cur) => isNum(v) ? cur + F.num(v, v >= 1000 ? 0 : 2) : '—';
-    const row = (name, last, day, week, dayCls, weekCls) => `<tr><td class="l"><b>${F.esc(name)}</b></td><td>${last}</td><td class="${dayCls}">${day}</td><td class="${weekCls}">${week}</td></tr>`;
+    // a row with daily closes (indices.py --history) gets a name button that opens its chart
+    const HIST = {};
+    const pctChg = (r, k) => [p1(r[k]), F.cls(r[k])], bpChg = (r, k) => { const v = bp(r.last, r[k]); return [bpFmt(v), F.cls(v)]; };
+    const row = (r, name, val, chg) => { const key = r.symbol || name, [day, dayCls] = chg(r, 'day_change_pct'), [week, weekCls] = chg(r, 'week_change_pct');
+      if (hasHist(r)) HIST[key] = {r, name, val, chg, axis: val === n2 && isNum(r.last) && Math.abs(r.last) >= 1000 ? n0 : val};
+      return `<tr><td class="l">${HIST[key] ? nameBtn(key, name) : `<b>${F.esc(name)}</b>`}</td><td>${val(r.last)}</td><td class="${dayCls}">${day}</td><td class="${weekCls}">${week}</td></tr>`; };
     const groups = [
-      ['Stocks and volatility', (I.indices || []).map(r => row(r.name, n2(r.last), p1(r.day_change_pct), p1(r.week_change_pct), F.cls(r.day_change_pct), F.cls(r.week_change_pct)))],
-      ['Treasury yields', (I.rates || []).map(r => { const d = bp(r.last, r.day_change_pct), w = bp(r.last, r.week_change_pct); return row(r.name, isNum(r.last) ? r.last.toFixed(2) + '%' : '—', bpFmt(d), bpFmt(w), F.cls(d), F.cls(w)); })],
-      ['Commodities, currency and crypto', MACRO.filter(([k]) => (I.macro || {})[k]).map(([k, name, cur]) => { const r = I.macro[k]; return row(name, cur ? money(r.last, cur) : n2(r.last), p1(r.day_change_pct), p1(r.week_change_pct), F.cls(r.day_change_pct), F.cls(r.week_change_pct)); })]];
+      ['Stocks and volatility', (I.indices || []).map(r => row(r, r.name, n2, pctChg))],
+      ['Treasury yields', (I.rates || []).map(r => row(r, r.name, v => isNum(v) ? v.toFixed(2) + '%' : '—', bpChg))],
+      ['Commodities, currency and crypto', MACRO.filter(([k]) => (I.macro || {})[k]).map(([k, name, cur]) => row(I.macro[k], name, cur ? v => money(v, cur) : n2, pctChg))]];
     setHtml('indices', '<table><thead><tr><th class="l">Name</th><th>Last</th><th>Day</th><th>Week</th></tr></thead>' +
       groups.filter(([, rs]) => rs.length).map(([label, rs]) => `<tbody><tr><th class="l" colspan="4" style="padding-top:14px;color:var(--ink2)">${F.esc(label)}</th></tr>${rs.join('')}</tbody>`).join('') + '</table>');
     const sp = I.spreads || {};
     setHtml('idx-note', `${FA.term('yield spread', 'Spreads')} (pts): 10y−13w ${n2(sp['10y_13w'])} · 5y−13w ${n2(sp['5y_13w'])} · 30y−5y ${n2(sp['30y_5y'])} · 30y−13w ${n2(sp['30y_13w'])}${I.breadth ? ` · ${FA.term('breadth', 'breadth')}: RSP−SPY 3m ${p1(I.breadth.rsp_spy_3m)}` : ''} · as of ${F.esc(I.as_of || '—')}`);
+    if (Object.keys(HIST).length) {
+      g('idx-card').querySelector('p.sub').append(' Click a name for its chart of daily closes over the past year.');
+      g('indices').addEventListener('click', e => { const b = e.target.closest('button[data-sym]'), h = b && HIST[b.dataset.sym]; if (!h) return; const r = h.r;
+        const [day] = h.chg(r, 'day_change_pct'), [week] = h.chg(r, 'week_change_pct'), [year] = h.chg(r, 'change_1y_pct');
+        const box = F.modal(`<h3>${F.esc(h.name)}</h3><p class="sub">${r.symbol ? F.esc(r.symbol) + ' · ' : ''}last ${h.val(r.last)} · day ${day} · week ${week}</p><div id="i-chart"></div><dl class="kv"><dt>High over the period</dt><dd>${h.val(r.high_1y)}</dd><dt>Low over the period</dt><dd>${h.val(r.low_1y)}</dd><dt>Change over the period</dt><dd>${year}</dd><dt>Period</dt><dd>${r.history.length} daily closes, ${F.esc(fullFmt(Date.parse(r.history[0][0])))} to ${F.esc(fullFmt(Date.parse(r.history[r.history.length - 1][0])))}</dd></dl>`);
+        priceChart(box.querySelector('#i-chart'), h); });
+    }
   } else hide('idx-card');
   // positioning
   if (contracts.length) {
@@ -173,25 +211,57 @@ SCRIPT = r"""
   names.forEach(n => { const s = I ? (I.sectors || []).find(x => String(x.name).toLowerCase() === n) : null; const c = sectorFut[n]; const f = fundBy[n];
     secRows.push({sector: (s && s.name) || (f && f.name) || (c && c.label.replace(/ sector$/, '')), ticker: (s && s.symbol) || (f && f.ticker) || '—', day: s ? s.day_change_pct : null, week: s ? s.week_change_pct : null,
       am_pct: c ? c.classes.asset_managers.percentile : null, lev_pct: c ? c.classes.leveraged_funds.percentile : null, sm_pct: c ? c.classes.small_traders.percentile : null, behind: c ? c.weeks_behind : null,
-      flow5: f ? f.flow_5d_pct_aum : null, flow20: f ? f.flow_20d_pct_aum : null, obs: f ? f.observations : null}); });
+      flow5: f ? f.flow_5d_pct_aum : null, flow20: f ? f.flow_20d_pct_aum : null, obs: f ? f.observations : null, src: s, more: !!s && (hasHist(s) || (s.top_holdings || []).length > 0)}); });
   if (secRows.length) {
     const pctCls = v => isNum(v) ? (v >= 90 || v <= 10 ? 'neg' : '') : '';
-    F.table(g('sectors'), [{key: 'sector', label: 'Sector', left: true, fmt: (v, r) => `<b>${F.esc(v)}</b> <span class="muted">${F.esc(r.ticker)}</span>`}, {key: 'day', label: 'ETF day', fmt: p1, cls: F.cls}, {key: 'week', label: 'ETF week', fmt: p1, cls: F.cls},
+    F.table(g('sectors'), [{key: 'sector', label: 'Sector', left: true, fmt: (v, r) => `${r.more ? nameBtn(r.ticker, v) : `<b>${F.esc(v)}</b>`} <span class="muted">${F.esc(r.ticker)}</span>`}, {key: 'day', label: 'ETF day', fmt: p1, cls: F.cls}, {key: 'week', label: 'ETF week', fmt: p1, cls: F.cls},
       {key: 'am_pct', label: 'AM pct', fmt: (v, r) => p0(v) + (isNum(r.behind) && r.behind > 0 ? ` <span class="muted">(${r.behind}w)</span>` : ''), cls: pctCls}, {key: 'lev_pct', label: 'LEV pct', fmt: p0, cls: pctCls}, {key: 'sm_pct', label: 'Small pct', fmt: p0, cls: pctCls},
-      {key: 'flow5', label: 'Flow 5 obs', fmt: (v, r) => isNum(v) ? p1(v) + ' of AUM' : (isNum(r.obs) ? `<span class="muted">${r.obs} obs</span>` : '—'), cls: F.cls}, {key: 'flow20', label: 'Flow 20 obs', fmt: (v, r) => isNum(v) ? p1(v) + ' of AUM' : (isNum(r.obs) ? `<span class="muted">${r.obs} obs</span>` : '—'), cls: F.cls}], secRows, {sortKey: 'week'});
-    setHtml('sec-sub', `Each sector three ways: the sector ETF's price move, the sector futures ${FA.term('percentile')} per trader class (${FA.term('asset managers', 'AM')}, ${FA.term('leveraged funds', 'LEV')}, ${FA.term('small traders', 'Small')}), and the sector ETF's net ${FA.term('creation', 'creations')} as a share of its assets. "obs" counts the days recorded so far when a flow cannot be computed yet.`);
+      {key: 'flow5', label: 'Flow, 5 readings', fmt: (v, r) => isNum(v) ? p1(v) + ' of fund' : (isNum(r.obs) ? `<span class="muted">${r.obs} recorded</span>` : '—'), cls: F.cls}, {key: 'flow20', label: 'Flow, 20 readings', fmt: (v, r) => isNum(v) ? p1(v) + ' of fund' : (isNum(r.obs) ? `<span class="muted">${r.obs} recorded</span>` : '—'), cls: F.cls}], secRows, {sortKey: 'week'});
+    setHtml('sec-sub', `Each sector three ways: the sector ETF's price move, the sector futures ${FA.term('percentile')} per trader class (${FA.term('asset managers', 'AM')}, ${FA.term('leveraged funds', 'LEV')}, ${FA.term('small traders', 'Small')}), and the sector ETF's net ${FA.term('creation', 'creations')} as a share of the fund's size over its last 5 and 20 recorded readings (the Fund flows card gives the dates). A count of readings recorded stands in when a flow cannot be computed yet.${secRows.some(r => r.more) ? ' Click a sector for its fund\'s largest holdings and price chart.' : ''}`);
+    g('sectors').addEventListener('click', e => { const b = e.target.closest('button[data-sym]'), sr = b && secRows.find(x => x.ticker === b.dataset.sym && x.more); if (!sr) return; const s = sr.src, top = s.top_holdings || [];
+      const shown = top.reduce((a, t) => a + (isNum(t.weight_pct) ? t.weight_pct : 0), 0), wmax = Math.max(...top.map(t => t.weight_pct || 0), 1);
+      const box = F.modal(`<h3>${F.esc(s.name)}</h3><p class="sub">${F.esc(s.symbol)}, the sector's exchange-traded fund · last ${n2(s.last)} · day ${p1(s.day_change_pct)} · week ${p1(s.week_change_pct)}</p>` +
+        (top.length ? `<h4 style="margin:12px 0 4px;font-size:13px">Largest ${top.length} holdings</h4><div class="twrap"><table><thead><tr><th class="l">Holding</th><th class="l">Ticker</th><th>Share of fund</th><th class="l" style="width:35%"></th></tr></thead><tbody>` +
+          top.map(t => `<tr><td class="l">${F.esc(t.name)}</td><td class="l muted">${F.esc(t.symbol)}</td><td>${isNum(t.weight_pct) ? t.weight_pct.toFixed(2) + '%' : '—'}</td><td class="l"><div style="height:8px;border-radius:2px;background:${F.S[0]};width:${isNum(t.weight_pct) ? Math.max(1, t.weight_pct / wmax * 100).toFixed(1) : 0}%"></div></td></tr>`).join('') +
+          `</tbody></table></div><p class="note" style="margin-top:6px">These ${top.length} holdings make up ${shown.toFixed(1)}% of the fund. Source: Yahoo Finance, which gives the list no date.</p>` : '<p class="muted">No holdings list came with this run. Run indices.py with --holdings to add it.</p>') +
+        (hasHist(s) ? '<h4 style="margin:14px 0 4px;font-size:13px">Fund price</h4><div id="s-chart"></div>' : ''));
+      if (hasHist(s)) priceChart(box.querySelector('#s-chart'), {name: s.symbol, r: s, axis: n2}); });
   } else hide('sec-card');
-  // ETF flow bars
+  // fund flow bars: money in to the right of a centre line, money out to the left, sized by share of the fund
   if (etf) {
     const funds = etf.funds || [];
-    const withFlow = funds.filter(f => isNum(f.flow_5d_pct_aum));
-    if (withFlow.length) F.bars(g('etf-bars'), withFlow.map(f => ({label: `${f.ticker} ${f.name}`, share: f.flow_5d_pct_aum / 100, color: f.flow_5d_pct_aum >= 0 ? F.S[1] : F.S[7], text: `${p1(f.flow_5d_pct_aum)} · ${big(f.flow_5d_usd)}`,
-      tip: `<b>${F.esc(f.ticker)}</b> ${F.esc(f.name)}<br>5 obs ${big(f.flow_5d_usd)} (${p1(f.flow_5d_pct_aum)} of AUM)<br>20 obs ${big(f.flow_20d_usd)} (${p1(f.flow_20d_pct_aum)})<br>1 obs ${big(f.flow_1d_usd)} over ${f.flow_1d_span_days ?? '—'} days<br>AUM ${big(f.aum_usd)} · ${n0(f.shares)} shares · ${F.esc(f.as_of)}`})));
-    else g('etf-bars').innerHTML = '<p class="muted">No flows yet: the local shares series needs at least two recorded days.</p>';
-    const short = funds.filter(f => !isNum(f.flow_5d_pct_aum) || f.observations < 6);
-    const groups = {}; short.forEach(f => { const k = `${f.observations}|${f.first_observation}`; (groups[k] = groups[k] || []).push(f.ticker); });
-    const shortNote = Object.entries(groups).map(([k, tickers]) => { const [n, since] = k.split('|'); const who = tickers.length === funds.length ? `all ${funds.length} funds` : tickers.map(F.esc).join(', '); return `${who}: ${n} observation${n === '1' ? '' : 's'} since ${F.esc(since)}`; }).join('; ');
-    setHtml('etf-note', `Shares outstanding = AUM ÷ NAV from State Street's daily fund data, recorded locally each run; a flow is the change in shares × NAV, so sums cover observations, not calendar days.${shortNote ? ' Short history — ' + shortNote + '.' : ''}${(etf.unavailable || []).length ? ' Not in the finder: ' + etf.unavailable.map(F.esc).join(', ') + '.' : ''} As of ${F.esc(etf.as_of || '—')}.`);
+    const withFlow = funds.filter(f => isNum(f.flow_5d_pct_aum)).sort((x, y) => y.flow_5d_pct_aum - x.flow_5d_pct_aum);
+    const IN = F.S[0], OUT = F.S[1];
+    const day = d => F.esc(fullFmt(Date.parse(d)));
+    const days = n => isNum(n) ? ` (${n} day${n === 1 ? '' : 's'})` : '';
+    const inOut = v => isNum(v) ? `${big(Math.abs(v))} ${v >= 0 ? 'in' : 'out'}` : '—';
+    const share = v => isNum(v) ? `${Math.abs(v).toFixed(1)}% of the fund` : '—';
+    // the window a flow covers; a result from before the dates were carried falls back to the count of readings
+    const span = (f, k) => f[`flow_${k}_from`] ? `${day(f[`flow_${k}_from`])} to ${day(f.as_of)}${days(f[`flow_${k}_span_days`])}` : null;
+    const windows = [...new Set(withFlow.map(f => span(f, '5d')))];
+    const common = windows.length === 1 ? windows[0] : null;
+    if (withFlow.length) {
+      const max = Math.max(...withFlow.map(f => Math.abs(f.flow_5d_pct_aum)), 1e-9);
+      const COLS = 'display:grid;grid-template-columns:minmax(120px,1.4fr) 3fr 58px 78px;gap:10px;align-items:center;font-size:13px;padding:3px 0';
+      const root = g('etf-bars'); root.innerHTML = '';
+      root.appendChild(F.el('div', {style: COLS + ';color:var(--muted);font-size:11px;letter-spacing:.05em;text-transform:uppercase'},
+        `<span>Fund</span><span style="display:flex;justify-content:space-between"><span>← money out</span><span>money in →</span></span><span style="text-align:right">Of fund</span><span style="text-align:right">Dollars</span>`));
+      withFlow.forEach(f => { const v = f.flow_5d_pct_aum, w = (50 * Math.abs(v) / max).toFixed(1), tone = v >= 0 ? 'pos' : 'neg';
+        const row = F.el('div', {style: COLS}, `<span><b>${F.esc(f.ticker)}</b> ${F.esc(f.name)}</span>` +
+          `<div style="position:relative;height:14px;background:var(--grid);border-radius:3px"><div style="position:absolute;top:0;bottom:0;${v >= 0 ? 'left:50%' : 'right:50%'};width:${w}%;min-width:2px;background:${v >= 0 ? IN : OUT};border-radius:${v >= 0 ? '0 3px 3px 0' : '3px 0 0 3px'}"></div><div style="position:absolute;top:-3px;bottom:-3px;left:50%;width:1px;background:var(--muted)"></div></div>` +
+          `<span class="${tone}" style="text-align:right;font-variant-numeric:tabular-nums">${p1(v)}</span><span style="text-align:right;font-variant-numeric:tabular-nums;color:var(--ink2)">${isNum(f.flow_5d_usd) ? (f.flow_5d_usd < 0 ? '−' : '+') + big(Math.abs(f.flow_5d_usd)) : '—'}</span>`);
+        const w5 = span(f, '5d'), w20 = span(f, '20d'), w1 = span(f, '1d');
+        F.bindTip(row, `<b>${F.esc(f.ticker)}</b> ${F.esc(f.name)}<br>${w5 || 'Last five readings'}: <b>${inOut(f.flow_5d_usd)}</b>, ${share(f.flow_5d_pct_aum)}` +
+          (w20 && w20 !== w5 ? `<br>Longer window, ${w20}: ${inOut(f.flow_20d_usd)}, ${share(f.flow_20d_pct_aum)}` : '') +
+          (isNum(f.flow_1d_usd) && w1 !== w5 ? `<br>Since the reading before${f.flow_1d_from ? `, ${day(f.flow_1d_from)}` : ''}${days(f.flow_1d_span_days)}: ${inOut(f.flow_1d_usd)}` : '') +
+          `<br><span style="color:var(--ink2)">Fund size ${big(f.aum_usd)} on ${day(f.as_of)}</span>`);
+        root.appendChild(row); });
+      root.appendChild(F.el('div', {class: 'legend'}, `<span><i style="background:${IN}"></i>Money in: investors added to the fund</span><span><i style="background:${OUT}"></i>Money out: investors withdrew</span>`));
+      setHtml('etf-sub', `Money that went into or out of each fund ${common ? `from ${common}` : 'over its last five recorded readings'}, as a share of the fund's size. The longest bar is the largest move, and funds are in order from most money in to most money out. Hover a row for the dates and dollars.`);
+    } else g('etf-bars').innerHTML = '<p class="muted">No flows yet: a flow needs two recorded readings, and each run of this page records one per day.</p>';
+    const groups = {}; funds.forEach(f => { const k = `${f.observations}|${f.first_observation}`; (groups[k] = groups[k] || []).push(f.ticker); });
+    const history = Object.entries(groups).map(([k, tickers]) => { const [n, since] = k.split('|'); const who = tickers.length === funds.length ? '' : tickers.map(F.esc).join(', ') + ': '; return `${who}${n} reading${n === '1' ? '' : 's'} recorded since ${day(since)}`; }).join('; ');
+    setHtml('etf-note', `How this is measured: each run of this page records every fund's share count from State Street. More shares means money came in (${FA.term('creation', 'a creation')}); fewer means money went out. The dollar figure is the change in shares times the share price. A window is the last five recorded readings, not five trading days, so its length depends on how often the page is run.${history ? ' ' + history[0].toUpperCase() + history.slice(1) + '.' : ''}${(etf.unavailable || []).length ? ' State Street listed no data for ' + etf.unavailable.map(F.esc).join(', ') + '.' : ''}`);
   } else hide('etf-card');
   // cash line
   if (cash) {
@@ -210,24 +280,39 @@ SCRIPT = r"""
   const T = I && I.trend;
   if (T && (T.series || []).length) {
     const WIN = [[50], [100], [200]];
-    const pts = k => T.series.map(r => [Date.parse(r.date), r[k]]);
-    const w200 = T.wma_200, bands = [];
-    if (w200 && isNum(w200.band_low_pct) && isNum(w200.band_high_pct)) {
-      const edge = pct => T.series.map(r => [Date.parse(r.date), isNum(r.wma_200) ? r.wma_200 * (1 + pct / 100) : null]);
-      bands.push({lo: edge(w200.band_low_pct), hi: edge(w200.band_high_pct), color: F.S[1], opacity: 0.13, legend: '200-week neutral zone (20th–80th percentile gap)'});
-    }
-    // hierarchy: the 200-week and its zone carry the reading; the close is context; the 100- and 50-week recede
-    F.lines(g('trend-chart'), {series: [
-        {name: '50-week (momentum)', points: pts('wma_50'), color: 'var(--muted)', width: 1.25, dash: '1 4', opacity: 0.9, endLabel: false},
-        {name: '100-week', points: pts('wma_100'), color: 'var(--muted)', width: 1.25, dash: '6 4', opacity: 0.9, endLabel: false},
-        {name: 'S&P 500', points: pts('close'), color: 'var(--ink2)', width: 1.75, endLabel: false},
-        {name: '200-week', points: pts('wma_200'), color: F.S[1], width: 3.5, endLabel: true}],
-      bands, xIsDate: true, height: 320, yFmt: v => F.num(v, 0), aria: 'S&P 500 weekly close with its 200-week moving average and neutral zone, and its 100- and 50-week averages'});
+    const w200 = T.wma_200;
+    const AVG = {50: {name: '50-week (momentum)', color: 'var(--muted)', width: 1.25, dash: '1 4', opacity: 0.9, endLabel: false}, 100: {name: '100-week', color: 'var(--muted)', width: 1.25, dash: '6 4', opacity: 0.9, endLabel: false}, 200: {name: '200-week', color: F.S[1], width: 3.5, endLabel: true}};
+    // rows: weekly or daily {date, close, wma_*}. fit: scale the axis to the close and leave out an average
+    // that sits off that scale, naming it in the note; otherwise the 200-week and its zone carry the reading.
+    const drawTrend = (box, rows, {fit, daily, label}) => {
+      const pts = k => rows.map(r => [Date.parse(r.date), r[k]]), xs = rows.map(r => Date.parse(r.date));
+      const closes = rows.map(r => r.close).filter(isNum), lo = Math.min(...closes), hi = Math.max(...closes), span = Math.max(hi - lo, hi * 0.01);
+      const onScale = n => !fit || rows.every(r => !isNum(r[`wma_${n}`]) || (r[`wma_${n}`] >= lo - span && r[`wma_${n}`] <= hi + span));
+      const shown = [50, 100, 200].filter(onScale), off = [50, 100, 200].filter(n => !onScale(n)), bands = [];
+      if (!fit && w200 && isNum(w200.band_low_pct) && isNum(w200.band_high_pct)) {
+        const edge = pct => rows.map(r => [Date.parse(r.date), isNum(r.wma_200) ? r.wma_200 * (1 + pct / 100) : null]);
+        bands.push({lo: edge(w200.band_low_pct), hi: edge(w200.band_high_pct), color: F.S[1], opacity: 0.13, legend: '200-week neutral zone (20th–80th percentile gap)'});
+      }
+      const avg = n => ({...AVG[n], points: pts(`wma_${n}`)});
+      const close = {name: 'S&P 500', points: pts('close'), color: fit ? 'var(--ink)' : 'var(--ink2)', width: fit ? 2.5 : 1.75, endLabel: false};
+      F.lines(box, {series: [...shown.filter(n => n !== 200).map(avg), close, ...shown.filter(n => n === 200).map(avg)],
+        bands, xIsDate: true, xFmt: daily ? snapFmt(xs, fit ? dayFmt : fullFmt) : undefined, xTicks: daily ? tickAt(xs) : undefined, height: 320, yFmt: v => F.num(v, 0), aria: `S&P 500 ${daily ? 'daily' : 'weekly'} close over ${label} with its 50-, 100- and 200-week moving averages`});
+      const last = rows[rows.length - 1];
+      return (daily ? `Daily closes, ${F.esc(fullFmt(Date.parse(rows[0].date)))} to ${F.esc(fullFmt(Date.parse(last.date)))}. Each day's averages count that day's close as its week's close.` : '') +
+        (off.length ? ` Off this scale: ${off.map(n => `${n}-week average ${n0(last[`wma_${n}`])}`).join(' · ')}.` : ''); };
+    // with indices.py --history the chart zooms from five years of weeks down to the latest week of daily closes
+    const DAILY = (T.daily || []).length > 1 ? T.daily : null;
+    // the weekly series is five years, or twenty with --history; a longer range shows only when the weeks exist
+    const YEARS = [[5, 260], [10, 520], [20, 1040]].filter(([, n], i, a) => !i || T.series.length > a[i - 1][1]);
+    const trendRanges = [...(DAILY ? RANGES.map(([label, n]) => [label, box => drawTrend(box, n ? DAILY.slice(-n) : DAILY, {fit: !!n, daily: true, label})]) : []),
+      ...YEARS.map(([y, n]) => [`${y} years`, box => drawTrend(box, T.series.slice(-n), {label: `${y} years`})])];
+    if (trendRanges.length > 1) ranged(g('trend-chart'), trendRanges, trendRanges.length - YEARS.length);
+    else drawTrend(g('trend-chart'), T.series, {label: '5 years'});
     const sg = v => isNum(v) ? (v >= 0 ? '+' : '') + v.toFixed(1) + '%' : '—';
     const rows = WIN.map(([n]) => [n, T[`wma_${n}`]]).filter(([, w]) => w);
     setHtml('trend-table', '<table><thead><tr><th class="l">Average</th><th class="l">Level</th><th>Average value</th><th>Gap</th><th>' + FA.term('percentile', 'Percentile') + ' since ' + F.esc(String(T.history_from || '').slice(0, 4)) + '</th><th>Typical gap</th><th>' + FA.term('time below', 'Time below average') + '</th></tr></thead><tbody>' +
       rows.map(([n, w]) => `<tr><td class="l">${n === 200 ? FA.term('200-week average', '200-week') : n + '-week'}</td><td class="l"><b>${F.esc(w.level)}</b></td><td>${n0(w.average)}</td><td class="${F.cls(w.gap_pct)}">${sg(w.gap_pct)}</td><td>${p0(w.percentile)}</td><td>${sg(w.median_gap_pct)}</td><td>${isNum(w.share_below_pct) ? w.share_below_pct + '% of weeks' : '—'}</td></tr>`).join('') + '</tbody></table>');
-    setHtml('trend-note', `Weekly closes as of ${F.esc(T.as_of || '—')}; the week in progress counts at its latest close. Levels: extended at or above the 80th percentile of the gap's own history, depressed at or below the 20th, neutral between. The gap measures distance from trend, not value, and since 1950 it has said little about the returns that followed.`);
+    setHtml('trend-note', `Closes as of ${F.esc(T.as_of || '—')}; the week in progress counts at its latest close.${DAILY ? ` The range buttons switch between weekly closes over ${YEARS.map(([y]) => y).join(', ').replace(/, (\d+)$/, ' or $1')} years and daily closes over the latest week, month, quarter or year.` : ''} Levels: extended at or above the 80th percentile of the gap's own history, depressed at or below the 20th, neutral between. The gap measures distance from trend, not value, and since 1950 it has said little about the returns that followed.`);
   } else hide('trend-card');
   // card help
   const ord = v => { if (!isNum(v)) return '—'; const n = Math.round(v), t = n % 100; return n + (t >= 11 && t <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th'); };
@@ -250,7 +335,8 @@ SCRIPT = r"""
   const f0 = etf && (etf.funds || []).find(f => isNum(f.flow_5d_usd));
   help('etf-card', {lead: 'Money moving into or out of large index funds, sized against each fund’s assets.',
     sections: [{title: 'Creations and redemptions', html: '<p>When investors put money into an ETF, new shares are created; when they take money out, shares are redeemed. Counting shares day to day shows the flow.</p>' +
-      (f0 ? `<p>${F.esc(f0.ticker)} took in ${F.moneyC(f0.flow_5d_usd)} over the last five readings, ${isNum(f0.flow_5d_pct_aum) ? f0.flow_5d_pct_aum.toFixed(2) + '%' : '—'} of its assets.</p>` : '')}]});
+      (f0 ? `<p>${F.esc(f0.ticker)} ${f0.flow_5d_usd >= 0 ? 'took in' : 'lost'} ${F.moneyC(Math.abs(f0.flow_5d_usd))} ${f0.flow_5d_from ? `between ${F.esc(fullFmt(Date.parse(f0.flow_5d_from)))} and ${F.esc(fullFmt(Date.parse(f0.as_of)))}` : 'over the last five readings'}, ${isNum(f0.flow_5d_pct_aum) ? Math.abs(f0.flow_5d_pct_aum).toFixed(2) + '%' : '—'} of the fund's size.</p>` : '') +
+      '<p>A reading is one recorded day. The page records one each day it runs, so five readings can span a week or several months. The dates under the title say which.</p>'}]});
   help('cash-card', {lead: 'Money-market fund assets, a gauge of cash waiting outside stocks and bonds.',
     sections: cash && isNum(cash.latest) ? [{title: 'Latest reading', html: F.flow([{label: `a year before ${cash.date}`, value: '$' + F.num(cash.latest - (cash.change_52w || 0), 1) + 'B'}, {op: '+', label: '52-week change', value: (cash.change_52w >= 0 ? '+' : '−') + '$' + F.num(Math.abs(cash.change_52w || 0), 1) + 'B'}, {op: '=', label: 'now', value: '$' + F.num(cash.latest, 1) + 'B'}]) +
       '<p>Rising balances mean cash is building up; falling means it is being spent or invested.</p>'}] : []});

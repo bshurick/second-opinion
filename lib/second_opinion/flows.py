@@ -164,6 +164,13 @@ def _flow_sum(obs: list[dict[str, Any]], steps: int) -> float | None:
     return round(total, 2)
 
 
+def _flow_from(obs: list[dict[str, Any]], steps: int) -> str | None:
+    """The date of the reading a ``steps``-observation flow is measured from: the window's start."""
+    if len(obs) < 2:
+        return None
+    return obs[max(len(obs) - 1 - steps, 0)]["date"]
+
+
 def _span_days(a: str, b: str) -> int | None:
     try:
         return (date.fromisoformat(b) - date.fromisoformat(a)).days
@@ -172,7 +179,11 @@ def _span_days(a: str, b: str) -> int | None:
 
 
 def etf_flow_summary(series: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
-    """Flows per ETF from the local shares-outstanding series; ETFs with flows first, biggest 5-observation inflow first."""
+    """Flows per ETF from the local shares-outstanding series; ETFs with flows first, biggest 5-observation inflow first.
+
+    A window counts recorded observations, not calendar days, so each flow carries the date it
+    is measured from (``flow_*_from``) and the calendar days it spans (``flow_*_span_days``).
+    """
     out = []
     for ticker, obs in series.items():
         obs = sorted((o for o in obs if o.get("shares") is not None and o.get("nav") is not None), key=lambda o: o["date"])
@@ -193,10 +204,15 @@ def etf_flow_summary(series: dict[str, list[dict[str, Any]]]) -> list[dict[str, 
             "flow_1d_usd": f1,
             "flow_1d_pct_aum": _pct(f1, aum),
             "flow_1d_span_days": _span_days(obs[-2]["date"], latest["date"]) if len(obs) > 1 else None,
+            "flow_1d_from": _flow_from(obs, 1),
             "flow_5d_usd": f5,
             "flow_5d_pct_aum": _pct(f5, aum),
+            "flow_5d_from": _flow_from(obs, 5),
+            "flow_5d_span_days": _span_days(_flow_from(obs, 5), latest["date"]) if len(obs) > 1 else None,
             "flow_20d_usd": f20,
             "flow_20d_pct_aum": _pct(f20, aum),
+            "flow_20d_from": _flow_from(obs, 20),
+            "flow_20d_span_days": _span_days(_flow_from(obs, 20), latest["date"]) if len(obs) > 1 else None,
         })
     out.sort(key=lambda r: (r["flow_5d_usd"] is None, -(r["flow_5d_usd"] or 0)))
     return out
