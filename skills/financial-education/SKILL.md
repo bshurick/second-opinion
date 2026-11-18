@@ -87,3 +87,8 @@ Run with the Bash tool.
 - Use the active voice: name who did what. "Management cut prices", not "prices were cut".
 - Keep sentences short, one idea each, under about 25 words.
 - Give every bulleted or numbered list a heading or lead-in that says what it lists. Otherwise write the items as prose, or as a table with column or row headers when they share fields.
+- Lead with the answer. The first sentence gives the result or answers the question asked; the reasons and the detail follow. Each paragraph opens with its point.
+- Put a figure, a date or a source where a vague word would go. "Often", "soon", "many" and "significant" say nothing until a number stands beside them, as in "in 7 of the last 10 years".
+- State a doubt once, where it applies, and say what causes it. Write the rest plainly. Give each side the weight its evidence has, and never pad the weaker side to make the two look even.
+- Cut every sentence the reader would not miss: an opening that announces what the reply will do, a closing that repeats it, a restatement of the sentence before, and a claim that something matters with no reason given.
+- Say what is, in plain words: "the data is inconclusive", not "the data does not conclusively show"; "use", not "utilize". Drop build-ups such as "not just X but Y", and keep a series of items in one sentence.

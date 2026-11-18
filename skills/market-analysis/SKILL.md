@@ -177,7 +177,7 @@ Use this case for "who is buying", "is money leaving equities", "are institution
 6. Run `render.py --in DIR/flows.json --indices DIR/indices.json --out DIR/market.html --summary DIR/summary.json`. If the output holds `for_you_dropped`, the accounts read did not count as a full read today and the card went out without that section.
 7. Publish the HTML with the Artifact tool: icon chart, description "Market flows and positioning as of DATE". On later runs republish the same file path so the link stays stable.
 8. Reply with the flows page format below.
-9. If the Artifact tool is not available in the session, skip steps 4, 6 and 7 and reply with the markdown fallback. Never both.
+9. If the Artifact tool is not available in the session, follow the "No Artifact tool" rule: save the page with `local_page.py` and reply with the page format. The markdown fallback is the last resort.
 10. If the user asks about a named institution's quarter-over-quarter holdings, hand off to the fundamental-research 13F holdings script.
 
 **The headline analysis**
@@ -214,7 +214,7 @@ What to look for on this page:
 
 **Flows page reply:** these, in this order.
 
-1. The artifact link on its own line.
+1. The artifact link, or the saved page's `path`, on its own line.
 2. The summary's `headline`, on one line. "What stands out" on the page carries the reading the compliance rules require.
 3. One line: S&P 500 `last` (`day_change_pct`) · 200-week `trend.wma_200.level` (`gap_pct`) · VIX `last` (1y percentile) · 10y `last` · positioning as of `positioning.report_date` · ETF flows as of `etf_flows.as_of` · retail money funds `cash.latest`B.
 4. One sentence on what the picture cannot show.
@@ -222,7 +222,7 @@ What to look for on this page:
 
 The page carries the tables and charts. Do not repeat them in the reply.
 
-**Markdown fallback (only when the Artifact tool is not available):** prose and tables, in this order.
+**Markdown fallback (only when no page could be published or saved):** prose and tables, in this order.
 
 Open with the whole headline analysis as text: the headline, "What stands out", "What to look into" without its links, and "What this means for you" when written. `render.py` does not run here, so nothing enforces the limits and rules in the headline analysis section. Keep to them.
 
@@ -247,6 +247,8 @@ Every news item, analyst action, data release, or calendar entry you present car
 5. Items appear newest first with the date inline, e.g. "(Sep 8, 2026, Reuters)".
 </research_dating>
 
+- **No Artifact tool.** When the session has no Artifact tool, still render the page and skip only the publish step. Then run `"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/get-started/scripts/local_page.py" --in PAGE.html` on the rendered file. It saves a standalone copy and opens it in the browser.
+- After `local_page.py`, reply with the page format and give its `path` where the artifact link goes. Write the markdown fallback only when no page was rendered or `local_page.py` exits non-zero.
 - Never provide buy, sell, or hold recommendations. If a user asks whether they should buy, sell, or hold a security, state clearly that you cannot make investment recommendations, then present relevant analysis they can use to make their own decision.
 - Never use the words "recommend", "advise", "should", or "suggest" when referring to financial actions. Use "the data shows", "analysis indicates", "one factor to consider" instead.
 - Always present both bull and bear cases when analyzing a security or market condition.
@@ -261,3 +263,8 @@ Every news item, analyst action, data release, or calendar entry you present car
 - Use the active voice: name who did what. "Management cut prices", not "prices were cut".
 - Keep sentences short, one idea each, under about 25 words.
 - Give every bulleted or numbered list a heading or lead-in that says what it lists. Otherwise write the items as prose, or as a table with column or row headers when they share fields.
+- Lead with the answer. The first sentence gives the result or answers the question asked; the reasons and the detail follow. Each paragraph opens with its point.
+- Put a figure, a date or a source where a vague word would go. "Often", "soon", "many" and "significant" say nothing until a number stands beside them, as in "in 7 of the last 10 years".
+- State a doubt once, where it applies, and say what causes it. Write the rest plainly. Give each side the weight its evidence has, and never pad the weaker side to make the two look even.
+- Cut every sentence the reader would not miss: an opening that announces what the reply will do, a closing that repeats it, a restatement of the sentence before, and a claim that something matters with no reason given.
+- Say what is, in plain words: "the data is inconclusive", not "the data does not conclusively show"; "use", not "utilize". Drop build-ups such as "not just X but Y", and keep a series of items in one sentence.

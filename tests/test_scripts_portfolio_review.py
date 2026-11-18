@@ -164,7 +164,8 @@ def test_duplicate_bet_ids_and_unknown_income_are_rejected() -> None:
 
 
 def _page(**over) -> dict:
-    return {"as_of": AS_OF, "headline": "One rate path carries 26% of the portfolio.", "summary": "AAA and BBB rest on the same rate path.", "exposure": _measure(_params()), "missing_roles": ["Red team"], "notes": [], **over}
+    return {"as_of": AS_OF, "headline": "One rate path carries 26% of the portfolio.", "summary": "AAA and BBB rest on the same rate path.",
+            "conclusions": ["Two holdings depend on short rates staying under 4%.", "The evidence on that belief is split."], "exposure": _measure(_params()), "missing_roles": ["Red team"], "notes": [], **over}
 
 
 def test_render_builds_the_page(tmp_path, capsys) -> None:
@@ -176,8 +177,9 @@ def test_render_builds_the_page(tmp_path, capsys) -> None:
     assert res["title"] == "Portfolio Deep Review" and res["bets"] == 1 and res["flags"] >= 2
     html = out.read_text()
     assert "window.DATA = " in html and "Rates stay low" in html
-    for section in ("Shared bets", "Overlaps", "Not yet mapped", "What to watch", "Flags"):
+    for section in ("What this review did", "What it found", "Conclusions", "Shared bets", "Overlaps", "Not yet mapped", "What to watch", "Flags"):
         assert section in html
+    assert res["conclusions"] == 2 and "Two holdings depend on short rates" in html
 
 
 @requires_chrome
@@ -193,6 +195,10 @@ def test_every_card_on_the_page_has_help(tmp_path, capsys) -> None:
     ({"headline": ""}, "headline"),
     ({"summary": "We recommend trimming"}, "recommend"),
     ({"exposure": {}}, "exposure"),
+    ({"conclusions": None}, "conclusions is required"),
+    ({"conclusions": ["Only one."]}, "conclusions is required"),
+    ({"conclusions": ["Fine.", " ".join(["word"] * 41)]}, "40 words"),
+    ({"conclusions": ["Fine.", "You should sell AAA."]}, "should"),
 ])
 def test_render_rejects(over, needle, tmp_path, capsys) -> None:
     src = tmp_path / "page.json"

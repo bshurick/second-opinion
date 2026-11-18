@@ -98,7 +98,7 @@ When the question spans several years or plans, in standard depth, end the reply
 4. Run `render.py --in DIR/tax-aware.json --out DIR/tax-aware.html`.
 5. Publish the HTML with the Artifact tool: icon `tax`, description "Tax view for YEAR as of DATE at the stated rates". On later runs republish the same file path so the link stays stable.
 6. Reply with the published-page format below.
-7. If the Artifact tool is not available in the session (a headless or non-interactive host), skip steps 4 to 6 and reply with the markdown fallback instead. Never send both.
+7. If the Artifact tool is not available in the session, follow the "No Artifact tool" rule: save the page with `local_page.py` and reply with the page format. The markdown fallback is the last resort.
 8. If the user is married filing separately, say the script applied 3,000 and that the deduction and carryforward figures would differ under the 1,500 cap.
 9. Present the numbers for each path (sell, harvest, wait) and stop. If the user wants to place an order, hand off to portfolio-analysis.
 
@@ -117,7 +117,7 @@ Run this when the person asks for a deep review or for depth, or when the sessio
 7. Dispatch the Red team with the output. Apply its changes where its sources hold up, and keep each rejected change in `notes` with the reason.
 8. Run `tax_plans.py` again. Write `page.json`: `as_of`, `headline`, `summary`, `plans`, `missing_roles`, `notes`.
    - The headline names what decides the comparison, in 25 words or fewer. It names no plan as the one to take. The summary says what each plan trades off and what could change the order.
-9. Run `render_plans.py`. Publish the page with the Artifact tool: icon `tax`, description "Tax plan comparison as of DATE". If the Artifact tool is unavailable, use the markdown fallback.
+9. Run `render_plans.py`. Publish the page with the Artifact tool: icon `tax`, description "Tax plan comparison as of DATE". If the Artifact tool is not available in the session, follow the "No Artifact tool" rule: save the page with `local_page.py` and reply with the page format. The markdown fallback is the last resort.
 10. Run `plan_store.py save --in DIR/deep-tax/page.json --source <page link>`.
 
 **The user asks to re-check a tax plan comparison**
@@ -131,7 +131,7 @@ Run this when the person asks for a deep review or for depth, or when the sessio
 
 **Deep review, page published.** In this order, then stop.
 
-1. The artifact link on its own line.
+1. The artifact link, or the saved page's `path`, on its own line.
 2. The disclaimer line, with the growth and exit rates.
 3. The headline.
 4. One line per plan: `name` · `wealth_vs_baseline` · `tax_vs_baseline`, highest first, described as highest on these assumptions only.
@@ -149,13 +149,13 @@ Every number comes from the script. The disclaimer line is: "Estimate for planni
 
 **When the page was published (the default):**
 
-1. The artifact link on its own line.
+1. The artifact link, or the saved page's `path`, on its own line.
 2. The disclaimer line, with the rates from `rates`: short-term `short_term`, long-term `long_term`, state `state`, NIIT `niit`.
 3. One line from `summary`: Short-term net `short_term_net` · Long-term net `long_term_net` · Estimated tax `estimated_tax` · Carryforward `loss_carryforward`. When `harvest_candidates` is not empty, add "harvestable losses `harvest_total.losses`".
 4. **Flags** — one bullet per `flags[].message`, or "None".
 5. Stop. The page carries the realized, open-lots, harvesting, planned-sale and "Not modelled" sections, so do not repeat them. If the user asks for a number the page shows, read it from the script's JSON.
 
-**Markdown fallback (only when the Artifact tool is unavailable):** open with the disclaimer line, then these sections in this order.
+**Markdown fallback (only when no page could be published or saved):** open with the disclaimer line, then these sections in this order.
 
 **Tax view** — as of `as_of` (tax year `year`); from `rates`: short-term `short_term`, long-term `long_term`, state `state`, NIIT `niit`
 
@@ -194,6 +194,8 @@ Money to 2 decimal places with thousands separators. Rates and percentages to 1 
 - A deep review never names a plan to take. "Highest" holds on the stated assumptions only.
 - The "Not modelled" section is mandatory: the page carries it, and the markdown fallback renders it.
 - Whether to sell, harvest, or wait is the user's decision with their tax professional.
+- **No Artifact tool.** When the session has no Artifact tool, still render the page and skip only the publish step. Then run `"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/get-started/scripts/local_page.py" --in PAGE.html` on the rendered file. It saves a standalone copy and opens it in the browser.
+- After `local_page.py`, reply with the page format and give its `path` where the artifact link goes. Write the markdown fallback only when no page was rendered or `local_page.py` exits non-zero.
 - Never provide buy, sell, or hold recommendations. If a user asks whether they should buy, sell, or hold a security, state clearly that you cannot make investment recommendations, then present relevant analysis they can use to make their own decision.
 - Never use the words "recommend", "advise", "should", or "suggest" when referring to financial actions. Use "the data shows", "analysis indicates", "one factor to consider" instead.
 - Always present both bull and bear cases when analyzing a security or market condition.
@@ -208,3 +210,8 @@ Money to 2 decimal places with thousands separators. Rates and percentages to 1 
 - Use the active voice: name who did what. "Management cut prices", not "prices were cut".
 - Keep sentences short, one idea each, under about 25 words.
 - Give every bulleted or numbered list a heading or lead-in that says what it lists. Otherwise write the items as prose, or as a table with column or row headers when they share fields.
+- Lead with the answer. The first sentence gives the result or answers the question asked; the reasons and the detail follow. Each paragraph opens with its point.
+- Put a figure, a date or a source where a vague word would go. "Often", "soon", "many" and "significant" say nothing until a number stands beside them, as in "in 7 of the last 10 years".
+- State a doubt once, where it applies, and say what causes it. Write the rest plainly. Give each side the weight its evidence has, and never pad the weaker side to make the two look even.
+- Cut every sentence the reader would not miss: an opening that announces what the reply will do, a closing that repeats it, a restatement of the sentence before, and a claim that something matters with no reason given.
+- Say what is, in plain words: "the data is inconclusive", not "the data does not conclusively show"; "use", not "utilize". Drop build-ups such as "not just X but Y", and keep a series of items in one sentence.

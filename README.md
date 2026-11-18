@@ -33,7 +33,7 @@ You need [Claude Code](https://claude.com/claude-code) and Python 3.10+. In Clau
 /reload-plugins
 ```
 
-Then say **"get started with Second Opinion"**. One conversation walks you through setup a step at a time: adding keys, connecting a brokerage, and a few questions about how you invest. Every step can be skipped and picked up later.
+Then say **"get started with Second Opinion"**. It checks your keys and brokerage connection, then asks every setup question in one form: account roles, how deep research runs by default, your plan and how you invest. It ends with a short guide to common requests. Every question can be skipped and picked up later.
 
 **Brokerage keys are optional.** Research, planning, and learning work without one. To read your own accounts you need a free SnapTrade Personal API key or an E*Trade developer key ([how to get one](docs/connecting-brokerages.md)). Enter keys in your own terminal, never in the chat:
 
@@ -59,7 +59,7 @@ Installing from a git checkout, scripted installs, and where settings live are c
 - **Analysis, not advice.** The decision is yours. A model can still stray from its instructions, so treat what it says as analysis to check.
 - **Local files.** Your keys and records stay in files on your machine. This project runs no server and has no account of its own. See [what leaves your machine](#what-leaves-your-machine).
 
-Skills that produce a report publish an interactive page as a private Artifact on your claude.ai account, with sortable tables, charts, and light and dark themes. You can ask for the answer in chat instead.
+Skills that produce a report publish an interactive page as a private Artifact on your claude.ai account, with sortable tables, charts, and light and dark themes. When the session has no Artifact tool (a model from another provider, for example), the same page is saved as an HTML file in the data directory and opened in your browser. You can ask for the answer in chat instead.
 
 <details>
 <summary><b>Sample pages</b> (a made-up household, rendered from the fixtures in <a href="docs/samples">docs/samples</a>)</summary>
@@ -144,7 +144,7 @@ Keys sit in a `.env` you own and records are JSON files on your disk. These thin
 - **Data requests** to SnapTrade or E*Trade for your accounts, and to Yahoo Finance, SEC EDGAR, and FRED for market data.
 - **Web searches** during deep research, run through Claude Code's own tools. Holding values, income, account names, and your name stay out of them.
 - **The conversation with the model**, including the script results Claude reads. That is Anthropic's model by default, or an [open model through Ollama](docs/ollama.md), which can keep it local.
-- **Report pages**, published as private Artifacts on your claude.ai account. Ask for the answer in chat if you do not want a page published.
+- **Report pages**, published as private Artifacts on your claude.ai account. Ask for the answer in chat if you do not want a page published. A page saved locally because the session has no Artifact tool stays on your disk.
 
 ## Safety and disclaimer
 

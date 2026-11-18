@@ -45,7 +45,33 @@ Use `###` headings or bold lead-ins inside a section when it needs parts. Do not
 
 ## Writing standards for output
 
-The shared **Writing** block at the end of every `## Rules` governs what the model writes for the person: replies, pages, ledgers, scenario names and saved files. Every subagent role file carries the same five rules in its shared rules **(tested)**, because role findings reach pages. Change the wording in `WRITING_RULES` in `tests/test_skills_structure.py` and in every file at once.
+The shared **Writing** block at the end of every `## Rules` governs what the model writes for the person: replies, pages, ledgers, scenario names and saved files. Every subagent role file carries the same ten rules in its shared rules **(tested)**, because role findings reach pages. Change the wording in `WRITING_RULES` in `tests/test_skills_structure.py` and in every file at once.
+
+The block covers word and sentence choices. Each rule answers a fault found in real output:
+
+| Rule | The fault it answers |
+|---|---|
+| Spell out shorthand | A scenario named "slower comps" with no definition |
+| Adjectives and adverbs only beside a number | "Sharp decline" with no figure |
+| Active voice | "Prices were cut", with nobody named |
+| Short sentences | Two findings and a caveat in one sentence |
+| Lists with a lead-in | Bullets with nothing saying what they list |
+| Lead with the answer | A reply that tours the data and reaches the result last |
+| A figure in place of a vague word | "Often", "soon" and "significant" with nothing to check |
+| One doubt, stated once | A hedge in every sentence, or a weak counterpoint padded to look balanced |
+| Cut what the reader would not miss | Openings that announce the reply, closings that repeat it |
+| Say what is, in plain words | Double negatives, "not just X but Y", "utilize" |
+
+The block does not decide how a reply is built. That belongs in each skill's `## Reply format`, and a free-form reply still needs an order. When a skill has no fixed template, give it one in this shape:
+
+1. The answer, with the figure that decides it.
+2. The evidence, as a table when the items share fields.
+3. The reasoning, one paragraph per point.
+4. The limits: what the numbers cannot show.
+
+A page follows the same order: what the analysis did, what it found, then the sections that hold the evidence, each opening with a sentence that says what it holds and why it matters. `skills/portfolio-analysis/scripts/render_review.py` is the example.
+
+Two compliance rules bound the writing rules. "Lead with the answer" never means a buy, sell or hold call: the answer is the analysis the person asked for. "Give each side the weight its evidence has" does not remove the bull and bear cases: both are still stated, and the thinner one is called thin.
 
 ## What belongs in a reference file
 

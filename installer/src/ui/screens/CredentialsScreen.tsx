@@ -33,6 +33,28 @@ function initialBrokerChoice(brokers: ReadonlySet<BrokerChoice>): "snaptrade" | 
   return "snaptrade";
 }
 
+const BROKER_KEYS: Record<BrokerChoice, readonly (keyof EnvValues)[]> = {
+  snaptrade: ["SNAPTRADE_CLIENT_ID", "SNAPTRADE_CONSUMER_KEY"],
+  etrade: ["ETRADE_CONSUMER_KEY", "ETRADE_CONSUMER_SECRET", "ETRADE_SANDBOX"],
+};
+
+/**
+ * The values to carry on after the broker picker is answered: what was typed this run for a
+ * connection no longer chosen is discarded, back to what was known before the screen opened.
+ * A key already saved (in `existing`) stays, as the picker's note says.
+ */
+export function valuesForBrokers(values: EnvValues, existing: EnvValues, chosen: ReadonlySet<BrokerChoice>): EnvValues {
+  const next: EnvValues = { ...values };
+  for (const broker of ["snaptrade", "etrade"] as const) {
+    if (chosen.has(broker)) continue;
+    for (const key of BROKER_KEYS[broker]) {
+      if (existing[key] === undefined) delete next[key];
+      else next[key] = existing[key];
+    }
+  }
+  return next;
+}
+
 /**
  * Asks only for what the selection needs. Secrets are masked as typed and shown
  * afterwards by their last four characters only.
@@ -86,7 +108,7 @@ export function CredentialsScreen({ needs, existing, brokers: initialBrokers, ac
     <Box flexDirection="column">
       <Text bold>Credentials</Text>
       <Text color={color.dim}>Stored in the plugin's .env (mode 600). Never printed, logged, or sent anywhere but the API that owns them.</Text>
-      {completed.map((c) => (
+      {(field === "brokers" ? [] : completed).map((c) => (
         <Text key={c} color={color.ok}>
           {glyph.check} <Text color={undefined}>{c}</Text>
         </Text>
@@ -105,10 +127,14 @@ export function CredentialsScreen({ needs, existing, brokers: initialBrokers, ac
               onSelect={(choice) => {
                 const b: Set<BrokerChoice> = choice === "both" ? new Set(["snaptrade", "etrade"]) : new Set([choice]);
                 setChosenBrokers(b);
+                // Answering the picker again (after going back) starts the answers over.
+                const kept = valuesForBrokers(values, existing, b);
+                setValues(kept);
+                setCompleted([]);
                 if (b.has("snaptrade")) {
-                  setField(values.SNAPTRADE_CLIENT_ID && values.SNAPTRADE_CONSUMER_KEY ? "keep-or-new" : "client-id");
+                  setField(kept.SNAPTRADE_CLIENT_ID && kept.SNAPTRADE_CONSUMER_KEY ? "keep-or-new" : "client-id");
                 } else if (b.has("etrade")) {
-                  setField(values.ETRADE_CONSUMER_KEY && values.ETRADE_CONSUMER_SECRET ? "etrade-keep-or-new" : "etrade-key");
+                  setField(kept.ETRADE_CONSUMER_KEY && kept.ETRADE_CONSUMER_SECRET ? "etrade-keep-or-new" : "etrade-key");
                 }
               }}
               onCancel={onCancel}

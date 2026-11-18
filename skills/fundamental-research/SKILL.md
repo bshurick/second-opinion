@@ -151,7 +151,7 @@ This case covers "what did X buy or sell", "X's biggest positions", "is X still 
 3. Run `render.py --in DIR/holdings.json --out DIR/holdings.html`.
 4. Publish the HTML with the Artifact tool: icon table, description "MANAGER 13F holdings, quarter ended DATE". Republish the same file path on later runs for the same manager so the link stays stable.
 5. Reply with the 13F published-page format below.
-6. If the Artifact tool is not available in the session, skip steps 3 to 5 and reply with the 13F markdown format instead.
+6. If the Artifact tool is not available in the session, follow the "No Artifact tool" rule: save the page with `local_page.py` and reply with the page format. The markdown fallback is the last resort.
 
 ## Reply format
 
@@ -181,7 +181,7 @@ Money in the reported currency with thousands separators (millions when large). 
 
 ### 13F, page published (the default)
 
-1. The artifact link on its own line.
+1. The artifact link, or the saved page's `path`, on its own line.
 2. One line: `manager.name` · quarter ended `current.report_date`, filed `current.filing_date` · `totals.value` in `totals.positions` positions · `totals.value_change_pct` vs the prior quarter · counts of new, exited, increased, trimmed.
 3. Two to four sentences naming the largest new, exited, increased and trimmed positions by issuer with their share change.
 4. One sentence on concentration.
@@ -189,7 +189,7 @@ Money in the reported currency with thousands separators (millions when large). 
 
 The page carries the tables; do not repeat them.
 
-### 13F, markdown (only when the Artifact tool is unavailable)
+### 13F, markdown (only when no page could be published or saved)
 
 In this order:
 
@@ -211,6 +211,8 @@ In this order:
 - The red-flag `flags` are named-threshold screens for the accounting-quality section, not judgments.
 - Never infer a rationale for a trade the filing does not state.
 - Publish the 13F page or use the 13F markdown format, never both.
+- **No Artifact tool.** When the session has no Artifact tool, still render the page and skip only the publish step. Then run `"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/get-started/scripts/local_page.py" --in PAGE.html` on the rendered file. It saves a standalone copy and opens it in the browser.
+- After `local_page.py`, reply with the page format and give its `path` where the artifact link goes. Write the markdown fallback only when no page was rendered or `local_page.py` exits non-zero.
 - Never provide buy, sell, or hold recommendations. If a user asks whether they should buy, sell, or hold a security, state clearly that you cannot make investment recommendations, then present relevant analysis they can use to make their own decision.
 - Never use the words "recommend", "advise", "should", or "suggest" when referring to financial actions. Use "the data shows", "analysis indicates", "one factor to consider" instead.
 - Always present both bull and bear cases when analyzing a security or market condition.
@@ -225,3 +227,8 @@ In this order:
 - Use the active voice: name who did what. "Management cut prices", not "prices were cut".
 - Keep sentences short, one idea each, under about 25 words.
 - Give every bulleted or numbered list a heading or lead-in that says what it lists. Otherwise write the items as prose, or as a table with column or row headers when they share fields.
+- Lead with the answer. The first sentence gives the result or answers the question asked; the reasons and the detail follow. Each paragraph opens with its point.
+- Put a figure, a date or a source where a vague word would go. "Often", "soon", "many" and "significant" say nothing until a number stands beside them, as in "in 7 of the last 10 years".
+- State a doubt once, where it applies, and say what causes it. Write the rest plainly. Give each side the weight its evidence has, and never pad the weaker side to make the two look even.
+- Cut every sentence the reader would not miss: an opening that announces what the reply will do, a closing that repeats it, a restatement of the sentence before, and a claim that something matters with no reason given.
+- Say what is, in plain words: "the data is inconclusive", not "the data does not conclusively show"; "use", not "utilize". Drop build-ups such as "not just X but Y", and keep a series of items in one sentence.

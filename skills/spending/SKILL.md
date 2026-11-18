@@ -143,7 +143,7 @@ Pick the case that matches the request.
 3. Run `render.py --in DIR/spending.json --changes DIR/spending-changes.json --out DIR/spending.html`.
 4. Publish the HTML with the Artifact tool: icon receipt, description "Spending review for MONTH". Republish the same file path on later runs so the link stays stable.
 5. Reply with the published-page format below.
-6. If the Artifact tool is not available in the session (a headless or non-interactive host), skip steps 3 and 4 and reply with the markdown fallback instead. Never send both.
+6. If the Artifact tool is not available in the session, follow the "No Artifact tool" rule: save the page with `local_page.py` and reply with the page format. The markdown fallback is the last resort.
 7. If Amazon, Costco, Target, a warehouse club, a grocery delivery or a pharmacy is a top merchant, say that an order history or receipt would break it down, and where it comes from. Offer once per merchant, not every time.
 
    | Merchant | Where the itemized source comes from |
@@ -190,13 +190,13 @@ After a correction, report `changed` and `removed_rows`.
 
 **Month review, page published (the default).** In this order, then stop.
 
-1. The artifact link on its own line.
+1. The artifact link, or the saved page's `path`, on its own line.
 2. One line: Spend `spend_total` · Income `income_total` (or "no checking data") · Net `net` · Savings rate `savings_rate`.
 3. **Flags** — one bullet per flag in plain words, or "None".
 
 The page carries the categories, drill-down, cash flow, what changed, merchants and recurring sections. Do not repeat them in the reply. If the user asks for a number the page shows, read it from the script's JSON.
 
-**Month review, markdown fallback (only when the Artifact tool is unavailable).** In this order.
+**Month review, markdown fallback (only when no page could be published or saved).** In this order.
 
 1. **Flags** — only when there are any. One line each in plain words, using the meanings in Background.
 2. **Totals** — spend `spend_total`; income `income_total` (or "no checking data"); net `net`; savings rate `savings_rate`; transfer volume `transfers_total` (both sides of each matched pair are counted); refunds `refunds_total`; fees and interest `fees_and_interest`; uncategorized `uncategorized.amount` (`uncategorized.count` rows).
@@ -230,6 +230,8 @@ Searches, recurring, cash-flow and the other reports stay in markdown.
 - Never force items whose total is above the charge.
 - The user judges what to cut. Present the numbers and the trade-offs, and never say what to cut.
 - Flags come first in a month review, in either reply form.
+- **No Artifact tool.** When the session has no Artifact tool, still render the page and skip only the publish step. Then run `"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/get-started/scripts/local_page.py" --in PAGE.html` on the rendered file. It saves a standalone copy and opens it in the browser.
+- After `local_page.py`, reply with the page format and give its `path` where the artifact link goes. Write the markdown fallback only when no page was rendered or `local_page.py` exits non-zero.
 - Never provide buy, sell, or hold recommendations. If a user asks whether they should buy, sell, or hold a security, state clearly that you cannot make investment recommendations, then present relevant analysis they can use to make their own decision.
 - Never use the words "recommend", "advise", "should", or "suggest" when referring to financial actions. Use "the data shows", "analysis indicates", "one factor to consider" instead.
 - Always present both bull and bear cases when analyzing a security or market condition.
@@ -244,3 +246,8 @@ Searches, recurring, cash-flow and the other reports stay in markdown.
 - Use the active voice: name who did what. "Management cut prices", not "prices were cut".
 - Keep sentences short, one idea each, under about 25 words.
 - Give every bulleted or numbered list a heading or lead-in that says what it lists. Otherwise write the items as prose, or as a table with column or row headers when they share fields.
+- Lead with the answer. The first sentence gives the result or answers the question asked; the reasons and the detail follow. Each paragraph opens with its point.
+- Put a figure, a date or a source where a vague word would go. "Often", "soon", "many" and "significant" say nothing until a number stands beside them, as in "in 7 of the last 10 years".
+- State a doubt once, where it applies, and say what causes it. Write the rest plainly. Give each side the weight its evidence has, and never pad the weaker side to make the two look even.
+- Cut every sentence the reader would not miss: an opening that announces what the reply will do, a closing that repeats it, a restatement of the sentence before, and a claim that something matters with no reason given.
+- Say what is, in plain words: "the data is inconclusive", not "the data does not conclusively show"; "use", not "utilize". Drop build-ups such as "not just X but Y", and keep a series of items in one sentence.

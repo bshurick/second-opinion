@@ -13,7 +13,7 @@ import { buildPlan, createContext, type Preflight, type Summary } from "../src/e
 import { Select } from "../src/ui/components/Select.js";
 import { Steps } from "../src/ui/components/Steps.js";
 import { TextInput } from "../src/ui/components/TextInput.js";
-import { CredentialsScreen } from "../src/ui/screens/CredentialsScreen.js";
+import { CredentialsScreen, valuesForBrokers } from "../src/ui/screens/CredentialsScreen.js";
 import { DoneScreen } from "../src/ui/screens/DoneScreen.js";
 import { ReviewScreen } from "../src/ui/screens/ReviewScreen.js";
 import { UninstallScreen } from "../src/ui/screens/UninstallScreen.js";
@@ -137,6 +137,45 @@ describe("CredentialsScreen", () => {
     stdin.write(ESCAPE);
     await tick();
     expect(lastFrame()).toContain("Which brokerage connection?");
+  });
+
+  it("discards a SnapTrade key typed this run when the person goes back and picks E*Trade only", async () => {
+    let done: [EnvValues, Set<BrokerChoice>] | null = null;
+    const { lastFrame, stdin } = render(
+      <CredentialsScreen needs={needsBrokerage} existing={{}} brokers={new Set<BrokerChoice>()} acceptDefaults={false} onDone={(v, b) => (done = [v, b])} onCancel={() => {}} />,
+    );
+    const type = async (text: string) => {
+      stdin.write(text);
+      await tick();
+    };
+    await type("3"); // Both
+    await type("SNAP-ID");
+    await type(ENTER);
+    await type("SNAPSECRET1");
+    await type(ENTER);
+    expect(lastFrame()).toContain("E*Trade consumer key");
+    await type(ESCAPE); // back to the broker picker
+    expect(lastFrame()).toContain("Which brokerage connection?");
+    expect(lastFrame()).not.toContain("SnapTrade client id SNAP-ID");
+    await type("2"); // E*Trade direct only
+    await type("EK123");
+    await type(ENTER);
+    await type("ESSECRET456");
+    await type(ENTER);
+    await type("1"); // Live
+    expect(done).not.toBeNull();
+    const [values, brokers] = done!;
+    expect([...brokers]).toEqual(["etrade"]);
+    expect(values.SNAPTRADE_CLIENT_ID).toBeUndefined();
+    expect(values.SNAPTRADE_CONSUMER_KEY).toBeUndefined();
+    expect(values).toMatchObject({ ETRADE_CONSUMER_KEY: "EK123", ETRADE_CONSUMER_SECRET: "ESSECRET456", ETRADE_SANDBOX: "0" });
+  });
+
+  it("keeps a key saved before this run when its connection is deselected", () => {
+    const existing: EnvValues = { SNAPTRADE_CLIENT_ID: "OLD-ID", SNAPTRADE_CONSUMER_KEY: "OLDKEY" };
+    const typed: EnvValues = { SNAPTRADE_CLIENT_ID: "NEW-ID", SNAPTRADE_CONSUMER_KEY: "NEWKEY", ETRADE_CONSUMER_KEY: "EK" };
+    expect(valuesForBrokers(typed, existing, new Set<BrokerChoice>(["etrade"]))).toEqual({ SNAPTRADE_CLIENT_ID: "OLD-ID", SNAPTRADE_CONSUMER_KEY: "OLDKEY", ETRADE_CONSUMER_KEY: "EK" });
+    expect(valuesForBrokers(typed, {}, new Set<BrokerChoice>(["snaptrade"]))).toEqual({ SNAPTRADE_CLIENT_ID: "NEW-ID", SNAPTRADE_CONSUMER_KEY: "NEWKEY" });
   });
 
   it("skips the E*Trade sandbox question with acceptDefaults and defaults it to live", async () => {

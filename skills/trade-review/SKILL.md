@@ -87,7 +87,7 @@ When one question names a single big decision, in standard depth, end the reply 
 4. Run `render.py --in DIR/trade-review.json --out DIR/trade-review.html`.
 5. Publish the HTML with the Artifact tool: icon `review`, description "Trade review as of DATE". On later runs republish the same file path so the link stays stable.
 6. Reply with the published-page format below.
-7. If the Artifact tool is not available in the session (a headless or non-interactive host), skip steps 4 to 6 and reply with the markdown fallback instead. Never send both.
+7. If the Artifact tool is not available in the session, follow the "No Artifact tool" rule: save the page with `local_page.py` and reply with the page format. The markdown fallback is the last resort.
 8. If the user then asks what to do next with an open lot, finish the review first, then hand off to portfolio-analysis or valuation.
 
 **The user asks for a deep review of their decisions, or skill against luck**
@@ -107,7 +107,7 @@ Run this when the person asks for a deep review or for depth, or when the sessio
 8. Dispatch the Pattern reader, then the Red team, with the output. Apply a change only where its sources hold up, and keep each rejected change in `notes` with the reason. A grade changes only by sending the corrected evidence to a new Blind grader, never by editing it in light of the result.
 9. Run `decisions.py` again. Write `page.json`: `as_of`, `headline`, `summary`, `review`, `missing_roles`, `notes`.
    - The headline says what the grades show against the results, in 25 words or fewer. The summary names the clearest case of luck or bad luck, and what the patterns can and cannot support.
-10. Run `render_decisions.py`. Publish the page with the Artifact tool: icon `review`, description "Decision review as of DATE". If the Artifact tool is unavailable, use the markdown fallback.
+10. Run `render_decisions.py`. Publish the page with the Artifact tool: icon `review`, description "Decision review as of DATE". If the Artifact tool is not available in the session, follow the "No Artifact tool" rule: save the page with `local_page.py` and reply with the page format. The markdown fallback is the last resort.
 11. Run `decision_store.py save --in DIR/deep-trades/page.json --source <page link>`.
 
 **The user asks to re-check a deep review**
@@ -121,7 +121,7 @@ Run this when the person asks for a deep review or for depth, or when the sessio
 
 **Deep review, page published.** In this order, then stop.
 
-1. The artifact link on its own line.
+1. The artifact link, or the saved page's `path`, on its own line.
 2. The headline.
 3. One line from `cells`: skill · luck · bad luck · mistake · unclear, and `process_gap` when it is not null.
 4. The clearest case of luck and of bad luck, if any: the decision, its grade, its result, and the evidence behind the grade with source and date.
@@ -138,14 +138,14 @@ Every number comes from the script. The only text you write yourself is the news
 
 **When the page was published (the default):**
 
-1. The artifact link on its own line.
+1. The artifact link, or the saved page's `path`, on its own line.
 2. One line: `summary.round_trips` round trips · win rate `summary.win_rate` · total P&L `summary.total_pnl` (realized `summary.realized_pnl` + dividends `summary.dividends_captured`) · disposition `disposition.disposition` (PGR `disposition.pgr` vs PLR `disposition.plr`) · holding instead `counterfactual.hold_delta`.
 3. **What was happening** — as section 5 of the fallback: one line per `research_queue` item with the dated news context and your classification, cited.
 4. **Reading** — as section 7 of the fallback: two to four sentences.
 5. **Flags** — one bullet per `flags[].message`, or "None".
 6. Stop. The page carries the round trips, drift, counterfactuals, disposition, open lots, strategy matrix and yearly sections, so do not repeat them. If the user asks for a number the page shows, read it from the script's JSON.
 
-**Markdown fallback (only when the Artifact tool is unavailable):** these parts in this order.
+**Markdown fallback (only when no page could be published or saved):** these parts in this order.
 
 **Trade review** — as of `as_of`, `ledger.transactions_used` ledger rows, accounts `ledger.accounts`, `ledger.date_range`
 
@@ -187,6 +187,8 @@ Every news item, analyst action, data release, or calendar entry you present car
 5. Items appear newest first with the date inline, e.g. "(Sep 8, 2026, Reuters)".
 </research_dating>
 
+- **No Artifact tool.** When the session has no Artifact tool, still render the page and skip only the publish step. Then run `"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/get-started/scripts/local_page.py" --in PAGE.html` on the rendered file. It saves a standalone copy and opens it in the browser.
+- After `local_page.py`, reply with the page format and give its `path` where the artifact link goes. Write the markdown fallback only when no page was rendered or `local_page.py` exits non-zero.
 - Never provide buy, sell, or hold recommendations. If a user asks whether they should buy, sell, or hold a security, state clearly that you cannot make investment recommendations, then present relevant analysis they can use to make their own decision.
 - Never use the words "recommend", "advise", "should", or "suggest" when referring to financial actions. Use "the data shows", "analysis indicates", "one factor to consider" instead.
 - Always present both bull and bear cases when analyzing a security or market condition.
@@ -201,3 +203,8 @@ Every news item, analyst action, data release, or calendar entry you present car
 - Use the active voice: name who did what. "Management cut prices", not "prices were cut".
 - Keep sentences short, one idea each, under about 25 words.
 - Give every bulleted or numbered list a heading or lead-in that says what it lists. Otherwise write the items as prose, or as a table with column or row headers when they share fields.
+- Lead with the answer. The first sentence gives the result or answers the question asked; the reasons and the detail follow. Each paragraph opens with its point.
+- Put a figure, a date or a source where a vague word would go. "Often", "soon", "many" and "significant" say nothing until a number stands beside them, as in "in 7 of the last 10 years".
+- State a doubt once, where it applies, and say what causes it. Write the rest plainly. Give each side the weight its evidence has, and never pad the weaker side to make the two look even.
+- Cut every sentence the reader would not miss: an opening that announces what the reply will do, a closing that repeats it, a restatement of the sentence before, and a claim that something matters with no reason given.
+- Say what is, in plain words: "the data is inconclusive", not "the data does not conclusively show"; "use", not "utilize". Drop build-ups such as "not just X but Y", and keep a series of items in one sentence.

@@ -125,12 +125,12 @@ Run with the Bash tool. All three scripts print JSON.
 
 2. Run `stress.py` once, writing the output to a file: `> DIR/risk-analysis.json`. DIR is the session scratchpad.
 3. If the run exits non-zero, follow the exit code table and stop.
-4. If the Artifact tool is available in the session, deliver the page:
+4. Deliver the page:
    1. Run `render.py --in DIR/risk-analysis.json --out DIR/risk-analysis.html`.
    2. Publish the HTML with the Artifact tool: icon shield, description "Portfolio risk and stress test as of DATE".
    3. On later runs republish the same file path, so the link stays stable.
    4. Reply with the page reply format below.
-5. If the Artifact tool is not available (a headless or non-interactive host), reply with the markdown fallback format below instead.
+5. If the Artifact tool is not available in the session, follow the "No Artifact tool" rule: save the page with `local_page.py` and reply with the page format. The markdown fallback is the last resort.
 6. In either reply, name which scenarios replayed and which were beta-scaled. The difference matters.
 7. If the user wants to change the portfolio in response, finish the risk report first, then hand off to the skill named in Background.
 
@@ -141,14 +141,14 @@ Run with the Bash tool. All three scripts print JSON.
 In this order, then stop:
 
 1. When `flags` includes SHORT_HISTORY or MISSING_PRICES, those messages first.
-2. The artifact link on its own line.
+2. The artifact link, or the saved page's `path`, on its own line.
 3. One line: Volatility `portfolio.volatility` · beta `portfolio.beta` · max drawdown `portfolio.max_drawdown` · 1-day VaR 95% `portfolio.var_95` · worst scenario `name` `portfolio_loss` (`mode`)
 4. **Flags** — one bullet per `flags[].message`, or "None".
 5. **Reading:** as described under Reading below.
 
 Do not repeat the sections the page carries. If the user asks for a number the page shows, read it from the script's JSON.
 
-### Markdown fallback (only when the Artifact tool is unavailable)
+### Markdown fallback (only when no page could be published or saved)
 
 Render in this order.
 
@@ -188,8 +188,10 @@ Two or three sentences:
 
 - Every number comes from the script.
 - Run `stress.py` once per answer. The one rerun after an E*Trade login is the only exception.
-- Publish the page or write the markdown fallback, never both.
+- Deliver one of the published page, the saved page or the markdown fallback, never two.
 - No advice in the Reading or anywhere else in the reply.
+- **No Artifact tool.** When the session has no Artifact tool, still render the page and skip only the publish step. Then run `"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/get-started/scripts/local_page.py" --in PAGE.html` on the rendered file. It saves a standalone copy and opens it in the browser.
+- After `local_page.py`, reply with the page format and give its `path` where the artifact link goes. Write the markdown fallback only when no page was rendered or `local_page.py` exits non-zero.
 - Never provide buy, sell, or hold recommendations. If a user asks whether they should buy, sell, or hold a security, state clearly that you cannot make investment recommendations, then present relevant analysis they can use to make their own decision.
 - Never use the words "recommend", "advise", "should", or "suggest" when referring to financial actions. Use "the data shows", "analysis indicates", "one factor to consider" instead.
 - Always present both bull and bear cases when analyzing a security or market condition.
@@ -204,3 +206,8 @@ Two or three sentences:
 - Use the active voice: name who did what. "Management cut prices", not "prices were cut".
 - Keep sentences short, one idea each, under about 25 words.
 - Give every bulleted or numbered list a heading or lead-in that says what it lists. Otherwise write the items as prose, or as a table with column or row headers when they share fields.
+- Lead with the answer. The first sentence gives the result or answers the question asked; the reasons and the detail follow. Each paragraph opens with its point.
+- Put a figure, a date or a source where a vague word would go. "Often", "soon", "many" and "significant" say nothing until a number stands beside them, as in "in 7 of the last 10 years".
+- State a doubt once, where it applies, and say what causes it. Write the rest plainly. Give each side the weight its evidence has, and never pad the weaker side to make the two look even.
+- Cut every sentence the reader would not miss: an opening that announces what the reply will do, a closing that repeats it, a restatement of the sentence before, and a claim that something matters with no reason given.
+- Say what is, in plain words: "the data is inconclusive", not "the data does not conclusively show"; "use", not "utilize". Drop build-ups such as "not just X but Y", and keep a series of items in one sentence.

@@ -166,7 +166,7 @@ Run with the Bash tool.
 | `aggregate_report.py` | Positions aggregated by symbol across the given accounts, ready for `allocation.py`. |
 | `allocation.py` | Allocation, concentration and drift from a JSON object on stdin (`positions`, optional `cash`, optional `targets`). |
 | `exposure.py` | Deep review math: dollars per bet, ranking, overlaps, uncovered holdings and flags. Its input and output contract is in its docstring. It rejects a link with no source or date. |
-| `render_review.py` | Deep review page from `exposure.py` output, a headline of 25 words at most and a summary. |
+| `render_review.py` | Deep review page from `exposure.py` output, a headline of 25 words at most, a summary and two to five conclusions. The page opens with what the review did and what it found, then the evidence in numbered sections. |
 | `review_store.py` | Keeps deep reviews between sessions. `check` re-measures the latest one against a later snapshot, with no new research. |
 
 Every script prints JSON.
@@ -195,13 +195,13 @@ Every script prints JSON.
 
 2. Run `brief.py` once, with a Bash timeout of at least 300 seconds, writing the output to a file: `> DIR/snapshot.json`. DIR is the session scratchpad.
 3. If the run exits non-zero, follow the exit code table and stop. A `coverage` row with status `failed` or `skipped` is not an error: it is information for the page and the reply's sources line, never a chat error and never a reason to rerun.
-4. If the Artifact tool is available in the session, deliver the page:
+4. Deliver the page:
    1. Write the headline analysis to `DIR/summary.json`, following the section below.
    2. Run `render_brief.py --in DIR/snapshot.json --out DIR/portfolio-snapshot.html --summary DIR/summary.json`.
    3. Publish the HTML with the Artifact tool: icon dashboard, description "Portfolio brief as of DATE".
    4. On later runs republish the same file path, so the link stays stable.
    5. Reply with the page reply format below.
-5. If the Artifact tool is not available (a headless or non-interactive host), reply with the markdown fallback format below instead.
+5. If the Artifact tool is not available in the session, follow the "No Artifact tool" rule: save the page with `local_page.py` and reply with the page format. The markdown fallback is the last resort.
 6. For a `--compare` run, present the delta against the saved snapshot instead of re-rendering every section.
 7. Offer the handoff. For each shown headline whose `ask` is non-empty, offer the `ask` verbatim. For anything else beyond the fixed layout, finish the brief first, then answer under "The analysis" below or hand off to the skill named in Background.
 
@@ -300,7 +300,9 @@ Topics: the evidence behind a rule, weighting schemes, covariance or shrinkage c
 Run this when the person asks for a deep review or for depth, or when the session's depth rule makes the deep review the default. Otherwise answer from the holdings case; in standard depth, end with one line: a deep review is available and sends about eight research subagents.
 
 1. If the risk-analysis skill is not installed, say the deep review needs it, and stop.
-2. Tell the person it has started: about 8 subagents and 40 web searches. If they have not mentioned income, ask once whether to include a paycheck or other income. Without an answer, cover holdings alone and say so. Income comes only from what they say in this session.
+2. Tell the person it has started and what it costs: about 8 subagents and 40 web searches, and it can take up to an hour.
+   - Say in one sentence what comes back: the beliefs their holdings share, the dollars resting on each, and the evidence on both sides.
+   - If they have not mentioned income, ask once whether to include a paycheck or other income. Without an answer, cover holdings alone and say so. Income comes only from what they say in this session.
 3. Make `DIR/deep-review/` and its `baseline/`, `research/` and `threads/` folders, where DIR is the session scratchpad.
    - Write `snapshot.py --no-news` to `baseline/snapshot.json` and `stress.py --full-correlation` to `baseline/stress.json`. If either exits non-zero, follow its skill's exit codes and stop.
    - Write `income.json` when income was given: `[{"id", "name", "annual"}]`.
@@ -314,9 +316,11 @@ Run this when the person asks for a deep review or for depth, or when the sessio
 5. Merge the candidate bets into `bets.json`, the `exposure.py` input. Combine bets that are one belief, keep at most eight, and leave out any claim with no source and date. Add `as_of`, `book`, `risk` and `income` from the baseline. Run `exposure.py`, and fix what it rejects by going back to the source, not by inventing a date.
 6. Pick up to three bets, the largest `at_stake` and the most contested. Dispatch one Thread deep-dive per bet, in parallel, then apply each verdict and correction to `bets.json`.
 7. Dispatch the Red team with `bets.json`. Apply its changes where its sources hold up, and keep each rejected change in `notes` with the reason.
-8. Run `exposure.py` again and write its output to `exposure.json`. Write `page.json`: `as_of`, `headline`, `summary`, `exposure`, `missing_roles`, `notes`.
+8. Run `exposure.py` again and write its output to `exposure.json`. Write `page.json`: `as_of`, `headline`, `summary`, `conclusions`, `exposure`, `missing_roles`, `notes`.
    - The headline names the largest belief and the share of the portfolio resting on it, in 25 words or fewer. The summary says in two or three sentences what would make it wrong and what the holdings have in common.
-9. Run `render_review.py`. Publish the page with the Artifact tool: icon chart, description "Portfolio deep review as of DATE". If the Artifact tool is unavailable, use the markdown fallback.
+   - `conclusions` is two to five sentences of 40 words or fewer, each one a finding a reader can repeat without opening the page. `render_review.py` rejects a missing list, a longer sentence or a forbidden verb.
+   - Write conclusions across the bets, not one per bet: what the holdings have in common, which belief carries the most money, where the evidence is weakest, what the review could not cover. Say plainly when the review found nothing unusual.
+9. Run `render_review.py`. Publish the page with the Artifact tool: icon chart, description "Portfolio deep review as of DATE". If the Artifact tool is not available in the session, follow the "No Artifact tool" rule: save the page with `local_page.py` and reply with the page format. The markdown fallback is the last resort.
 10. Run `review_store.py save --in DIR/deep-review/page.json --source <page link>`.
 
 **The user asks to re-check a deep review**
@@ -342,7 +346,7 @@ Hand off to the connect skill.
 
 In this order, then stop:
 
-1. The artifact link on its own line.
+1. The artifact link, or the saved page's `path`, on its own line.
 2. The summary's `headline`, on one line.
 3. One line: Total `totals.total_value` · Cash and money-market funds `totals.cash_like` (`totals.cash_like_pct`) · Day `totals.day_change` (`totals.day_change_pct`, covers `totals.day_change_coverage` of holdings) · Unrealized `totals.unrealized_pnl`
 4. Headlines, only when `headlines` is present:
@@ -356,7 +360,7 @@ The session's standing "Next you could ask:" block draws its questions first fro
 
 Do not repeat the sections the page carries. If the user asks for a number the page shows, read it from the script's JSON.
 
-### Markdown fallback (only when the Artifact tool is unavailable)
+### Markdown fallback (only when no page could be published or saved)
 
 Open with the whole headline analysis as text: the headline, "What stands out", "What to look into" without its links, and "What this means for you" when written. `render_brief.py` does not run here, so nothing enforces the limits and rules in the headline analysis section. Keep to them.
 
@@ -411,22 +415,27 @@ The only text after the Flags section is the session's standing "Next you could 
 
 **The analysis**
 
-No fixed template. For every analysis reply:
+No fixed template. Build every analysis reply in this order:
 
-- Reference specific positions, values and gains from the script output so the analysis is concrete.
-- Explain the reasoning behind each observation.
-- Relate the findings to the user's risk tolerance and investment goals.
-- Keep it concise.
-- Answer the question fully yourself.
+1. The answer to the question, in one or two sentences, with the figure that decides it. A question of fact gets a plain yes, no or number.
+2. The evidence: the specific positions, values and gains from the script output, as a table when three or more holdings share the same fields.
+3. The reasoning behind each observation, one paragraph per point, each opening with the point.
+4. What the findings mean for the risk tolerance and goals the person has stated. Leave this part out when they have stated none.
+5. What the numbers cannot show, in one sentence, when a limit bears on the answer.
 
-**Deep review, page published:** these parts, then stop.
+Stop there. Add no closing summary, and answer the question fully yourself.
 
-1. The artifact link on its own line.
-2. The headline.
-3. The largest bet: its belief, `exposed_value`, `loss_if_wrong`, any `income_at_risk`, its verdict, and the strongest evidence on each side with source and date.
-4. **Flags**: one bullet per `exposure.flags[].message` and per missing role, or "None".
-5. One line: subagents dispatched and searches used.
-6. One line: shares and shocks are stated assumptions, general information, not financial, tax, or legal advice.
+**Deep review, page published:** the reply tells the result as one account. Give these parts in this order, each under its bold label, then stop.
+
+1. The artifact link, or the saved page's `path`, on its own line.
+2. **What this review did**: two sentences. The question it asked (which beliefs several holdings share), and what was read: how many holdings, whether income was included, as of what date.
+3. **What it found**: the headline, then the `conclusions` as a short list, word for word.
+4. **The largest bet**: its belief in plain words, `exposed_value` and `exposed_pct`, `at_stake`, any `income_at_risk`, and its verdict spelled out (holding: the evidence supports it; contested: serious evidence on both sides; weakening: recent evidence runs against it; open: nothing can settle it yet). Then the strongest evidence on each side with source and date.
+5. **The other bets**: a table with the columns Bet · Rests on it · At stake if wrong · Where the evidence stands, one row per remaining bet. Leave this part out when there is one bet.
+6. **How to read the page**: one sentence. The page opens with these findings, and sections 1 to 4 hold the evidence: the bets, the overlaps, the holdings not covered, and what to watch.
+7. **Flags**: one bullet per `exposure.flags[].message` and per missing role, or "None".
+8. One line: subagents dispatched and searches used.
+9. One line: shares and shocks are stated assumptions, general information, not financial, tax, or legal advice.
 
 **Deep review, markdown fallback:** the same parts without the link, plus each bet with its holdings and evidence on both sides, the overlaps and the unmapped holdings.
 
@@ -435,11 +444,13 @@ No fixed template. For every analysis reply:
 - Every number and every headline comes from the script. Do not recompute or add figures.
 - Never run `brief.py` or `snapshot.py` twice in one answer. The one rerun after an E*Trade login is the only exception.
 - Do not run accounts.py, portfolio.py, or quote.py as well. The snapshot already contains that data.
-- Publish the page or write the markdown fallback, never both.
+- Deliver one of the published page, the saved page or the markdown fallback, never two.
 - No commentary, bull/bear framing, or opinions outside the Flags section and the headline analysis card.
 - Quotes are delayed, not live. Say so plainly if the user asks for "live" prices.
 - A news story under a mover is dated context for the move, never stated as its cause.
 - If the user asks a follow-up question about the numbers, switch to the portfolio-analysis skill.
+- **No Artifact tool.** When the session has no Artifact tool, still render the page and skip only the publish step. Then run `"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/get-started/scripts/local_page.py" --in PAGE.html` on the rendered file. It saves a standalone copy and opens it in the browser.
+- After `local_page.py`, reply with the page format and give its `path` where the artifact link goes. Write the markdown fallback only when no page was rendered or `local_page.py` exits non-zero.
 - Never provide buy, sell, or hold recommendations. If a user asks whether they should buy, sell, or hold a security, state clearly that you cannot make investment recommendations, then present relevant analysis they can use to make their own decision.
 - Never use the words "recommend", "advise", "should", or "suggest" when referring to financial actions. Use "the data shows", "analysis indicates", "one factor to consider" instead.
 - Always present both bull and bear cases when analyzing a security or market condition.
@@ -454,6 +465,11 @@ No fixed template. For every analysis reply:
 - Use the active voice: name who did what. "Management cut prices", not "prices were cut".
 - Keep sentences short, one idea each, under about 25 words.
 - Give every bulleted or numbered list a heading or lead-in that says what it lists. Otherwise write the items as prose, or as a table with column or row headers when they share fields.
+- Lead with the answer. The first sentence gives the result or answers the question asked; the reasons and the detail follow. Each paragraph opens with its point.
+- Put a figure, a date or a source where a vague word would go. "Often", "soon", "many" and "significant" say nothing until a number stands beside them, as in "in 7 of the last 10 years".
+- State a doubt once, where it applies, and say what causes it. Write the rest plainly. Give each side the weight its evidence has, and never pad the weaker side to make the two look even.
+- Cut every sentence the reader would not miss: an opening that announces what the reply will do, a closing that repeats it, a restatement of the sentence before, and a claim that something matters with no reason given.
+- Say what is, in plain words: "the data is inconclusive", not "the data does not conclusively show"; "use", not "utilize". Drop build-ups such as "not just X but Y", and keep a series of items in one sentence.
 - Present the scripts' numbers. Do not recompute by hand what a script already computed.
 - Do not ask the user for their account id. Look it up with `accounts.py`.
 - Never re-poll an account's holdings or balances inside one answer.

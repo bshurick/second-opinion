@@ -556,6 +556,27 @@ def render(title: str, data: dict, body: str, script: str, description: str | No
     )
 
 
+def standalone(fragment: str) -> str:
+    """A whole HTML document from a ``render`` fragment, for opening in a browser from a file.
+
+    The Artifact host adds this wrapper when it publishes a page. A session with no Artifact tool
+    (a model from another provider, a headless host) saves the page locally instead, and a bare
+    fragment opened from disk has no doctype (quirks mode) and no charset (the dashes and arrows
+    in the text turn to mojibake). A fragment that already is a document is returned unchanged.
+    """
+    if fragment.lstrip()[:15].lower().startswith(("<!doctype", "<html")):
+        return fragment
+    title, rest = "", fragment
+    if fragment.startswith("<title>") and "</title>" in fragment:
+        end = fragment.index("</title>") + len("</title>")
+        title, rest = fragment[:end], fragment[end:].lstrip("\n")
+    return (
+        '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+        f"{title}\n</head>\n<body>\n{rest}</body>\n</html>\n"
+    )
+
+
 def write(path: str | Path, html: str) -> Path:
     p = Path(path).expanduser()
     p.parent.mkdir(parents=True, exist_ok=True)

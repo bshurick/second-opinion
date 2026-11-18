@@ -425,12 +425,11 @@ The scripts do the fetching and the file assembly. Do not write `macro.md`, `poo
 
 **The user asks whether a screen works, or you are about to lean on a ranking**
 
-1. Run `lookback.py` with the same preset and overrides as the screen.
-2. Reply with the look-back format below.
+1. Run `lookback.py` with the same preset and overrides as the screen, and reply with the look-back format below.
 
 ## Reply format
 
-**For a screen:** the artifact link on its own line, then these parts in this order.
+**For a screen:** the artifact link, or the saved page's `path`, on its own line, then these parts in this order.
 
 1. One line: `universe` screened → survivors, and the test that did the most narrowing.
 2. The top survivors (up to 10) as a table: Ticker · Company · 3-yr growth · Latest quarter · the ranking columns for the preset · Flags. Mark the ones already held.
@@ -445,10 +444,9 @@ The scripts do the fetching and the file assembly. Do not write `macro.md`, `poo
 
 3. One or two near misses worth knowing about, with the one test each failed.
 4. **Flags** from `flags[].message`, or "None".
-5. The next funnel step as an offer: which companies you would take into step 3 and why, in one sentence each.
-6. One sentence, once: the list is general information, not a view on any security.
+5. The next funnel step as an offer: which companies you would take into step 3 and why, in one sentence each. Then one sentence, once: the list is general information, not a view on any security.
 
-**For the deep picker:** the artifact link on its own line, then these parts in this order.
+**For the deep picker:** the artifact link, or the saved page's `path`, on its own line, then these parts in this order.
 
 1. A table of the picks: ticker, central and worst return a year at today's price, the stress test's return when there is one, a one-line thesis, and the deep-valuation link. Put the `pass_flagged` warning beside any flagged pick. When nothing passed, say so plainly.
    - **Growth run:** the table's columns are ticker · best-case multiple and return a year (`best_multiple`, `best.irr`) · central value against the price · worst return a year, labelled not gated · thesis · link.
@@ -462,10 +460,7 @@ The scripts do the fetching and the file assembly. Do not write `macro.md`, `poo
 
 1. One table, a row per pick: ticker · status · nearest scenario (deep) · price level · since added · central return a year at today's price against at the valuation (`irr` and `baseline_irr`) · next step (re-run the deep valuation, or none).
    - For a level other than `normal`, one line under the table per pick: the price against the threshold it crossed, from `result.price.levels`.
-2. Per deep pick, two or three lines:
-   - each metric's actual against the central scenario's expectation and the scenario range (`metrics`)
-   - the evidence found, each item with its source and date
-   - where the price sits against the scenario values
+2. Per deep pick, two or three lines: each metric's actual against the central scenario's expectation and the scenario range (`metrics`); the evidence found, each item with its source and date; and where the price sits against the scenario values.
 3. Per light pick, one line: growth and margin at pick against now, and the price against bear / base / bull.
 4. **Flags**: `flags` and `reasons` messages, and picks skipped for missing data. Or "None". Name `PRESS_RELEASE_FIGURES` every time it appears: the figures are the release's until the 10-Q.
 5. One sentence, once: the re-check is general information at the stated assumptions, not financial, tax, or legal advice.
@@ -473,8 +468,7 @@ The scripts do the fetching and the file assembly. Do not write `macro.md`, `poo
 **For a look-back:** in chat, every time.
 
 1. A small table of the result, with `summary.by_ma200w` as its own lines (below and above the 200-week line, rising and falling slope, each with its count and median return).
-2. Its flags.
-3. The caveats: it is one period, companies delisted since are missing, and past value is approximated.
+2. Its flags, then the caveats: it is one period, companies delisted since are missing, and past value is approximated.
 
 ## Rules
 
@@ -486,6 +480,8 @@ The scripts do the fetching and the file assembly. Do not write `macro.md`, `poo
 - A price level states where the price sits against the valuation. Name the threshold and leave the decision to the person.
 - A re-check status describes the valuation, not the holding. `outside` or `rerun_deep` says the scenarios need redoing; it is never a signal to buy or sell.
 - In a re-check, evidence without a dated source changes nothing.
+- **No Artifact tool.** When the session has no Artifact tool, still render the page and skip only the publish step. Then run `"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/get-started/scripts/local_page.py" --in PAGE.html` on the rendered file. It saves a standalone copy and opens it in the browser.
+- After `local_page.py`, reply with the page format and give its `path` where the artifact link goes. Write the markdown fallback only when no page was rendered or `local_page.py` exits non-zero.
 - Never provide buy, sell, or hold recommendations. If a user asks whether they should buy, sell, or hold a security, state clearly that you cannot make investment recommendations, then present relevant analysis they can use to make their own decision.
 - Never use the words "recommend", "advise", "should", or "suggest" when referring to financial actions. Use "the data shows", "analysis indicates", "one factor to consider" instead.
 - Always present both bull and bear cases when analyzing a security or market condition.
@@ -500,3 +496,8 @@ The scripts do the fetching and the file assembly. Do not write `macro.md`, `poo
 - Use the active voice: name who did what. "Management cut prices", not "prices were cut".
 - Keep sentences short, one idea each, under about 25 words.
 - Give every bulleted or numbered list a heading or lead-in that says what it lists. Otherwise write the items as prose, or as a table with column or row headers when they share fields.
+- Lead with the answer. The first sentence gives the result or answers the question asked; the reasons and the detail follow. Each paragraph opens with its point.
+- Put a figure, a date or a source where a vague word would go. "Often", "soon", "many" and "significant" say nothing until a number stands beside them, as in "in 7 of the last 10 years".
+- State a doubt once, where it applies, and say what causes it. Write the rest plainly. Give each side the weight its evidence has, and never pad the weaker side to make the two look even.
+- Cut every sentence the reader would not miss: an opening that announces what the reply will do, a closing that repeats it, a restatement of the sentence before, and a claim that something matters with no reason given.
+- Say what is, in plain words: "the data is inconclusive", not "the data does not conclusively show"; "use", not "utilize". Drop build-ups such as "not just X but Y", and keep a series of items in one sentence.

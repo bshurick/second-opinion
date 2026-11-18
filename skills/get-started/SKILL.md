@@ -88,10 +88,16 @@ Settings, the version and the update command (no installer):
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/get-started/scripts/settings.py" version
 ```
 
-Account roles (the first run's accounts step): every connected account with `proposed_role`, `saved_role`, `role` and `margin`. `--accept` saves the proposal for each account with no saved role and never overwrites one.
+Account roles (the first run's Accounts question): every connected account with `proposed_role`, `saved_role`, `role` and `margin`. `--accept` saves the proposal for each account with no saved role and never overwrites one.
 
 ```bash
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/get-started/scripts/roles.py" [--accept] [--partial]
+```
+
+A report page for a session with no Artifact tool. Every skill that renders a page uses it: it wraps the rendered file into a whole HTML document, saves it under `pages/` in the data directory and opens it in the browser. It prints `{"path", "url", "opened", "title"}`; `opened` is false when no browser could start, and the file is saved either way.
+
+```bash
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/get-started/scripts/local_page.py" --in PAGE.html [--name NAME] [--no-open]
 ```
 
 With `--json` the installer prints a single JSON object on stdout:
@@ -153,49 +159,55 @@ Every command prints one JSON object except `context`.
 
 **"Get started with Second Opinion": the first run**
 
-Seven steps, one at a time. Each step is checked first and skipped when it is already done, so the flow can stop at any step and pick up there next time. Say at the start which steps are already done.
+Three checks, then every question in one form, then a short guide. Each part is checked first and skipped when it is already done, so the flow can stop anywhere and pick up there next time. Say at the start which parts are already done.
 
-| Step | Done when | What the person does | Skippable |
+| Part | Done when | What the person does | Skippable |
 |---|---|---|---|
 | 1. Check | `profile.py show` exits 0 or 4 | Nothing | no |
 | 2. Keys | connect's `status.py` exits 0 | Runs `configure.py keys` in their own terminal | yes, for research-only use |
 | 3. Connect | `status.py` lists accounts | Signs in through the connect skill | yes |
-| 4. Accounts | every account in `roles.py` has a `saved_role` | Confirms the roles table | with step 3 |
-| 5. Depth | `settings.py show` gives `depth` a `changed_on` date | Picks Standard or Deep | defaults to Standard |
-| 6. Portfolio plan | the four standing answers below are saved | Answers each, or skips | yes |
-| 7. About you | `profile.json` exists | Answers three questions | yes ("skip for now") |
+| 4. The form | every question in "The questions" has a saved answer | Answers all of them in one go | yes, question by question |
+| 5. The guide | shown once the form is saved | Nothing | no |
 
 1. **Check.** Run `profile.py show`. Exit 6 or a path error means the install is broken: go to "Reinstall dependencies" and stop.
 2. **Keys.** If `status.py` exits 4 for missing credentials, follow "A key is needed". Keys never enter the chat. Wait for the person to say the keys are saved, then check again.
-3. **Connect.** Hand off to the connect skill to link a brokerage, then come back to step 4.
-4. **Accounts.** Run `roles.py` and show a table: Account · Type · Proposed role · Margin.
-   - Say what a role decides: trading is taxable and holds picks, and its core funds can be sold to fund picks; retirement is tax-advantaged and holds no picks; savings is taxable and holds no picks.
-   - On a yes, run `roles.py --accept`. For a different role, run `settings.py set accounts.<id>.role ROLE` for that account first.
-5. **Depth.** State what each choice costs, as in "Change depth", and save the answer. No answer leaves Standard.
-6. **Portfolio plan.** Run the portfolio-plan skill's `plan.py status` and ask each unset standing answer once, one per message. Each one is saved with `settings.py set` and never asked again.
-
-   | Question | Saved as |
-   |---|---|
-   | "Do you hold your employer's stock?" (offer `employer_candidate` from the run when present) | `plan.sleeves.EMPLOYER.members TICKER` or `none` |
-   | "What share of the portfolio should your own stock picks be?" | `plan.sleeves.PICKS.target 0.1`, or `none` to leave it unmanaged |
-   | "How much cash should stay out of the plan?" | `plan.cash_reserve AMOUNT` |
-   | "Can a plan sell into short-term gains?" | `taxes.short_term_gain_policy hold` or `allow` |
-
-   A skipped question stays unset, and plans use the stated default for it (`STANDING_DEFAULT`).
-7. **About you.** Frame it in one sentence: "Three short questions about how you invest, so the plugin knows which analysis to lead with. Say 'skip for now' to answer later." If they skip, run `skip` and never raise it again unless asked. Otherwise run "The three questions" below.
-8. Run `next-steps` and render its two groups verbatim as "Set up" and "Try asking", each item on its own line so the person can say it word for word.
+3. **Connect.** Hand off to the connect skill to link a brokerage, then come back here.
+4. **Read what is already saved,** before asking anything. Run `settings.py show`, and when accounts are connected, `roles.py` and the portfolio-plan skill's `plan.py status`. A question whose answer is saved is not asked again.
+5. **Ask every open question in one form,** following "Asking the form" and "The questions" below. Never ask them one message at a time.
+6. **Save the answers** with the commands in "The questions". Run `profile.py complete` when at least one About-you answer was saved, and `profile.py skip` when the person skipped both.
+7. **Confirm in one table** what was saved: Setting · Value · What it does. Name each skipped question and the default in force for it.
+8. **Show the guide.** Run `next-steps` and reply with "The guide" in Reply format.
 9. If the person came in with another request (the session context said no profile exists), complete it now.
 
-**The three questions**
+**Asking the form**
 
-Ask one question per message. Wait for the answer. Run `profile.py set` for that field before asking the next. Every question is skippable: "skip" moves on without writing. Offer the choices below and accept anything close in meaning; map it to the vocabulary and say the value you saved.
+1. If the session has a question tool that takes several questions at once (AskUserQuestion in Claude Code), use it. Each question is one tab, with its choices and one line under each choice saying what the plugin does with it.
+   - The tool takes at most four questions a call. Send the first four, then the rest in a second call straight after, with no chat message between the two.
+   - When a question has more choices than the tool takes, offer the commonest and name the others in the question text, for the person to type.
+2. If there is no such tool, send every question in one message as a numbered list with lettered choices. Ask for all the answers in one reply, such as "1b 2a 3c".
+3. State each question as a choice among what the plugin offers. Never ask about the person's strategy in the abstract and infer the setting from the answer.
+4. Never mark a choice as the better one. Say which choice is the default.
+5. An unanswered question stays unset. Do not ask it again in this conversation.
 
-1. "How do you decide what to buy?" (what the business is worth / growth prospects / dividends / index funds / charts and momentum / not sure yet; several allowed) → `approach` value, growth, dividend, index, technical, unsure
-2. "How long do you usually hold an investment?" (years / months / weeks or less / it varies) → `horizon` years, months, weeks, mixed
-3. "Before you buy something, what do you want to have looked at first?" (a valuation / the fundamentals / the chart / nothing extra) → `pre_trade_check`. Say that it is recorded in the profile and shown in the session context line, so the check they named can be run before a buy when they ask for one; nothing blocks an order on it.
-4. Run `complete`.
+**The questions**
 
-The other profile fields (`risk_appetite`, `experience`, `goals`, `trades_actively`, `uses_options`) are never asked. The person can set them in their own words later ("update my profile").
+Ask in this order. Leave out the plan questions (5 to 8) when no account is connected.
+
+| # | Tab | Question | Choices, and what the plugin does with each | Saved with |
+|---|---|---|---|---|
+| 1 | Accounts | "Here is each account and the role proposed for it. Keep these roles?" Put the Account · Type · Proposed role lines from `roles.py` in the question. | **Keep as proposed.** / **Change one**: the person names the account and the role. A role decides where picks may sit: trading is taxable and holds picks, and its funds can be sold to pay for picks; retirement is tax-advantaged and holds no picks; savings is taxable and holds no picks. | `roles.py --accept`, after `settings.py set accounts.<id>.role ROLE` for each change |
+| 2 | Depth | "How thorough should valuations, stock picks and reviews be?" | **Standard** (the default): an answer in seconds from the scripts and little usage; a deep run happens only when you ask for one. / **Deep**: every valuation, pick and review sends 5 to 40 research subagents through filings and news; a run takes minutes and a portfolio review up to an hour, with far more of your Claude usage; it asks first before starting more than 3 deep valuations. | `settings.py set depth standard` or `deep` |
+| 3 | Approach | "Which of these describe how you invest? Pick any." | **Value**: what a business is worth. / **Growth**. / **Dividends**. / **Index funds**. / **Charts and momentum**. / **Not sure yet**. The plugin offers the matching analysis first. It never scores a holding against the answer. | `profile.py set approach value,growth,dividend,index,technical,unsure` (the ones chosen) |
+| 4 | Horizon | "How long do you usually hold an investment?" | **Years** / **Months** / **Weeks or less** / **It varies**. It sets which time frame the answers lead with. | `profile.py set horizon years`, `months`, `weeks` or `mixed` |
+| 5 | Employer stock | "Does your employer pay you in its stock (stock awards, a purchase plan), or do you hold its shares? If so, which ticker, and what happens to new shares?" When `plan.py status` gives `employer_candidate`, name it: "Your account history shows TICKER shares arriving." | **Yes, sold when they arrive**: the plan keeps that stock as its own line outside your picks, and lists each new batch as a sale whose proceeds go to your targets. / **Yes, kept**: the plan keeps that stock as its own line, never lists it for sale on arrival, and flags it above 10% of the portfolio. / **No**: no holding is treated as employer stock, and every single stock counts as one of your picks. | `settings.py set plan.sleeves.EMPLOYER.members TICKER` and `plan.sleeves.EMPLOYER.policy sell_on_arrival` or `hold`; for No, `members none` |
+| 6 | Stock picks | "What share of the portfolio do you want in stocks you pick yourself, with the rest in funds?" | **5%** / **10%** / **20%** / another figure: the plan measures your picks against that share and sends new money toward it; it sells nothing to get there unless you ask for a rebalance. / **Not managed**: the plan reports the share and sets no target. | `settings.py set plan.sleeves.PICKS.target 0.1`, or `none` |
+| 7 | Cash reserve | "How much cash should plans leave untouched?" | **$0** / **$5,000** / **$10,000** / another amount. A plan never spends this cash when it puts money to work. | `settings.py set plan.cash_reserve AMOUNT` |
+| 8 | Short-term gains | "May a plan sell a holding bought less than a year ago at a gain?" | **No, hold them** (the default): a plan leaves those holdings unsold in taxable accounts, so no gain is taxed at the short-term rate, and it can end further from target. / **Yes, allow**: a plan sells whatever reaches the target and shows the estimated tax. | `settings.py set taxes.short_term_gain_policy hold` or `allow` |
+
+- If the person answers question 5 with a yes and no ticker, and there is no `employer_candidate`, ask for the ticker in one line. That is the only follow-up question the form allows.
+- Accept anything close in meaning to a choice, map it to the saved value and show that value in the confirming table.
+- A skipped plan question stays unset, and plans use the stated default for it (`STANDING_DEFAULT`).
+- The other profile fields (`risk_appetite`, `experience`, `goals`, `pre_trade_check`, `trades_actively`, `uses_options`) are never asked. The person can set them in their own words later ("update my profile").
 
 **When a profile already exists** and the person says "get started", offer to revisit the steps, with the current answers shown.
 
@@ -206,7 +218,7 @@ For the install and settings cases below, find the route first (Background table
 1. Say in two sentences what will happen.
    - Plugin install: "The installer saves your keys and optional extras in the plugin's data directory and builds a virtualenv with the three Python dependencies; Claude Code keeps managing the plugin files."
    - Guided install: "The installer copies the chosen skills plus the shared library into `~/.claude/plugins/second-opinion/`, builds a virtualenv with the three Python dependencies, saves your keys and extras in the data directory, links the plugin into `~/.claude/skills/`, and runs a smoke test."
-2. Guided install only, if the user has not said which skills they want, ask once: "The core skills and the trade plan and pre-buy check are installed by default, and two optional extras are off (suggested follow-up questions, and lessons and quizzes); anything to leave out or turn on?" For a plugin install ask only about the extras. Do not ask again.
+2. Guided install only, if the user has not said which skills they want, ask once, in one question: "The core skills and the trade plan and pre-buy check are installed by default, and two optional extras are off (suggested follow-up questions, and lessons and quizzes); anything to leave out or turn on?" For a plugin install ask only about the extras. Do not ask again.
 3. If they ask what exists, show the family list and the extras (with their `label` and `blurb`) from `skills.json`.
 4. If a key is needed and none is set, follow "A key is needed" below instead of running the installer yourself.
 5. If the user wants to preview the plan before anything is written, run the command with `--dry-run` first.
@@ -216,7 +228,7 @@ For the install and settings cases below, find the route first (Background table
 9. If `smoke.status` is `rejected`, point to the connect skill.
 10. If `smoke.etrade` is `no_login`, tell the user to say "Connect E*Trade" and paste the code it shows.
 11. For a plugin install, say the change applies from the next session or after `/reload-plugins`.
-12. After a successful first install, end with: "Now say 'get started with Second Opinion' to connect your accounts, set up your plan and see what to try first."
+12. After a successful first install, end with: "Now say 'get started with Second Opinion' to connect your accounts, answer the setup questions in one form and see what to try first."
 
 **A key is needed**
 
@@ -249,7 +261,7 @@ This case covers "turn off suggested questions", "turn off the trade plan check"
 
 Change it only when the person asks in their own words, as for any setting.
 
-1. Before setting it, state what each choice costs. Standard: seconds and little usage per answer, with a deep run on request. Deep: minutes and 5 to 40 research subagents per run, a deep valuation or deep pick only, and a question first when a request would start more than `deep.ask_above` (default 3) deep valuations.
+1. Before setting it, state what each choice costs. Standard: seconds and little usage per answer, with a deep run on request. Deep: minutes and 5 to 40 research subagents per run (a portfolio review can take up to an hour), a deep valuation or deep pick only, and a question first when a request would start more than `deep.ask_above` (default 3) deep valuations.
 2. Run `settings.py set depth deep` or `settings.py set depth standard`.
 3. Say the scripts follow it on the next command, and the session's depth rule from the next session.
 
@@ -306,6 +318,29 @@ Change a setting only when the person asks for that change in their own words, n
 
 **For next steps:** the two groups from `next-steps`, verbatim, under "Set up" and "Try asking", one item per line.
 
+**The guide** (the end of the first run, and "what can I ask"). These parts in this order, then stop.
+
+1. "Set up": the `setup` items from `next-steps`, one per line. Leave the heading out when the list is empty.
+2. "Try asking": the `try_asking` items, one per line, so the person can say each word for word.
+3. "Common requests": this table, with only the rows whose skill is in `installed_skills`.
+
+   | To | Say | Or type |
+   |---|---|---|
+   | See every account today | "How is my portfolio?" | `/second-opinion:portfolio-analysis` |
+   | Catch up since last time | "Check in" | |
+   | Read the market | "How is the market today?" | `/second-opinion:market-analysis` |
+   | Value a stock | "What is COST worth?" | `/second-opinion:valuation` |
+   | Find stocks | "Find me stocks" | `/second-opinion:stock-screener` |
+   | Compare against your targets | "Am I off target?" | `/second-opinion:portfolio-plan` |
+   | Stress-test the holdings | "What if 2008 repeats?" | `/second-opinion:risk-analysis` |
+   | Check retirement | "Am I on track to retire?" | `/second-opinion:retirement` |
+   | Change anything set here | "Show my settings" | `/second-opinion:get-started` |
+
+4. Three closing lines:
+   - "Ask in plain words. A skill name is never needed, and typing `/second-opinion` lists every command."
+   - "Say 'deep' with a request for the researched version, such as 'do a deep dive on COST'. It takes minutes and more usage."
+   - "Orders are previewed first, and nothing is sent until you say yes."
+
 The profile deletion uses the same block:
 
 ```markdown
@@ -336,3 +371,8 @@ The profile deletion uses the same block:
 - Use the active voice: name who did what. "Management cut prices", not "prices were cut".
 - Keep sentences short, one idea each, under about 25 words.
 - Give every bulleted or numbered list a heading or lead-in that says what it lists. Otherwise write the items as prose, or as a table with column or row headers when they share fields.
+- Lead with the answer. The first sentence gives the result or answers the question asked; the reasons and the detail follow. Each paragraph opens with its point.
+- Put a figure, a date or a source where a vague word would go. "Often", "soon", "many" and "significant" say nothing until a number stands beside them, as in "in 7 of the last 10 years".
+- State a doubt once, where it applies, and say what causes it. Write the rest plainly. Give each side the weight its evidence has, and never pad the weaker side to make the two look even.
+- Cut every sentence the reader would not miss: an opening that announces what the reply will do, a closing that repeats it, a restatement of the sentence before, and a claim that something matters with no reason given.
+- Say what is, in plain words: "the data is inconclusive", not "the data does not conclusively show"; "use", not "utilize". Drop build-ups such as "not just X but Y", and keep a series of items in one sentence.

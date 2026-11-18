@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.15.0
+
+- get-started: the first run asks every open question in one form instead of one message at a time. In Claude Code the form uses the question tool, one tab per question; elsewhere it is one numbered message answered in one reply. A question whose answer is already saved is not asked.
+- get-started: each question is a direct choice among what the plugin offers, and each choice says what the plugin does with it. The form asks about depth (Standard or Deep, with the time and usage each costs), which the first run used to pass over. It no longer asks the pre-trade check question.
+- get-started: the employer stock question names what it means (stock awards, a purchase plan, shares held) and offers three choices with their effect: sold on arrival, kept, or none. It saves the policy with the ticker.
+- get-started: the first run ends with a guide: the setup items, questions to try, a table of common requests with their slash commands, and three closing lines.
+- installer: going back to the brokerage picker discards what was typed for a connection no longer chosen. Entering a SnapTrade key, going back and choosing E*Trade alone no longer saves both. A key saved before the run is still kept.
+- report pages: a session with no Artifact tool (a model from another provider, a headless host) now gets the page as an HTML file before falling back to markdown. The new `local_page.py` in get-started wraps the rendered page into a whole document, saves it under `pages/` in the data directory and opens it in the browser. Every page-producing skill carries the rule.
+- portfolio deep review: the page opens with "What this review did" and "What it found" (headline, summary, two to five required `conclusions`, and the same result in numbers), then the evidence in numbered sections that each say what they hold and why. Each bet has a plain-language reading and the verdict labels are defined. A "How to read this page" walkthrough steps through the sections.
+- every skill: the shared **Writing** block grows from five rules to ten, and every subagent role file carries them. The new rules: lead with the answer; put a figure, date or source where a vague word would go; state a doubt once and give each side the weight its evidence has; cut sentences the reader would not miss; say what is, in plain words. `docs/skill-style.md` lists the fault each rule answers and the order a free-form reply or page follows.
+- portfolio-analysis: the free-form analysis reply has an order: the answer, the evidence, the reasoning, what it means for stated goals, and the limits.
+- portfolio deep review: the reply follows the same account (what it did, what it found, the largest bet, the other bets, how to read the page), and the start message says a run can take up to an hour.
+
 ## 1.14.0
 
 - deep valuation: the page opens with an About card. It carries the company's profile facts from `baseline/fundamentals.json`, a business summary written by the valuation's research, and a five-year weekly share-price chart. `render_deep.py --case` fetches the history from Yahoo and writes both into `page.json`, so a later `--in` run reproduces the page without a fetch. A failed fetch publishes the page without the chart and adds `PRICE_HISTORY_UNAVAILABLE`. Without a written summary the card shows Yahoo's description, clipped at 90 words. `blocks.json` gains an optional top-level `company` object; an input without it renders as before.

@@ -173,7 +173,7 @@ Pick the case that matches the request.
 5. Run `render.py --in DIR/signals.json --prices DIR/history.json --out DIR/trading.html`.
 6. Publish the HTML with the Artifact tool: icon chart, description "SYMBOL trading signals as of DATE". On later runs for the same symbol, republish the same file path so the link stays stable.
 7. Reply with the page format below.
-8. If the Artifact tool is not available in the session (a headless or non-interactive host), skip steps 5 and 6 and reply with the markdown fallback. Never both.
+8. If the Artifact tool is not available in the session, follow the "No Artifact tool" rule: save the page with `local_page.py` and reply with the page format. The markdown fallback is the last resort.
 
 Read support and resistance from the `pivots` block. Note any notable trend change.
 
@@ -267,13 +267,13 @@ Cancelling requires the exact order id (`order_id` on each `orders.py` row) and 
 
 **When the page was published (the default):**
 
-1. The artifact link on its own line.
+1. The artifact link, or the saved page's `path`, on its own line.
 2. One line: SYMBOL `last_close` as of `as_of` · 12-1 momentum `momentum_12_1` · 12m `returns.12m` · vs SMA 200 `price_vs_sma_200` · volatility `annualized_volatility` · from 52w high `pct_from_52w_high`. Add `relative.12m` vs the benchmark when present.
 3. The bull and bear reading: two to four sentences that place the numbers on the horizon map, state the horizon each pattern applies to, and name the key risks (costs, momentum crashes, regime change). Then stop.
 
 The page carries the chart, the returns, the full signals table and the pivots. Do not repeat them in the reply.
 
-**Markdown fallback (only when the Artifact tool is unavailable):** the script's numbers in this order.
+**Markdown fallback (only when no page could be published or saved):** the script's numbers in this order.
 
 1. Last close and as-of.
 2. Trailing returns (1w/1m/3m/6m/12m).
@@ -338,6 +338,8 @@ Every news item, analyst action, data release, or calendar entry you present car
 5. Items appear newest first with the date inline, e.g. "(Sep 8, 2026, Reuters)".
 </research_dating>
 
+- **No Artifact tool.** When the session has no Artifact tool, still render the page and skip only the publish step. Then run `"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/get-started/scripts/local_page.py" --in PAGE.html` on the rendered file. It saves a standalone copy and opens it in the browser.
+- After `local_page.py`, reply with the page format and give its `path` where the artifact link goes. Write the markdown fallback only when no page was rendered or `local_page.py` exits non-zero.
 - Never provide buy, sell, or hold recommendations. If a user asks whether they should buy, sell, or hold a security, state clearly that you cannot make investment recommendations, then present relevant analysis they can use to make their own decision.
 - Never use the words "recommend", "advise", "should", or "suggest" when referring to financial actions. Use "the data shows", "analysis indicates", "one factor to consider" instead.
 - Always present both bull and bear cases when analyzing a security or market condition.
@@ -352,3 +354,8 @@ Every news item, analyst action, data release, or calendar entry you present car
 - Use the active voice: name who did what. "Management cut prices", not "prices were cut".
 - Keep sentences short, one idea each, under about 25 words.
 - Give every bulleted or numbered list a heading or lead-in that says what it lists. Otherwise write the items as prose, or as a table with column or row headers when they share fields.
+- Lead with the answer. The first sentence gives the result or answers the question asked; the reasons and the detail follow. Each paragraph opens with its point.
+- Put a figure, a date or a source where a vague word would go. "Often", "soon", "many" and "significant" say nothing until a number stands beside them, as in "in 7 of the last 10 years".
+- State a doubt once, where it applies, and say what causes it. Write the rest plainly. Give each side the weight its evidence has, and never pad the weaker side to make the two look even.
+- Cut every sentence the reader would not miss: an opening that announces what the reply will do, a closing that repeats it, a restatement of the sentence before, and a claim that something matters with no reason given.
+- Say what is, in plain words: "the data is inconclusive", not "the data does not conclusively show"; "use", not "utilize". Drop build-ups such as "not just X but Y", and keep a series of items in one sentence.

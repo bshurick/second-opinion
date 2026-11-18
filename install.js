@@ -38727,6 +38727,21 @@ function initialBrokerChoice(brokers) {
   if (brokers.has("etrade")) return "etrade";
   return "snaptrade";
 }
+var BROKER_KEYS = {
+  snaptrade: ["SNAPTRADE_CLIENT_ID", "SNAPTRADE_CONSUMER_KEY"],
+  etrade: ["ETRADE_CONSUMER_KEY", "ETRADE_CONSUMER_SECRET", "ETRADE_SANDBOX"]
+};
+function valuesForBrokers(values, existing, chosen) {
+  const next = { ...values };
+  for (const broker of ["snaptrade", "etrade"]) {
+    if (chosen.has(broker)) continue;
+    for (const key of BROKER_KEYS[broker]) {
+      if (existing[key] === void 0) delete next[key];
+      else next[key] = existing[key];
+    }
+  }
+  return next;
+}
 function CredentialsScreen({ needs, existing, brokers: initialBrokers, acceptDefaults, onDone, onCancel }) {
   const [values, setValues] = (0, import_react31.useState)({ ...existing });
   const [chosenBrokers, setChosenBrokers] = (0, import_react31.useState)(initialBrokers);
@@ -38762,7 +38777,7 @@ function CredentialsScreen({ needs, existing, brokers: initialBrokers, acceptDef
   return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(Box_default, { flexDirection: "column", children: [
     /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(Text, { bold: true, children: "Credentials" }),
     /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(Text, { color: color.dim, children: "Stored in the plugin's .env (mode 600). Never printed, logged, or sent anywhere but the API that owns them." }),
-    completed.map((c) => /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(Text, { color: color.ok, children: [
+    (field === "brokers" ? [] : completed).map((c) => /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(Text, { color: color.ok, children: [
       glyph.check,
       " ",
       /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(Text, { color: void 0, children: c })
@@ -38782,10 +38797,13 @@ function CredentialsScreen({ needs, existing, brokers: initialBrokers, acceptDef
             onSelect: (choice) => {
               const b = choice === "both" ? /* @__PURE__ */ new Set(["snaptrade", "etrade"]) : /* @__PURE__ */ new Set([choice]);
               setChosenBrokers(b);
+              const kept = valuesForBrokers(values, existing, b);
+              setValues(kept);
+              setCompleted([]);
               if (b.has("snaptrade")) {
-                setField(values.SNAPTRADE_CLIENT_ID && values.SNAPTRADE_CONSUMER_KEY ? "keep-or-new" : "client-id");
+                setField(kept.SNAPTRADE_CLIENT_ID && kept.SNAPTRADE_CONSUMER_KEY ? "keep-or-new" : "client-id");
               } else if (b.has("etrade")) {
-                setField(values.ETRADE_CONSUMER_KEY && values.ETRADE_CONSUMER_SECRET ? "etrade-keep-or-new" : "etrade-key");
+                setField(kept.ETRADE_CONSUMER_KEY && kept.ETRADE_CONSUMER_SECRET ? "etrade-keep-or-new" : "etrade-key");
               }
             },
             onCancel

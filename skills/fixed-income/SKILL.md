@@ -185,7 +185,7 @@ Use this case for "is 4% on a Treasury better than owning the index", "what is t
 3. Run `render.py --in DIR/fixed-income.json --out DIR/fixed-income.html`.
 4. Publish the HTML with the Artifact tool: icon chart, description "Fixed income — SYMBOL as of DATE". On later runs republish the same file path so the link stays stable.
 5. Reply with the page format below.
-6. If the Artifact tool is unavailable in the session, skip steps 1–4 and use the markdown fallback. Never both.
+6. If the Artifact tool is not available in the session, follow the "No Artifact tool" rule: save the page with `local_page.py` and reply with the page format. The markdown fallback is the last resort.
 
 **`fund.py` exits 2**
 
@@ -222,7 +222,7 @@ The reader is a person deciding what to do with their own money, not a bond anal
 - **Same basis.** Treasury and fund yields are quoted compounding twice a year, and `locked_in_return_pct` is an effective annual rate. Before comparing any two, convert the quoted one: (1 + y/2)² − 1. The page does this for every bar.
 - **Cash is the benchmark people have.** The 3-month bill (`benchmarks.bill_3m_pct`, converted) stands in for cash; money funds track it.
 
-**When the page was published (the default):** the artifact link on its own line, then these, in this order, and nothing else.
+**When the page was published (the default):** the artifact link, or the saved page's `path`, on its own line, then these, in this order, and nothing else.
 
 1. **The short answer.** One sentence: held `horizon_years` years, SYMBOL works out to about `locked_in_return_pct`% a year at today's prices, N points more (or less) a year than cash in a 3-month bill (converted rate).
 2. **If rates rise 1 point today.** One sentence from the `delta_yield_bp: 100` scenario: the price drops `immediate_price_change_pct`% at once; held to the horizon it earns `annualised_pct`% a year instead. Add whether the lines in `value_paths` meet before the horizon (the drop is earned back after about the duration) or not (a holder selling at the horizon is still behind).
@@ -235,7 +235,7 @@ The reader is a person deciding what to do with their own money, not a bond anal
 
 The page carries the rate-move chart, the three yields, the market-implied path against the Fed's, the decomposition, the durations and every assumption. Do not repeat them in the reply. If the user asks for one, read it from the JSON and answer in the same plain register.
 
-**Markdown fallback (only when the Artifact tool is unavailable):** the same sections in the same order, plus:
+**Markdown fallback (only when no page could be published or saved):** the same sections in the same order, plus:
 
 - The three yields with their one-line meanings.
 - Only if the user asked to go deeper: the implied path against `fomc_projection`; the three durations labelled separately; and the yield decomposition as treasury-equivalent + blended spread − expense ratio = calculated, beside the published figure, with the `circularity_note` in full directly underneath it.
@@ -253,6 +253,8 @@ The page carries the rate-move chart, the three yields, the market-implied path 
 - Quote `spread_pct` for the input in front of you. Never give a general "at most X" bound.
 - When the published effective duration and the horizon figure both appear, say plainly that they answer different questions and that the horizon figure is a single-bond approximation. Never present it as more precise than that.
 - Put nothing in a result's `assumptions` block that you would not publish.
+- **No Artifact tool.** When the session has no Artifact tool, still render the page and skip only the publish step. Then run `"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/get-started/scripts/local_page.py" --in PAGE.html` on the rendered file. It saves a standalone copy and opens it in the browser.
+- After `local_page.py`, reply with the page format and give its `path` where the artifact link goes. Write the markdown fallback only when no page was rendered or `local_page.py` exits non-zero.
 - Never provide buy, sell, or hold recommendations. If a user asks whether they should buy, sell, or hold a security, state clearly that you cannot make investment recommendations, then present relevant analysis they can use to make their own decision.
 - Never use the words "recommend", "advise", "should", or "suggest" when referring to financial actions. Use "the data shows", "analysis indicates", "one factor to consider" instead.
 - Always present both bull and bear cases when analyzing a security or market condition.
@@ -266,3 +268,8 @@ The page carries the rate-move chart, the three yields, the market-implied path 
 - Use the active voice: name who did what. "Management cut prices", not "prices were cut".
 - Keep sentences short, one idea each, under about 25 words.
 - Give every bulleted or numbered list a heading or lead-in that says what it lists. Otherwise write the items as prose, or as a table with column or row headers when they share fields.
+- Lead with the answer. The first sentence gives the result or answers the question asked; the reasons and the detail follow. Each paragraph opens with its point.
+- Put a figure, a date or a source where a vague word would go. "Often", "soon", "many" and "significant" say nothing until a number stands beside them, as in "in 7 of the last 10 years".
+- State a doubt once, where it applies, and say what causes it. Write the rest plainly. Give each side the weight its evidence has, and never pad the weaker side to make the two look even.
+- Cut every sentence the reader would not miss: an opening that announces what the reply will do, a closing that repeats it, a restatement of the sentence before, and a claim that something matters with no reason given.
+- Say what is, in plain words: "the data is inconclusive", not "the data does not conclusively show"; "use", not "utilize". Drop build-ups such as "not just X but Y", and keep a series of items in one sentence.

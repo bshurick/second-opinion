@@ -307,7 +307,7 @@ Run with the Bash tool. All print JSON on stdout.
     2. Run `render.py --in DIR/valuation.json --out DIR/valuation.html`.
     3. Publish the HTML with the Artifact tool: icon chart, description "Valuation: SYMBOL at PRICE". Republish the same file path on later runs so the link stays stable.
     4. Reply with the published-page format below.
-14. If the Artifact tool is not available in the session (a headless or non-interactive host), reply with the markdown fallback instead. Never both.
+14. If the Artifact tool is not available in the session, follow the "No Artifact tool" rule: save the page with `local_page.py` and reply with the page format. The markdown fallback is the last resort.
 15. With several companies, skip the page and reply with one row each: price, bear / base / bull value, and the base-case annualized return.
 
 **Deep (one company)**
@@ -393,13 +393,13 @@ Run with the Bash tool. All print JSON on stdout.
     - If it exits 2, fix the block or ledger entry the `error` names and rerun.
 13. Publish `DIR/deep-SYMBOL/page.html` with the Artifact tool: icon chart, description "Deep valuation: SYMBOL at PRICE". Republish the same path on later runs.
 14. If the stock-screener skill is installed and the company is already a saved pick, or the person holds it or asks to track it, save the baseline: `picks.py save-deep SYMBOL --case DIR/deep-SYMBOL --source <page link>`. The case folder lives in the session scratchpad, which is cleared, so this is what later re-checks measure against. The deep picker saves its own picks.
-15. Reply in the deep format below. If the Artifact tool is unavailable, use the deep markdown fallback. When the baseline was not saved, end with one line offering to save it for re-checks.
+15. Reply in the deep format below. If the Artifact tool is not available in the session, follow the "No Artifact tool" rule: save the page with `local_page.py` and reply with the page format. The markdown fallback is the last resort. When the baseline was not saved, end with one line offering to save it for re-checks.
 
 ## Reply format
 
 **Quick mode, page published (standard depth; the default):** these parts, in this order, then stop.
 
-1. The artifact link on its own line.
+1. The artifact link, or the saved page's `path`, on its own line.
 2. One line naming only the methods that ran: **Valuation: SYMBOL** price `price` · DCF `dcf.fair_value_per_share` (range from the sensitivity grid, bear / base / bull) · Graham number `intrinsic.graham.graham_number` · growth formula `intrinsic.graham.growth_formula.value` · mid-cycle DCF `dcf_mid_cycle.fair_value_per_share`.
 3. The bull and bear cases in two or three sentences using only the scripts' numbers: the terminal-value share when it exceeds 70%, the checklist pattern, the business-type caveats.
 4. **Flags** — one bullet per `intrinsic.flags[].message`, or "None".
@@ -407,7 +407,7 @@ Run with the Bash tool. All print JSON on stdout.
 
 The page carries the sensitivity grids, checklists, owner earnings, normalized block, comps and DDM tables, so do not repeat them in the reply. If the user asks for a number the page shows, read it from the scripts' JSON.
 
-**Quick mode, markdown fallback (standard depth; only when the Artifact tool is unavailable):** these parts, then stop.
+**Quick mode, markdown fallback (standard depth; only when no page could be published or saved):** these parts, then stop.
 
 1. The fair-value range with the WACC × terminal-growth sensitivity table.
 2. Every key assumption.
@@ -441,7 +441,7 @@ The page carries the sensitivity grids, checklists, owner earnings, normalized b
 
 **Deep mode, page published:** these parts, then stop.
 
-1. The artifact link on its own line.
+1. The artifact link, or the saved page's `path`, on its own line.
 2. A table: scenario | value per share | return a year at today's price, from the last `deep_run.py` output (`value_per_share`, `irr`). Label the scenario with `stress` true "(stress test)".
 3. What today's price implies (`implied`), in one line, and which scenario comes nearest to it.
 4. The two or three ledger verdicts that move value most, each with its source and date, and what it changed in the model.
@@ -478,6 +478,8 @@ Every news item, analyst action, data release, or calendar entry you present car
 5. Items appear newest first with the date inline, e.g. "(Sep 8, 2026, Reuters)".
 </research_dating>
 
+- **No Artifact tool.** When the session has no Artifact tool, still render the page and skip only the publish step. Then run `"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/get-started/scripts/local_page.py" --in PAGE.html` on the rendered file. It saves a standalone copy and opens it in the browser.
+- After `local_page.py`, reply with the page format and give its `path` where the artifact link goes. Write the markdown fallback only when no page was rendered or `local_page.py` exits non-zero.
 - Never provide buy, sell, or hold recommendations. If a user asks whether they should buy, sell, or hold a security, state clearly that you cannot make investment recommendations, then present relevant analysis they can use to make their own decision.
 - Never use the words "recommend", "advise", "should", or "suggest" when referring to financial actions. Use "the data shows", "analysis indicates", "one factor to consider" instead.
 - Always present both bull and bear cases when analyzing a security or market condition.
@@ -492,3 +494,8 @@ Every news item, analyst action, data release, or calendar entry you present car
 - Use the active voice: name who did what. "Management cut prices", not "prices were cut".
 - Keep sentences short, one idea each, under about 25 words.
 - Give every bulleted or numbered list a heading or lead-in that says what it lists. Otherwise write the items as prose, or as a table with column or row headers when they share fields.
+- Lead with the answer. The first sentence gives the result or answers the question asked; the reasons and the detail follow. Each paragraph opens with its point.
+- Put a figure, a date or a source where a vague word would go. "Often", "soon", "many" and "significant" say nothing until a number stands beside them, as in "in 7 of the last 10 years".
+- State a doubt once, where it applies, and say what causes it. Write the rest plainly. Give each side the weight its evidence has, and never pad the weaker side to make the two look even.
+- Cut every sentence the reader would not miss: an opening that announces what the reply will do, a closing that repeats it, a restatement of the sentence before, and a claim that something matters with no reason given.
+- Say what is, in plain words: "the data is inconclusive", not "the data does not conclusively show"; "use", not "utilize". Drop build-ups such as "not just X but Y", and keep a series of items in one sentence.

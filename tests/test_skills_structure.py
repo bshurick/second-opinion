@@ -340,6 +340,11 @@ WRITING_RULES = [
     "Use the active voice: name who did what.",
     "Keep sentences short, one idea each, under about 25 words.",
     "Give every bulleted or numbered list a heading or lead-in that says what it lists. Otherwise write the items as prose, or as a table with column or row headers when they share fields.",
+    'Lead with the answer. The first sentence gives the result or answers the question asked; the reasons and the detail follow. Each paragraph opens with its point.',
+    'Put a figure, a date or a source where a vague word would go. "Often", "soon", "many" and "significant" say nothing until a number stands beside them, as in "in 7 of the last 10 years".',
+    'State a doubt once, where it applies, and say what causes it. Write the rest plainly. Give each side the weight its evidence has, and never pad the weaker side to make the two look even.',
+    'Cut every sentence the reader would not miss: an opening that announces what the reply will do, a closing that repeats it, a restatement of the sentence before, and a claim that something matters with no reason given.',
+    'Say what is, in plain words: "the data is inconclusive", not "the data does not conclusively show"; "use", not "utilize". Drop build-ups such as "not just X but Y", and keep a series of items in one sentence.',
 ]
 ROLE_FILES = sorted(
     str(p.relative_to(SKILLS_ROOT)) for p in SKILLS_ROOT.glob("*/references/*.md") if "Return to the " in p.read_text()
@@ -642,18 +647,40 @@ def test_check_in_and_arrival_rows() -> None:
     assert "plan's trade list" in (root / "trading" / "SKILL.md").read_text()
 
 
-def test_get_started_asks_three_profile_questions() -> None:
+def test_get_started_asks_every_setup_question_in_one_form() -> None:
+    """The first run used to ask one question a message, skipped depth, and asked about employer
+    stock without saying what either answer did. It is one form, and each choice states its effect."""
     text = (SKILLS_ROOT / "get-started" / "SKILL.md").read_text()
-    for field in ("approach", "horizon", "pre_trade_check"):
-        assert f"→ `{field}`" in text, field
-    for field in ("risk_appetite", "experience", "goals", "trades_actively", "uses_options", "account_roles"):
-        assert f"→ `{field}`" not in text, field
-    assert "Six short questions" not in text and "six questions" not in text.lower()
-    for step in ("1. Check", "2. Keys", "3. Connect", "4. Accounts", "5. Depth", "6. Portfolio plan", "7. About you"):
-        assert f"| {step} |" in text, step
-    assert "roles.py" in text and "configure.py keys" in text
-    for key in ("plan.sleeves.EMPLOYER.members", "plan.sleeves.PICKS.target", "plan.cash_reserve", "taxes.short_term_gain_policy"):
-        assert key in text, key
+    assert "Ask every open question in one form" in text and "Never ask them one message at a time." in text
+    assert "AskUserQuestion" in text and "one message as a numbered list" in text
+    for part in ("1. Check", "2. Keys", "3. Connect", "4. The form", "5. The guide"):
+        assert f"| {part} |" in text, part
+    table = text[text.index("**The questions**"):text.index("**When a profile already exists**")]
+    for tab in ("Accounts", "Depth", "Approach", "Horizon", "Employer stock", "Stock picks", "Cash reserve", "Short-term gains"):
+        assert f"| {tab} |" in table, tab
+    for saved in ("settings.py set depth standard", "profile.py set approach", "profile.py set horizon", "roles.py --accept",
+                  "plan.sleeves.EMPLOYER.members", "plan.sleeves.EMPLOYER.policy", "plan.sleeves.PICKS.target",
+                  "plan.cash_reserve", "taxes.short_term_gain_policy"):
+        assert saved in table, saved
+    # depth states what each choice costs; the employer question says what each answer does
+    assert "research subagents" in table and "up to an hour" in table
+    for choice in ("**Yes, sold when they arrive**", "**Yes, kept**", "**No**"):
+        assert choice in table, choice
+    assert "Do you hold your employer's stock?" not in text
+    # the fields the form leaves alone
+    assert "are never asked" in table
+    for field in ("risk_appetite", "experience", "goals", "pre_trade_check", "trades_actively", "uses_options"):
+        assert f"profile.py set {field}" not in text, field
+    assert "configure.py keys" in text
+
+
+def test_get_started_ends_with_a_guide() -> None:
+    text = (SKILLS_ROOT / "get-started" / "SKILL.md").read_text()
+    guide = text[text.index("**The guide**"):]
+    assert "Common requests" in guide and "| To | Say | Or type |" in guide
+    for command in re.findall(r"`/second-opinion:([a-z-]+)`", guide):
+        assert (SKILLS_ROOT / command / "SKILL.md").is_file(), command
+    assert len(set(re.findall(r"`/second-opinion:([a-z-]+)`", guide))) >= 6
 
 
 def test_orders_have_one_owner() -> None:
@@ -667,3 +694,27 @@ def test_orders_have_one_owner() -> None:
     trading = (SKILLS_ROOT / "trading" / "SKILL.md").read_text()
     for part in ("supports_trading", "floor(dollar_amount / price)", "### ⚠️ ACTION NEEDED", "cash account", "plan's trade list"):
         assert part in trading, part
+
+
+# A session on another provider's model has no Artifact tool. Skills used to drop straight to
+# markdown there; the order is the published page, then a saved HTML page, then markdown.
+LOCAL_PAGE_RULES = [
+    '- **No Artifact tool.** When the session has no Artifact tool, still render the page and skip only the publish step. Then run `"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/get-started/scripts/local_page.py" --in PAGE.html` on the rendered file. It saves a standalone copy and opens it in the browser.',
+    "- After `local_page.py`, reply with the page format and give its `path` where the artifact link goes. Write the markdown fallback only when no page was rendered or `local_page.py` exits non-zero.",
+]
+PAGE_SKILLS = sorted(n for n in SKILL_NAMES if "Artifact tool" in _skill_md_path(n).read_text())
+
+
+def test_page_skills_are_found() -> None:
+    assert len(PAGE_SKILLS) >= 15 and "portfolio-analysis" in PAGE_SKILLS
+
+
+@pytest.mark.parametrize("skill_name", PAGE_SKILLS)
+def test_page_skills_save_a_local_page_before_markdown(skill_name: str) -> None:
+    text = _skill_md_path(skill_name).read_text()
+    for rule in LOCAL_PAGE_RULES:
+        assert rule in text, f"{skill_name}: missing the no-Artifact-tool rule: {rule[:60]}"
+    assert not re.search(r"Artifact tool is (not available|unavailable)[^.]*(reply with|use) the [^.]*markdown", text), (
+        f"{skill_name}: a step still sends a session without the Artifact tool straight to markdown"
+    )
+    assert (SKILLS_ROOT / "get-started" / "scripts" / "local_page.py").is_file()
