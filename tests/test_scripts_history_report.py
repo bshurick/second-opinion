@@ -111,10 +111,31 @@ def test_top_up_merges_new_activity_before_rebuild(rep, monkeypatch, capsys) -> 
     assert any(t["date"] == "2026-01-08" and t["type"] == "BUY" for t in saved)
 
 
-def test_no_top_up_without_ledger_rows_and_no_file_created(rep, monkeypatch, capsys) -> None:
+def test_first_run_pulls_full_history_for_account_without_ledger_rows(rep, monkeypatch, capsys) -> None:
+    raw = {"id": "t1", "type": "BUY", "trade_date": "2025-06-02", "symbol": {"symbol": "AAPL"}, "units": 10, "price": 100.0, "amount": -1000.0}
+    hub = _hub(monkeypatch, StubHub(ACC, POS, {"a1": 0.0}, txns={"a1": [raw]}))
+    rc, out = run_json(rep, [], capsys)
+    assert rc == 0, out
+    assert hub.tx_calls[0]["start"] == "2024-01-22"  # TODAY − 729 days, the brokers' two-year limit
+    saved = ledger.load()["transactions"]
+    assert any(t["date"] == "2025-06-02" and t["type"] == "BUY" for t in saved)
+    assert not any(f["code"] == "LEDGER_EMPTY" for f in out["flags"])
+
+
+def test_full_pull_only_for_accounts_without_rows(rep, monkeypatch, capsys) -> None:
+    _book([_row("2026-01-05", "DEPOSIT", aid="a1", amount=1000.0)])
+    acc = [*ACC, {"account_id": "a2", "name": "Roth", "account_type": "cash", "broker": "snaptrade"}]
+    hub = _hub(monkeypatch, StubHub(acc, {**POS, "a2": []}))
+    rc, out = run_json(rep, [], capsys)
+    assert rc == 0, out
+    starts = {c["aid"]: c["start"] for c in hub.tx_calls}
+    assert starts == {"a1": "2025-12-29", "a2": "2024-01-22"}
+
+
+def test_no_file_created_when_brokers_return_nothing(rep, monkeypatch, capsys) -> None:
     hub = _hub(monkeypatch, StubHub(ACC, POS))
     rc, out = run_json(rep, [], capsys)
-    assert rc == 0 and hub.tx_calls == []
+    assert rc == 0 and [c["start"] for c in hub.tx_calls] == ["2024-01-22"]
     assert not ledger.ledger_path().exists()
 
 
@@ -123,7 +144,7 @@ def test_empty_ledger_flags(rep, monkeypatch, capsys) -> None:
     rc, out = run_json(rep, [], capsys)
     assert rc == 0
     flag = next(f for f in out["flags"] if f["code"] == "LEDGER_EMPTY")
-    assert "statement-import" in flag["message"]
+    assert "two years" in flag["message"] and "statement-import" in flag["message"]
     assert out["sources"]["flows"] == "ledger"
 
 
@@ -150,6 +171,17 @@ def test_proxy_map_resolved_from_names(rep, monkeypatch, capsys) -> None:
     symbols, start = rep.calls["close"][0]
     assert "BND" in symbols and {"SPY", "QQQ", "DIA"} <= set(symbols) and start == "2026-01-02"
     assert len(rep.calls["close"]) == 1
+
+
+def test_proxy_map_includes_funds_no_longer_held_from_ledger_text(rep, monkeypatch, capsys) -> None:
+    _book([{**_row("2026-01-02", "TRANSFER_IN", symbol="TG3H", units=10.0, amount=200.0), "description": "contribution - SSGA LG CAP VALUE"}])
+    seen = {}
+    real = rep.history.run_history
+    monkeypatch.setattr(rep.history, "run_history", lambda p: seen.update(p) or real(p))
+    _hub(monkeypatch, StubHub(ACC, POS))
+    rc, _ = run_json(rep, [], capsys)
+    assert rc == 0 and seen["proxies"].get("TG3H") == "VTV"
+    assert "VTV" in rep.calls["close"][0][0]
 
 
 def test_partial_excludes_etrade_accounts(rep, monkeypatch, capsys) -> None:

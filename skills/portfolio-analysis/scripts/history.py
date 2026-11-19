@@ -78,6 +78,15 @@ every earlier trading day:
     TRANSFER_IN/OUT, cash    like DEPOSIT/WITHDRAWAL
     OTHER                    cash -= amount when present (flag OTHER_TYPES)
 
+Two OTHER shapes are read by their description (SnapTrade activity types the
+ledger keeps as OTHER, as a 401(k) reports them): "exchangeIn"/"exchangeOut"
+with a symbol and units is an in-plan fund exchange, read as a BUY/SELL whose
+cash nets to zero across the pair (amount -|amount| in, +|amount| out); and
+"realizedGainLoss" is a record of a gain, not cash, so it is ignored. A
+DIVIDEND row carrying units whose description says "reinvest" (E*Trade's
+"DIVIDEND REINVESTMENT", next to the cash DIVIDEND row) is the BUY the ledger
+contract calls it: units in, cash -|amount|.
+
 V(d) = cash(d) + sum units x close(d), the last close carried forward over
 days without one. With F(d) the external flow (deposits positive, at end of
 day), r(d) = (V(d) - F(d)) / V(d-1) - 1 and the index is the running product
@@ -109,7 +118,11 @@ negative beyond the tolerance below and, when the SPLIT row carries units, the
 share change across the split (as traded: post x (1 - 1/ratio); adjusted: 0)
 equals the row's units or units x ratio (reconcile.py's reading) within 1e-6
 relative. If both fit, the one leaving zero units before the ledger's first
-trade wins. Anything else, or a split with no ratio, is ambiguous: a break on
+trade wins; if that still leaves both, the pre-split trade prices decide (price
+over Yahoo's split-adjusted close is about the ratio when recorded as traded,
+about 1 when already adjusted, within 15%); with no market price before the
+split at all, both readings value the shares at the trade price alike, so it is
+read as adjusted. Anything else, or a split with no ratio, is ambiguous: a break on
 the split date.
 
 Reconciliation ("never draw a guess"). Walking back from today, the first of
@@ -139,6 +152,7 @@ which case all are combined and nothing is flagged.
 from __future__ import annotations
 
 import json
+import math
 import sys
 from bisect import bisect_left, bisect_right
 import re
@@ -163,6 +177,7 @@ CASH_LIMIT = 0.05  # cash below -5% of value breaks a non-margin account
 CARRY_DAYS = 5  # a close is carried forward over at most this many trading days
 SHORT_HISTORY_DAYS = 30
 SPLIT_MATCH_DAYS = 7  # a ledger SPLIT row this close to a Yahoo split is that split
+PRICE_MATCH_LOG = math.log(1.15)  # a trade price within 15% of the expected split-adjusted price
 OPTION_RE = re.compile(r"^[A-Z][A-Z0-9.]{0,5}\s*\d{6}[CP]\d{8}$")  # OCC option symbol
 _UNDO_SIGN = {"BUY": -1.0, "SELL": 1.0, "TRANSFER_IN": -1.0, "TRANSFER_OUT": 1.0}
 
@@ -205,11 +220,14 @@ def _split_factor(symbol: str, txn_date: str, splits: dict[str, Any] | None) -> 
 
 
 def _detect_split_convention(
-    symbol: str, txns: list[dict[str, Any]], splits: dict[str, Any], today_units: float
+    symbol: str, txns: list[dict[str, Any]], splits: dict[str, Any], today_units: float, close_on: Any = None
 ) -> Literal["as_traded", "adjusted", "ambiguous"]:
     """How the ledger recorded trades before ``symbol``'s newest split that has no
     ``convention`` yet (the target). Newer splits keep their set convention; the
-    target and older undecided splits are tried together under each reading."""
+    target and older undecided splits are tried together under each reading. When
+    both readings still fit, ``close_on(symbol, day)`` (Yahoo's split-adjusted
+    close) settles it: a trade price near close x later ratios was recorded as
+    traded, one near the close itself already adjusted."""
     events = sorted((dict(e) for e in splits.get(symbol) or []), key=lambda e: str(e["date"])[:10])
     pending = [e for e in events if not e.get("convention")]
     if not pending:
@@ -250,7 +268,33 @@ def _detect_split_convention(
     fitting = [r for r, (ok, _, _) in outcomes.items() if ok]
     if len(fitting) == 2:
         fitting = [r for r in fitting if abs(outcomes[r][1]) <= max(NEG_UNITS_ABS, NEG_UNITS_REL * outcomes[r][2])]
+    if len(fitting) == 2 and close_on is not None:
+        fitting = _by_trade_prices(symbol, rows, split_day, events, close_on) or fitting
     return fitting[0] if len(fitting) == 1 else "ambiguous"  # type: ignore[return-value]
+
+
+def _by_trade_prices(
+    symbol: str, rows: list[dict[str, Any]], split_day: str, events: list[dict[str, Any]], close_on: Any
+) -> list[str]:
+    """The one reading the pre-split trade prices agree with, or [] when they don't
+    settle it: each price over that day's split-adjusted close is about the later
+    ratios' product when recorded as traded, about 1 when already adjusted."""
+    trial = {symbol: [{**e, "convention": e.get("convention") or "as_traded"} for e in events]}
+    before = [t for t in rows if str(t["date"])[:10] < split_day]
+    if not any(close_on(symbol, str(t["date"])[:10]) for t in before):
+        return ["adjusted"]  # no market price before the split: both readings value at the trade price alike
+    votes: dict[str, int] = {"as_traded": 0, "adjusted": 0}
+    for txn in before:
+        when = str(txn["date"])[:10]
+        price, close = _opt(txn.get("price")), close_on(symbol, when)
+        if not price or price <= 0 or not close or close <= 0:
+            continue
+        observed, factor = price / close, _split_factor(symbol, when, trial)
+        for reading, expected in (("as_traded", factor), ("adjusted", 1.0)):
+            if abs(math.log(observed / expected)) <= PRICE_MATCH_LOG:
+                votes[reading] += 1
+    agreed = [r for r, n in votes.items() if n]
+    return agreed if len(agreed) == 1 else []
 
 
 def _split_events(txns: list[dict[str, Any]], yahoo: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
@@ -289,14 +333,14 @@ def _split_events(txns: list[dict[str, Any]], yahoo: dict[str, Any]) -> dict[str
 
 
 def _resolve_splits(
-    txns: list[dict[str, Any]], yahoo: dict[str, Any], today_units: dict[str, float]
+    txns: list[dict[str, Any]], yahoo: dict[str, Any], today_units: dict[str, float], close_on: Any = None
 ) -> tuple[dict[str, list[dict[str, Any]]], list[tuple[str, str]]]:
     """Split events with a ``convention`` each, plus (date, symbol) per ambiguous split."""
     events = _split_events(txns, yahoo)
     breaks: list[tuple[str, str]] = []
     for symbol, evs in events.items():
         for k in range(len(evs) - 1, -1, -1):
-            convention = _detect_split_convention(symbol, txns, {symbol: evs}, today_units.get(symbol, 0.0))
+            convention = _detect_split_convention(symbol, txns, {symbol: evs}, today_units.get(symbol, 0.0), close_on)
             evs[k]["convention"] = convention
             if convention == "ambiguous":
                 breaks.append((evs[k]["date"], symbol))
@@ -452,6 +496,17 @@ def _synthetic_prices(today_price: float, proxy_rows: object) -> list[dict[str, 
     newest = clean[-1][1]
     return [{"date": when, "close": today_price * adj / newest} for when, adj in clean]
 
+
+def _anchored_prices(price: float, anchor: str, proxy_rows: object) -> list[dict[str, Any]]:
+    """A fund no longer held, from its proxy: its last trade ``price`` on ``anchor``
+    moved by the proxy's ``adj_close`` ratio to that day; [] without a proxy close
+    on or before ``anchor``."""
+    rows = _synthetic_prices(1.0, proxy_rows)
+    base = [r["close"] for r in rows if r["date"] <= anchor]
+    if not base:
+        return []
+    return [{"date": r["date"], "close": price * r["close"] / base[-1]} for r in rows]
+
 def _year_before(day: str) -> str:
     """``day`` one year earlier, Feb 29 clamped to Feb 28."""
     d = date.fromisoformat(day)
@@ -522,7 +577,11 @@ def _account_rows(
     or None, and the carried unpriced symbols with their price."""
     positions = [p for p in account.get("positions") or [] if p.get("symbol")]
     today_units = {p["symbol"]: float(p.get("units") or 0.0) for p in positions}
-    events, split_breaks = _resolve_splits(txns, yahoo_splits, today_units)
+    def close_on(symbol: str, day: str) -> float | None:
+        i = bisect_right(days, day) - 1
+        return prices_on(i).get(symbol) if i >= 0 else None
+
+    events, split_breaks = _resolve_splits(txns, yahoo_splits, today_units, close_on)
     holdings = _rollback(account, txns, events, days, others, cash_like)
     last = len(days) - 1
     split_at = {min(bisect_left(days, when), last): sym for when, sym in split_breaks if when <= days[-1]}
@@ -614,6 +673,26 @@ def _account_rows(
     return rows, brk, carried
 
 
+def _reinterpret(txn: dict[str, Any]) -> dict[str, Any] | None:
+    """A row the description identifies: a dividend reinvestment carrying units as
+    the BUY it is, an in-plan exchange as a BUY/SELL, a realized gain/loss record as
+    None (dropped). Anything else unchanged."""
+    amount = _opt(txn.get("amount"))
+    text = str(txn.get("description") or "")
+    if (txn.get("type") == "DIVIDEND" and "reinvest" in text.lower() and txn.get("symbol")
+            and _opt(txn.get("units")) and amount is not None):
+        return {**txn, "type": "BUY", "amount": -abs(amount)}  # the shares a reinvested dividend bought
+    if txn.get("type") != "OTHER":
+        return txn
+    kind = text.strip().split(" ", 1)[0].lower()
+    if kind in ("exchangein", "exchangeout") and txn.get("symbol") and _opt(txn.get("units")) and amount is not None:
+        buy = kind == "exchangein"
+        return {**txn, "type": "BUY" if buy else "SELL", "amount": -abs(amount) if buy else abs(amount)}
+    if kind == "realizedgainloss":
+        return None
+    return txn
+
+
 def _assign_rows(
     txns: list[dict[str, Any]], aliases: dict[str, Any], live_ids: set[str]
 ) -> tuple[list[dict[str, Any]], int]:
@@ -667,8 +746,9 @@ def run_history(params: dict[str, Any]) -> dict[str, Any]:
     all_txns: list[dict[str, Any]] = []
     for txn in txns_in:
         when = _iso(txn.get("date"), "transaction date")
-        if when <= as_of:
-            all_txns.append({**txn, "date": when})
+        row = _reinterpret({**txn, "date": when}) if when <= as_of else None
+        if row is not None:
+            all_txns.append(row)
 
     flags: list[dict[str, str]] = []
     excluded: list[dict[str, str]] = []
@@ -711,7 +791,13 @@ def run_history(params: dict[str, Any]) -> dict[str, Any]:
         closes, synthetic = dict(close_by_symbol), {}
         names = {p["symbol"]: p.get("name") for p in account.get("positions") or [] if p.get("symbol")}
         symbols = set(names) | {t["symbol"] for t in mine if t.get("symbol")}
-        cash_like = frozenset(s for s in symbols if proxy_lib.is_cash_like(s, names.get(s)))
+        # a fund no longer held has no position name; its own ledger rows' text can say "money market"
+        texts: dict[str, list[str]] = {}
+        for t in mine:
+            if t.get("symbol"):
+                texts.setdefault(t["symbol"], []).extend(str(t.get(k) or "") for k in ("description", "security_name"))
+        cash_like = frozenset(s for s in symbols if proxy_lib.is_cash_like(s, names.get(s))
+                              or any(proxy_lib.is_cash_like(s, text) for text in texts.get(s, [])))
         for position in account.get("positions") or []:
             symbol, proxy = position.get("symbol"), proxy_map.get(position.get("symbol"))
             price = _opt(position.get("price"))
@@ -719,6 +805,20 @@ def run_history(params: dict[str, Any]) -> dict[str, Any]:
                     or _closes(prices.get(symbol), days, "close", symbol, CARRY_DAYS)[-1] is not None):
                 continue
             synth = _synthetic_prices(price, prices.get(proxy))
+            if synth:
+                closes[symbol] = _closes(synth, days, "close", symbol)
+                synthetic[symbol] = proxy
+        held_now = {p.get("symbol") for p in account.get("positions") or [] if abs(_opt(p.get("units")) or 0.0) >= _EPS}
+        for symbol, proxy in proxy_map.items():
+            if symbol in held_now or symbol in cash_like or symbol in synthetic or symbol not in symbols:
+                continue
+            if any(c is not None for c in _closes(prices.get(symbol), days, "close", symbol)):
+                continue  # it has market prices of its own
+            last = max((t for t in mine if t.get("symbol") == symbol and _opt(t.get("units")) and _opt(t.get("amount"))),
+                       key=lambda t: t["date"], default=None)
+            if last is None:
+                continue
+            synth = _anchored_prices(abs(_opt(last["amount"])) / _opt(last["units"]), last["date"], prices.get(proxy))
             if synth:
                 closes[symbol] = _closes(synth, days, "close", symbol)
                 synthetic[symbol] = proxy

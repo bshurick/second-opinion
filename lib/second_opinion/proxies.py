@@ -24,6 +24,7 @@ LOOKTHROUGH_PROXIES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"^(?!.*\b(BD|BOND)\b).*\bINT(ERNATIONA)?L\b.*\b(STK|STOCK|EQUITY|IDX|INDEX)\b", re.I), "VXUS"),
     (re.compile(r"^(?!.*\bINT(ERNATIONA)?L\b).*(\b(TOT(AL)?|AGG(REGATE)?|U\.?S\.?)\s+(BD|BOND)\b|\b(BD|BOND)\s+(MKT|MARKET|IDX|INDEX)\b)", re.I), "BND"),
     (re.compile(r"\bTOT(AL)?\s+(U\.?S\.?\s+)?(STK|STOCK|MARKET|MKT)\b", re.I), "VTI"),
+    (re.compile(r"\b(LG|LARGE)\s*(CAP|CP)\s+VAL(UE)?\b", re.I), "VTV"),
 ]
 
 _CASH_SYMBOLS = CASH_SYMBOLS = {"FCASH", "SPAXX", "FDRXX", "MVRXX", "CASH", "USD"}

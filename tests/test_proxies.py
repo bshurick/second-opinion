@@ -25,6 +25,7 @@ def test_lookthrough_proxy_for_matches_institutional_names() -> None:
     assert proxies.lookthrough_proxy_for("ACME INST 500 IDX TR") == "VOO"
     assert proxies.lookthrough_proxy_for("ACME TOT BD MKT IDX") == "BND"
     assert proxies.lookthrough_proxy_for("ACME TL INTL STK MK") == "VXUS"
+    assert proxies.lookthrough_proxy_for("SSGA LG CAP VALUE") == "VTV"
     assert proxies.lookthrough_proxy_for(None) is None
 
 

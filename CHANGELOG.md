@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.17.1
+
+- portfolio summary: the performance chart fetches history by default. An account with no ledger rows gets the last two years of broker activity (E*Trade direct or SnapTrade) on the first summary, so no separate statement import is needed; accounts with rows still get the one-week overlap. `LEDGER_EMPTY` now means the brokers returned nothing, and points to CSV imports for older history.
+
+- portfolio summary: range buttons that reach before the line's first day are visibly disabled (faded, dashed, not-allowed cursor) with a "History starts …" tooltip.
+- portfolio-analysis: `history.py` reads more ledger shapes instead of breaking on them. A 401(k) `exchangeIn`/`exchangeOut` row is a fund-to-fund swap (units move, cash nets out), and `realizedGainLoss` is ignored. A DIVIDEND row with units whose description says "reinvest" (E*Trade) is the BUY it is. A money-market fund no longer held is cash when its ledger text says "money market" (FTEXX, SPRXX). A fund no longer held with no public price is valued from its proxy, anchored on its last trade price; `history_report.py` finds the proxy from the ledger text. When both split readings fit, the pre-split trade prices against Yahoo's adjusted close decide, and with no close before the split there is nothing to decide.
+- proxies: large-cap value fund names ("SSGA LG CAP VALUE") map to VTV.
+
 ## 1.17.0
 
 - portfolio summary: the page has a "Performance vs. the market" card after the headline analysis. It draws the portfolio's time-weighted return against SPY, QQQ and DIA, with range buttons (1M, 3M, YTD, 1Y, All) that rebase every line to 0% at the last close on or before the start of the range (so YTD counts the year's first day), and a line per account. The history flags join the page's flags.

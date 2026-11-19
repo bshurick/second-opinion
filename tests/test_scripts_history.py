@@ -810,3 +810,99 @@ def test_run_history_emits_headline_per_series():
         assert h["range"] == "1Y" and h["start"] == "2025-11-18" and h["portfolio_return"] == pytest.approx(0.0)
         i = days.index("2025-11-18")
         assert h["spy_return"] == pytest.approx((100 + (len(days) - 1) * 0.1) / (100 + i * 0.1) - 1, abs=1e-5)
+
+
+# --- real-ledger shapes: money markets known only from ledger text, 401(k) exchanges, splits with no position ---
+
+def _desc(txn, description):
+    return {**txn, "description": description}
+
+
+def test_money_market_known_from_ledger_description_is_cash():
+    # FTEXX is no longer held, so no position name says it is a money market; its rows do
+    txns = [_txn("2026-01-05", "DEPOSIT", amount=5000.0),
+            _desc(_txn("2026-01-06", "BUY", "FTEXX", 5000.0, -5000.0), "YOU BOUGHT FIDELITY MUNICIPAL MONEY MARKET (FTEXX)"),
+            _desc(_txn("2026-01-08", "SELL", "FTEXX", 5000.0, 5000.0), "YOU SOLD FIDELITY MUNICIPAL MONEY MARKET (FTEXX)")]
+    acct = {"account_id": "A", "name": "A", "cash": 5000.0, "positions": []}
+    out = history.run_history(_params([acct], txns, {"SPY": _rows([1] * 5)}))
+    assert _break_messages(out) == []
+    assert [p[2] for p in _series(out, "A")["points"]] == [5000] * 5
+
+
+def test_401k_exchange_rows_move_shares_not_cash():
+    # an in-plan exchange: sell 10 ONMZ ($1,000), buy 5 ONN5 ($1,000); the realizedGainLoss row is a record, not cash
+    txns = [_desc(_txn("2026-01-05", "TRANSFER_IN", "ONMZ", 10.0, 1000.0), "contribution - VG IS TOT BD MKT IDX"),
+            _desc(_txn("2026-01-07", "OTHER", "ONMZ", 10.0, -1000.0), "exchangeOut - VG IS TOT BD MKT IDX"),
+            _desc(_txn("2026-01-07", "OTHER", "ONN5", 5.0, 1000.0), "exchangeIn - VANG INST 500 IDX TR"),
+            _desc(_txn("2026-01-07", "OTHER", "ONMZ", None, 250.0), "realizedGainLoss - VG IS TOT BD MKT IDX")]
+    acct = {"account_id": "A", "name": "A", "cash": 0.0, "positions": [{"symbol": "ONN5", "units": 5.0}]}
+    prices = {"ONMZ": _rows([100] * 5), "ONN5": _rows([200] * 5)}
+    out = history.run_history(_params([acct], txns, prices))
+    assert _break_messages(out) == []
+    assert "OTHER_TYPES" not in _codes(out)
+    s = _series(out, "A")
+    assert s["start"] == "2026-01-05"
+    assert [p[2] for p in s["points"]] == [1000] * 5 and all(p[1] == pytest.approx(1.0) for p in s["points"])
+
+
+def test_split_with_no_position_resolved_by_trade_prices():
+    # bought and sold 8 shares before a 2:1 split; Yahoo's close is split-adjusted ($85), the trades say $170:
+    # recorded as traded. Both readings net to zero shares, so only the prices tell them apart.
+    txns = [_txn("2026-01-05", "DEPOSIT", amount=2000.0),
+            {**_txn("2026-01-05", "BUY", "AVB", 8.0, -1360.0), "price": 170.0},
+            {**_txn("2026-01-06", "SELL", "AVB", 8.0, 1360.0), "price": 170.0}]
+    acct = {"account_id": "A", "name": "A", "cash": 2000.0, "positions": []}
+    splits = {"AVB": [{"date": "2026-01-08", "ratio": 2.0}]}
+    out = history.run_history(_params([acct], txns, {"AVB": _rows([85] * 5)}, splits=splits))
+    assert _break_messages(out) == []
+    assert [p[2] for p in _series(out, "A")["points"]] == [2000] * 5
+
+
+def test_split_with_no_position_and_no_prices_still_breaks():
+    txns = [_txn("2026-01-05", "DEPOSIT", amount=2000.0),
+            _txn("2026-01-05", "BUY", "AVB", 8.0, -1360.0), _txn("2026-01-06", "SELL", "AVB", 8.0, 1360.0)]
+    acct = {"account_id": "A", "name": "A", "cash": 2000.0, "positions": []}
+    splits = {"AVB": [{"date": "2026-01-08", "ratio": 2.0}]}
+    out = history.run_history(_params([acct], txns, {"AVB": _rows([85] * 5)}, splits=splits))
+    assert any("split" in m for m in _break_messages(out))
+
+
+def test_fund_no_longer_held_priced_from_proxy_anchored_on_last_trade():
+    # 10 TG3H exchanged out on 01-08 at $20 into ONN5; TG3H has no public price, its proxy VTV rose 10% to 01-08
+    txns = [_desc(_txn("2026-01-05", "TRANSFER_IN", "TG3H", 10.0, 182.0), "contribution - SSGA LG CAP VALUE"),
+            _desc(_txn("2026-01-08", "OTHER", "TG3H", 10.0, -200.0), "exchangeOut - SSGA LG CAP VALUE"),
+            _desc(_txn("2026-01-08", "OTHER", "ONN5", 1.0, 200.0), "exchangeIn - VANG INST 500 IDX TR")]
+    acct = {"account_id": "A", "name": "A", "cash": 0.0, "positions": [{"symbol": "ONN5", "units": 1.0}]}
+    vtv = _rows([100, 100, 105, 110, 110])
+    out = history.run_history(_params([acct], txns, {"VTV": vtv, "ONN5": _rows([200] * 5)}, proxies={"TG3H": "VTV"}))
+    assert _break_messages(out) == []
+    s = _series(out, "A")
+    assert s["start"] == "2026-01-05" and s["estimated"] is True
+    assert s["points"][0][2] == pytest.approx(10 * 20 * 100 / 110, abs=0.01)  # $20 at 01-08, scaled back by VTV
+    assert s["points"][-1][1] == pytest.approx(1.10, abs=1e-4)
+    assert any("TG3H" in f["message"] and "VTV" in f["message"] for f in out["flags"] if f["code"] == "PROXY_PRICED")
+
+
+def test_split_with_no_market_prices_before_it_does_not_break():
+    # Yahoo has no closes before the split (only the split day), so both readings value the shares at the
+    # trade price the same way: nothing to guess
+    txns = [_txn("2026-01-05", "DEPOSIT", amount=200000.0),
+            {**_txn("2026-01-05", "BUY", "AVB", 8.0, -1360.0), "price": 170.0},
+            {**_txn("2026-01-06", "SELL", "AVB", 8.0, 1360.0), "price": 170.0}]
+    acct = {"account_id": "A", "name": "A", "cash": 200000.0, "positions": []}
+    splits = {"AVB": [{"date": "2026-01-08", "ratio": 2.793}]}
+    avb = [{"date": "2026-01-08", "close": 184.0, "adj_close": 184.0}]
+    out = history.run_history(_params([acct], txns, {"AVB": avb, "SPY": _rows([1] * 5)}, splits=splits))
+    assert not any("split" in m for m in _break_messages(out))
+    assert _series(out, "A")["start"] == "2026-01-05"
+
+
+def test_dividend_reinvestment_row_buys_shares():
+    # E*Trade: a cash DIVIDEND row, then a "DIVIDEND REINVESTMENT" row with units that spends it on shares
+    txns = BASE + [_txn("2026-01-08", "DIVIDEND", "AAPL", amount=10.0),
+                   _desc(_txn("2026-01-08", "DIVIDEND", "AAPL", 0.1, 10.0), "APPLE INC DIVIDEND REINVESTMENT")]
+    out = history.run_history(_params([_acct(units=10.1)], txns, {"AAPL": _rows([100] * 5)}))
+    assert _break_messages(out) == []
+    pts = _series(out, "A")["points"]
+    assert [p[2] for p in pts] == [1000, 1000, 1000, 1010, 1010]
+    assert pts[-1][1] == pytest.approx(1.01)

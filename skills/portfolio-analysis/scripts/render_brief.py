@@ -81,7 +81,8 @@ BODY = """
 <p class="note">Headlines are the newest dated stories Yahoo lists for each mover in the last 7 days; the dateline is the publication date, and a story is context, not the cause of the move. Quotes are delayed. Weights are of total value across every connected account. Unrealized P&amp;L excludes positions with no cost basis. General information, not financial advice.</p>
 """
 
-PERF_CARD = """<section class="card" id="perf-card"><h2>Performance vs. the market</h2>
+PERF_CARD = """<style>#perf-ranges .chip:disabled{opacity:.4;cursor:not-allowed;border-style:dashed}</style>
+<section class="card" id="perf-card"><h2>Performance vs. the market</h2>
   <p class="sub" id="perf-sub"></p>
   <div class="controls" id="perf-controls">
     <select id="perf-account" aria-label="Account"></select>
@@ -381,7 +382,9 @@ PERF_SCRIPT = r"""
   RANGES.forEach(r => { const b = F.el('button', {type: 'button', class: 'chip', 'data-range': r}, r); b.addEventListener('click', () => { if (b.disabled) return; range = r; draw(); }); bar.appendChild(b); });
   const draw = () => {
     const end = endOf(cur);
-    bar.querySelectorAll('button').forEach(b => { const r = b.dataset.range; b.disabled = r !== 'All' && startOf(r, end) < firstOf(cur); b.setAttribute('aria-pressed', r === range ? 'true' : 'false'); });
+    bar.querySelectorAll('button').forEach(b => { const r = b.dataset.range; b.disabled = r !== 'All' && startOf(r, end) < firstOf(cur);
+      b.title = b.disabled ? `History starts ${new Date(firstOf(cur)).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC'})}` : '';
+      b.setAttribute('aria-pressed', r === range ? 'true' : 'false'); });
     const mine = rebased(cur.points, Math.max(0, baseIdx(cur.points, startOf(range, end)))), note = g('perf-note');
     if (mine.length < 2) { g('perf-chart').innerHTML = '<span class="muted">Not enough history in this range.</span>'; g('perf-summary').textContent = ''; note.textContent = ''; return; }
     const baseDay = iso(new Date(mine[0][0]));  // the benchmarks start where the portfolio line does

@@ -133,6 +133,21 @@ def test_short_data_defaults_to_all_and_disables_long_ranges(tmp_path) -> None:
     assert by["All"] == (False, "true") and by["1Y"][0] is True and by["3M"][0] is False
 
 
+@requires_chrome
+def test_disabled_ranges_look_disabled_and_say_why(tmp_path) -> None:
+    hist = _history(days=100, estimated=False)
+    html = load_script(SCRIPT).build(SNAP, None, hist)
+    r = _page_text(html, tmp_path, "return [...document.querySelectorAll('#perf-ranges button')].map(b=>"
+                                   "[b.dataset.range,b.disabled,b.title,getComputedStyle(b).opacity,getComputedStyle(b).cursor])")
+    by = {k: rest for k, *rest in r}
+    first = hist["series"][0]["points"][0][0]
+    from datetime import date
+    label = date.fromisoformat(first).strftime("%b %-d, %Y")
+    assert by["1Y"][0] is True and by["1Y"][1] == f"History starts {label}"
+    assert float(by["1Y"][2]) < 0.6 and by["1Y"][3] == "not-allowed"
+    assert by["3M"][1] == "" and float(by["3M"][2]) == 1.0
+
+
 # wraps FA.lines so a probe can read what was drawn: each line's name and [x, y] points
 CAPTURE = "const cap=[]; const orig=FA.lines; FA.lines=(el,o)=>{cap.push(o); return orig(el,o);};"
 REDRAW = "document.querySelector('#perf-ranges button[aria-pressed=true]').click();"  # the default range, drawn again under CAPTURE

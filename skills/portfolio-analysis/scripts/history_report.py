@@ -5,17 +5,20 @@ Daily portfolio value rebuilt from the ledger, chained into a time-weighted
 return per account and combined, beside SPY, QQQ and DIA (history.py's output
 contract) plus ``sources``. stdin is unused. Order of work: connected accounts
 are listed through the router (E*Trade direct where logged in, SnapTrade
-otherwise); each account that already has ledger rows is topped up with broker
-activity from 7 days before its newest row, so activity a broker posts late is
-still picked up (twin ids folded onto the live id; ledger.merge drops exact
+otherwise); each account is topped up with broker activity from 7 days before
+its newest ledger row, so activity a broker posts late is still picked up, or
+from two years back (the brokers' limit) when it has no rows yet (twin ids
+folded onto the live id; ledger.merge drops exact
 duplicates), normalized as sync-broker.py does, and the ledger is saved only
 when at least one row was added; today's positions and cash are read as
 snapshot.py and summary.py read them (a cash-like fund with no price counts at
 $1.00 there too, as history.py values it); then ONE batched Yahoo download covers every symbol held
 today, every ledger symbol in the window, the proxy ETFs of unlisted funds
-(``proxies.lookthrough_proxy_for`` on the holding's name) and the benchmarks,
-from the oldest ledger date (or --since), plus one split lookup. An empty
-ledger exits 0 with a LEDGER_EMPTY flag naming the statement-import skill. A
+(``proxies.lookthrough_proxy_for`` on the holding's name, or on the ledger
+text of a fund no longer held) and the benchmarks,
+from the oldest ledger date (or --since), plus one split lookup. When the
+brokers return nothing and the ledger is empty it exits 0 with a LEDGER_EMPTY
+flag naming the statement-import skill for older CSV history. A
 failed split lookup continues without it (SPLITS_UNAVAILABLE; ledger SPLIT rows
 still apply); a benchmark with no prices degrades to BENCHMARK_UNAVAILABLE.
 This is a historical record, not advice. Exit codes: 0, 2, 4, 5, 6.
@@ -64,6 +67,7 @@ def _iso(value: object) -> str:
 
 
 TOP_UP_OVERLAP_DAYS = 7  # re-fetch a week before the newest row: brokers post some activity late
+FULL_HISTORY_DAYS = 729  # an account with no ledger rows gets the brokers' two-year limit, as sync-broker.py
 
 
 def _broker(row: dict) -> str:
@@ -71,8 +75,9 @@ def _broker(row: dict) -> str:
 
 
 def _top_up(hub, accounts: list[dict], book: dict, aliases: dict[str, str], today: str, partial: bool) -> dict[str, str]:
-    """Merge broker activity from a week before each account's newest ledger row into
-    ``book`` (``ledger.merge`` drops exact duplicates). Returns {broker: error message}
+    """Merge broker activity from a week before each account's newest ledger row, or the
+    last two years for an account with no rows yet, into ``book`` (``ledger.merge``
+    drops exact duplicates). Returns {broker: error message}
     for brokers whose activity could not be fetched; a login error without
     ``partial`` raises with the way to skip it."""
     live = {a["account_id"] for a in accounts}
@@ -84,8 +89,12 @@ def _top_up(hub, accounts: list[dict], book: dict, aliases: dict[str, str], toda
         if aid in live and _iso(t.get("date")) > newest.get(aid, ""):
             newest[aid] = _iso(t.get("date"))
     added_total = 0
-    for aid in sorted(newest):
-        start = (date.fromisoformat(newest[aid]) - timedelta(days=TOP_UP_OVERLAP_DAYS)).isoformat()
+    full_start = (date.fromisoformat(today) - timedelta(days=FULL_HISTORY_DAYS)).isoformat()
+    for aid in sorted(live):
+        if aid in newest:
+            start = (date.fromisoformat(newest[aid]) - timedelta(days=TOP_UP_OVERLAP_DAYS)).isoformat()
+        else:
+            start = full_start
         if start > today or broker_of[aid] in failed:
             continue
         try:
@@ -262,6 +271,12 @@ def build(ns: argparse.Namespace) -> dict:
             if proxy:
                 proxies[p["symbol"]] = proxy
     mine = [t for t in txns if aliases.get(str(t.get("account_id")), str(t.get("account_id"))) in live]
+    for t in mine:  # a fund no longer held: its ledger text names it ("exchangeOut - SSGA LG CAP VALUE")
+        symbol = str(t.get("symbol") or "").upper()
+        if symbol and symbol not in proxies:
+            proxy = proxy_lib.lookthrough_proxy_for(t.get("security_name")) or proxy_lib.lookthrough_proxy_for(t.get("description"))
+            if proxy and proxy != symbol:
+                proxies[symbol] = proxy
     window_start = min((_iso(t.get("date")) for t in mine), default=None)
 
     prices: dict = {}
@@ -287,7 +302,8 @@ def build(ns: argparse.Namespace) -> dict:
 
     for f in result["flags"]:
         if f["code"] == "LEDGER_EMPTY":
-            f["message"] = "the ledger has no transactions; run the statement-import skill (sync-broker.py or a CSV import)"
+            f["message"] = ("the brokers returned no transactions for the last two years; for older history, "
+                            "import statement CSVs with the statement-import skill")
     result["flags"] = [*result["flags"], *flags, *hub.unavailable_flags()]
     result["excluded"] = [*result["excluded"], *skipped]
     result["sources"] = {"flows": "ledger", "balances": router.holdings_source(rows), "prices": "yahoo" if prices else None}
