@@ -86,6 +86,9 @@ Treating a $90k core fund as cash on top of itself is the error this table exist
 - **`portfolio.py` `symbol`** is sometimes a nested object, not a string. Read `p["symbol"]["symbol"]` when `p["symbol"]` is a dict.
 - **`portfolio.py` `market_value`** comes back `0.00` from some brokers. Compute `units x price` when it does; do not report zero.
 - **`performance_report.py`** computes the account's money-weighted return (annualized IRR by bisection) from `ledger.json`'s DEPOSIT/WITHDRAWAL entries and the live balance, and compares it with a benchmark over the same window. It needs at least two ledger flows. With fewer, `mwrr` is null and a `TOO_FEW_FLOWS` flag says so.
+- **`history_report.py`** rebuilds each account's daily value from `ledger.json` and today's positions, chains a time-weighted return per account and combined, and sets it beside SPY, QQQ and DIA.
+  - Output is `as_of`, `series` (`combined` first, then one per account; `estimated` true when a fund was priced from a proxy ETF; `headline` is the precomputed 1Y or All return vs SPY), `benchmarks`, `excluded`, `flags` and `sources`. It **tops up the ledger**: per account with ledger rows it fetches broker activity from a week before the newest row and writes new rows into `ledger.json`.
+  - An empty ledger exits 0 with a `LEDGER_EMPTY` flag that points to the statement-import skill. Other flags: `NO_HISTORY`, `HISTORY_BREAK`, `SHORT_HISTORY`, `UNASSIGNED_ROWS`, `UNPRICED_HOLDING`, `PROXY_PRICED`, `BROKER_UNAVAILABLE`, `BENCHMARK_UNAVAILABLE`, `SPLITS_UNAVAILABLE`, `OTHER_TYPES`. `history.py` is its pure math; its contract is in its docstring.
 - **`allocation.py`** computes weights, `hhi`, `effective_n`, `top_5_concentration` and `drift`. Its input and output contract is in its docstring. Bands, applied to `hhi` rounded to 4 decimal places:
 
   | `hhi` | `effective_n` (1/`hhi`) | Label |
@@ -98,13 +101,15 @@ Treating a $90k core fund as cash on top of itself is the error this table exist
 
 The daily brief:
 
-Run with the Bash tool. All four scripts print JSON.
+Run with the Bash tool. These scripts print JSON.
 
 ```bash
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-analysis/scripts/brief.py" [snapshot.py flags...] [--no-headlines] [--timeout SECONDS] [--workers N]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-analysis/scripts/snapshot.py" [--account ID ...] [--events] [--no-quotes] [--no-news] [--save] [--compare] [--partial]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-analysis/scripts/summary.py" < input.json
-"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-analysis/scripts/render_brief.py" --in snapshot.json --out page.html [--summary summary.json]
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-analysis/scripts/render_brief.py" --in snapshot.json --out page.html [--summary summary.json] [--history history.json]
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-analysis/scripts/history_report.py" [--since YYYY-MM-DD] [--partial]
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/portfolio-analysis/scripts/history.py" < input.json
 ```
 
 | Script | What it does |
@@ -112,7 +117,9 @@ Run with the Bash tool. All four scripts print JSON.
 | `brief.py` | The default run. The snapshot plus `headlines`, `coverage`, `brief_as_of` and `brief_seconds`. Every `snapshot.py` flag passes through. |
 | `snapshot.py` | The whole fetch in one go: accounts, positions, balances, prices, sectors, movers' news. |
 | `summary.py` | Pure math on data you already have. |
-| `render_brief.py` | Interactive page from a `snapshot.py` or `brief.py` result, with the headline analysis card when `--summary` is given. Prints `{"out", "title", "positions", "flags", "headlines"}`. |
+| `render_brief.py` | Interactive page from a `snapshot.py` or `brief.py` result, with the headline analysis card when `--summary` is given and the "Performance vs. the market" card when `--history` is given. Prints `{"out", "title", "positions", "flags", "headlines"}`. |
+| `history_report.py` | Daily portfolio value rebuilt from the ledger, the time-weighted return per account and combined, and SPY, QQQ and DIA over the same dates. Writes new broker activity into `ledger.json` as it tops the ledger up. Run only by the summary flow. |
+| `history.py` | Pure math behind `history_report.py`. |
 
 | Flag | Effect |
 |---|---|
@@ -126,6 +133,7 @@ Run with the Bash tool. All four scripts print JSON.
 | `--save` | Append a dated record to `snapshots.json`. |
 | `--compare` | Add a `comparison` block with the delta against the most recent earlier saved snapshot. |
 | `--partial` | Run without E*Trade when its login is pending. |
+| `--since YYYY-MM-DD` | (`history_report.py`) Start the history on this date instead of the oldest ledger date. |
 
 | Exit code | Meaning | What to do |
 |---|---|---|
@@ -197,10 +205,14 @@ Every script prints JSON.
 3. If the run exits non-zero, follow the exit code table and stop. A `coverage` row with status `failed` or `skipped` is not an error: it is information for the page and the reply's sources line, never a chat error and never a reason to rerun.
 4. Deliver the page:
    1. Write the headline analysis to `DIR/summary.json`, following the section below.
-   2. Run `render_brief.py --in DIR/snapshot.json --out DIR/portfolio-snapshot.html --summary DIR/summary.json`.
-   3. Publish the HTML with the Artifact tool: icon dashboard, description "Portfolio brief as of DATE".
-   4. On later runs republish the same file path, so the link stays stable.
-   5. Reply with the page reply format below.
+   2. Run `history_report.py > DIR/history.json`, with a Bash timeout of at least 300 seconds.
+      - It tops up the ledger, so it may write new broker activity into `ledger.json`. Only this flow runs it: the check-in and `--no-headlines` briefs do not.
+      - Exit 4 with code `ETRADE_REAUTH` is the same login handoff as `brief.py`; after it, rerun `history_report.py` once.
+      - Any other non-zero exit: render without `--history` and tell the user in one line why the chart is missing. Ignore `DIR/history.json` from then on, including in the reply: it holds the error, not a history. `LEDGER_EMPTY` is exit 0: pass the file as usual.
+   3. Run `render_brief.py --in DIR/snapshot.json --out DIR/portfolio-snapshot.html --summary DIR/summary.json --history DIR/history.json`, leaving off `--history` when step 2 failed.
+   4. Publish the HTML with the Artifact tool: icon dashboard, description "Portfolio brief as of DATE".
+   5. On later runs republish the same file path, so the link stays stable.
+   6. Reply with the page reply format below.
 5. If the Artifact tool is not available in the session, follow the "No Artifact tool" rule: save the page with `local_page.py` and reply with the page format. The markdown fallback is the last resort.
 6. For a `--compare` run, present the delta against the saved snapshot instead of re-rendering every section.
 7. Offer the handoff. For each shown headline whose `ask` is non-empty, offer the `ask` verbatim. For anything else beyond the fixed layout, finish the brief first, then answer under "The analysis" below or hand off to the skill named in Background.
@@ -353,8 +365,9 @@ In this order, then stop:
    - The line "Headlines (N new):", where N is the count of `status == "new"`. Write "Headlines: none today" when the list is empty.
    - At most five bullets, in the script's order.
    - Each bullet reads "SEVERITY title — answer". The prefix is the severity in caps for alerts, `NEW` for new notices, and nothing for the rest. Then the `title`. Then " — " and the `answer`, when it is non-empty.
-5. One line "Sources: X of Y checked, Z skipped" from `coverage`, only when any source was skipped or failed. Do not list skipped or failed sources by name in chat; the page's coverage table has them.
-6. **Flags** — one bullet per `flags[].message`, or "None".
+5. When `history_report.py` exited 0 and `DIR/history.json` has the combined series, one line from its `headline` (never computed from `points`): "Since `start`, portfolio `portfolio_return` vs SPY `spy_return` (`range`)", as percentages. Write "SPY unavailable" when `spy_return` is null. Say "estimated" when `estimated` is true. Omit the line otherwise.
+6. One line "Sources: X of Y checked, Z skipped" from `coverage`, only when any source was skipped or failed. Do not list skipped or failed sources by name in chat; the page's coverage table has them.
+7. **Flags** — one bullet per `flags[].message`, or "None".
 
 The session's standing "Next you could ask:" block draws its questions first from the shown headlines whose `ask` is non-empty.
 

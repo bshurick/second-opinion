@@ -5,6 +5,13 @@ Without --confirm: prints the preview and exits 3 (NOT_CONFIRMED) — this is th
 gate, not a bug. With --confirm: runs a FRESH preview, then places using that
 preview's trade id. Output: {order_id, status, state, preview, raw} (`state`
 is a compatibility alias for `status`).
+
+An E*Trade place request that gets no answer (a timeout, a 5xx with no error body) can still
+execute minutes later. The order is remembered for 10 minutes and the order list is watched for 30
+seconds: found there, it is returned with flags [CONFIRMED_BY_ORDER_LIST]; otherwise exit 5 with
+code ORDER_UNCONFIRMED and ``retry_after``. The same command inside those 10 minutes sends no
+second order: it returns the order from the order list (flags [ALREADY_PLACED], ``preview`` null)
+or exits 5 with ORDER_UNCONFIRMED again. After ``retry_after`` it places as usual.
 Exit codes: 0, 2, 3, 4, 5, 6.
 """
 from __future__ import annotations

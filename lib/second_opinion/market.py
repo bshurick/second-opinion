@@ -787,6 +787,29 @@ def dividend_histories(symbols: list[str], years: int = 5) -> dict[str, list[dic
     return out
 
 
+def split_histories(symbols: list[str], start: str) -> dict[str, list[dict[str, Any]]]:
+    """Stock splits ({date, ratio}) per symbol since ``start`` from ONE batched
+    Yahoo download (``actions=True``). Symbols without splits map to []."""
+    syms = _unique_upper(symbols)
+    if not syms:
+        return {}
+    df = _yf().download(syms, start=start, interval="1d", group_by="ticker", actions=True, auto_adjust=False, progress=False, threads=True)
+    out: dict[str, list[dict[str, Any]]] = {s: [] for s in syms}
+    if df is None or getattr(df, "empty", True):
+        return out
+    for s in syms:
+        try:
+            series = _column(df, s, "Stock Splits")
+        except (KeyError, TypeError):
+            series = None
+        if series is None:
+            continue
+        for idx, value in series.dropna().items():
+            if value and float(value) > 0 and float(value) != 1.0:
+                out[s].append({"date": _scalar(idx), "ratio": float(value)})
+    return out
+
+
 def payout_info(symbols: list[str]) -> dict[str, dict[str, float | None]]:
     """Payout ratio, trailing EPS and Yahoo's stated dividend rate per symbol
     (one ``info`` call each; failures degrade to nulls)."""

@@ -20,7 +20,7 @@ def data(monkeypatch, tmp_path):
 
 def broker(routes):
     t = FakeTransport(routes)
-    return etrade.ETradeBroker(NoNetAuth(), transport=t), t
+    return etrade.ETradeBroker(NoNetAuth(), transport=t, sleep=lambda seconds: None), t
 
 
 def routes_for(key=KEY1, balance="balance_margin.json"):
@@ -180,3 +180,121 @@ def test_fractional_sell_of_a_held_fraction_is_allowed_under_five_dollars(data) 
     routes[f"POST /v1/accounts/{KEY1}/orders/preview"] = _frac_preview(4.5, 0.05)
     b, _ = broker(routes)
     assert b.preview_order(_frac(0.05, side="SELL"))["quantity"] == 0.05
+
+
+# ── a place request E*Trade does not answer ──────────────────────────────────
+
+
+class DeafPlace(FakeTransport):
+    """The place POST gets no answer (a read timeout) the first ``deaf`` times it is sent."""
+
+    def __init__(self, routes, deaf=1):
+        super().__init__(routes)
+        self.deaf = deaf
+
+    def __call__(self, method, url, params, body, token):
+        if method == "POST" and url.endswith("/orders/place.json") and self.deaf > 0:
+            self.deaf -= 1
+            self.calls.append((method, "/place-unanswered", params, body))
+            raise ApiError("E*Trade request failed: Read timed out.", http_status=None)
+        return super().__call__(method, url, params, body, token)
+
+
+def _listed(order_id, placed_ms, status="EXECUTED", qty=10, action="BUY"):
+    return {"OrdersResponse": {"Order": [{"orderId": order_id, "OrderDetail": [{
+        "status": status, "priceType": "LIMIT", "orderTerm": "GOOD_FOR_DAY", "placedTime": placed_ms,
+        "Instrument": [{"Product": {"symbol": "AAPL"}, "orderAction": action, "orderedQuantity": qty, "filledQuantity": qty}]}]}]}}
+
+
+def _deaf_broker(orders, deaf=1, now=None):
+    routes = routes_for()
+    routes[f"GET /v1/accounts/{KEY1}/orders"] = orders
+    t = DeafPlace(routes, deaf)
+    auth = NoNetAuth()
+    if now is not None:
+        auth._now = now
+    return etrade.ETradeBroker(auth, transport=t, sleep=lambda seconds: None), t
+
+
+NOW_MS = int(NOW.timestamp() * 1000)
+EMPTY = {"OrdersResponse": {"Order": []}}
+
+
+def test_unanswered_place_is_confirmed_when_the_order_list_shows_it(data) -> None:
+    b, t = _deaf_broker([EMPTY, _listed(777, NOW_MS + 20_000)])
+    out = b.place_order(BUY)
+    assert out["order_id"] == "777" and out["status"] == "EXECUTED" and out["flags"][0]["code"] == "CONFIRMED_BY_ORDER_LIST"
+    assert out["preview"]["trade_id"] == "1234567890"
+    assert (etrade._read(etrade.unconfirmed_path()) or {}).get("orders") == []
+
+
+def test_unanswered_place_raises_order_unconfirmed_and_is_remembered(data) -> None:
+    b, t = _deaf_broker(EMPTY)
+    with pytest.raises(ApiError) as ei:
+        b.place_order(BUY)
+    assert ei.value.code == "ORDER_UNCONFIRMED" and ei.value.exit_code == 5 and "Do not place it again" in str(ei.value)
+    assert ei.value.extra["retry_after"] == (NOW + etrade.UNCONFIRMED_WINDOW).isoformat(timespec="seconds")
+    saved = etrade._read(etrade.unconfirmed_path())["orders"]
+    assert len(saved) == 1 and saved[0]["symbol"] == "AAPL" and saved[0]["quantity"] == 10.0
+
+
+def test_same_order_is_not_sent_again_while_the_first_is_unconfirmed(data) -> None:
+    b, t = _deaf_broker(EMPTY)
+    with pytest.raises(ApiError):
+        b.place_order(BUY)
+    sent = len(t.calls)
+    with pytest.raises(ApiError) as ei:
+        b.place_order(BUY)                      # the retry: one order-list read, no preview, no place
+    assert ei.value.code == "ORDER_UNCONFIRMED" and "no second order was sent" in str(ei.value)
+    assert [c[1] for c in t.calls[sent:]] == [f"/v1/accounts/{KEY1}/orders"]
+
+
+def test_retry_returns_the_late_order_instead_of_placing_a_duplicate(data) -> None:
+    # E*Trade executes the unanswered request minutes later: the retry finds it and sends nothing.
+    b, t = _deaf_broker([EMPTY, EMPTY, EMPTY, _listed(778, NOW_MS + 180_000)])
+    with pytest.raises(ApiError):
+        b.place_order(BUY)
+    sent = len(t.calls)
+    out = b.place_order(BUY)
+    assert out["order_id"] == "778" and out["flags"][0]["code"] == "ALREADY_PLACED" and out["preview"] is None
+    assert not any(c[0] == "POST" for c in t.calls[sent:])
+    assert etrade._read(etrade.unconfirmed_path())["orders"] == []
+
+
+def test_an_earlier_or_dead_or_different_order_does_not_count_as_the_unanswered_one(data) -> None:
+    earlier = _listed(700, NOW_MS - 600_000)
+    rejected = _listed(701, NOW_MS + 5_000, status="REJECTED")
+    other_size = _listed(702, NOW_MS + 5_000, qty=5)
+    for listed in (earlier, rejected, other_size):
+        etrade.unconfirmed_path().unlink(missing_ok=True)
+        b, _ = _deaf_broker(listed)
+        with pytest.raises(ApiError) as ei:
+            b.place_order(BUY)
+        assert ei.value.code == "ORDER_UNCONFIRMED"
+
+
+def test_a_different_order_places_normally_beside_an_unconfirmed_one(data) -> None:
+    b, t = _deaf_broker(EMPTY)
+    with pytest.raises(ApiError):
+        b.place_order(BUY)
+    other = OrderSpec(account_id=KEY1, symbol="AAPL", side="BUY", quantity=3, order_type="LIMIT", limit_price=201.0, stop_price=None, time_in_force="GOOD_FOR_DAY")
+    assert b.place_order(other)["order_id"] == "531"
+
+
+def test_the_order_can_be_placed_again_after_the_window(data) -> None:
+    clock = [NOW]
+    b, t = _deaf_broker(EMPTY, now=lambda: clock[0])
+    with pytest.raises(ApiError):
+        b.place_order(BUY)
+    clock[0] = NOW + etrade.UNCONFIRMED_WINDOW + etrade.timedelta(seconds=1)
+    assert b.place_order(BUY)["order_id"] == "531"
+
+
+def test_a_refusal_e_trade_names_is_not_treated_as_unanswered(data) -> None:
+    routes = routes_for()
+    routes[f"POST /v1/accounts/{KEY1}/orders/place"] = (500, {"Error": {"code": 8503, "message": "not eligible for fractional buy orders"}})
+    b, _ = broker(routes)
+    with pytest.raises(ApiError) as ei:
+        b.place_order(BUY)
+    assert ei.value.code == "API_ERROR" and "8503" in str(ei.value)
+    assert not etrade.unconfirmed_path().exists()

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.17.0
+
+- portfolio summary: the page has a "Performance vs. the market" card after the headline analysis. It draws the portfolio's time-weighted return against SPY, QQQ and DIA, with range buttons (1M, 3M, YTD, 1Y, All) that rebase every line to 0% at the last close on or before the start of the range (so YTD counts the year's first day), and a line per account. The history flags join the page's flags.
+- portfolio-analysis: new `history_report.py` rebuilds each account's daily value from the ledger and today's positions, chains a time-weighted return per account and combined, and fetches the benchmarks in one Yahoo download. Funds with no public price are valued from a proxy ETF and the account is marked estimated. Each account's line starts at its own oldest ledger row. An unpriced holding is valued with its contract multiplier (taken from its trades; an option with none is a break), and unpriced holdings together must stay under 1% of the account. A trade with no symbol is a break. It tops up the ledger with broker activity from a week before each account's last row and saves `ledger.json` when any was added; a broker whose activity can't be fetched has its accounts excluded with `BROKER_UNAVAILABLE`, and with `--partial` the SnapTrade twin of a logged-out E*Trade account is left out rather than drawn. Each series carries a precomputed 1Y (or All) `headline` against SPY. An empty ledger exits 0 with `LEDGER_EMPTY`. The pure math is in the new `history.py`.
+- portfolio-analysis: `render_brief.py` takes `--history`. A page built without it renders as before. The summary flow runs `history_report.py` after `brief.py` and renders without the card, with a one-line reason, if it fails; the check-in and `--no-headlines` briefs do not run it. The reply gains a one-line portfolio-vs-SPY figure read from the combined series' `headline`.
+
 ## 1.16.0
 
 - market analysis: the trend chart has range buttons. "5 years" is the weekly chart as before, and "10 years" and "20 years" extend it; "1 week", "1 month", "3 months" and "1 year" switch to daily closes. Each day carries the 50-, 100- and 200-week averages with that day's close counted as its week's close, so the last daily point equals the headline reading. The three shorter ranges scale the axis to the close and name any average that falls off the scale.

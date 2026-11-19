@@ -92,6 +92,32 @@ def test_fill_gaps_all_zero_weights_count_as_equal() -> None:
     assert w.fill_gaps({"A": 0.0, "B": 0.0}, {"A": 0.0, "B": 1000.0}, 1000.0) == pytest.approx({"A": 1000.0, "B": 0.0})
 
 
+def test_amount_to_target_is_the_money_that_puts_every_pick_on_its_share() -> None:
+    w = load_script(W)
+    current = {"A": 3000.0, "B": 2000.0, "C": 1000.0}
+    out = w.amount_to_target({"A": 1.0, "B": 1.0, "C": 1.0}, current)        # A at a third needs a total of 9000
+    assert out == {"amount": 3000.0, "limited_by": "A"}
+    filled = w.fill_gaps({"A": 1.0, "B": 1.0, "C": 1.0}, current, 3000.0)
+    assert {s: current[s] + filled[s] for s in current} == pytest.approx({"A": 3000.0, "B": 3000.0, "C": 3000.0})
+    assert w.amount_to_target({"A": 1.0, "B": 3.0}, {"A": 1000.0, "B": 3000.0}) == {"amount": 0.0, "limited_by": "A"}
+    assert w.amount_to_target({"A": 0.0, "B": 1.0}, {"A": 500.0, "B": 500.0}) == {"amount": None, "limited_by": "A"}
+    assert w.amount_to_target({"A": 0.0, "B": 0.0}, {"A": 500.0, "B": 1500.0}) == {"amount": 1000.0, "limited_by": "B"}
+
+
+def test_add_reports_the_amount_that_reaches_target() -> None:
+    sl = load_script(SL)
+    sat = {"AAA": 3000, "BBB": 2000, "CCC": 1000}
+    p = _rb_params(sat, {}, cash=5000, amount=600, weighting="equal")
+    out = sl.run_sleeves(p)
+    assert out["to_target"] == {"amount": 3000.0, "limited_by": "AAA"}
+    after = {r["symbol"]: r["target"] for r in out["splits"]}
+    assert after["CCC"] < 2200 - 1                                            # 600 leaves CCC short of its 2200 share
+    full = sl.run_sleeves({**p, "amount": 3000})
+    assert {r["symbol"]: r["target"] for r in full["splits"]} == pytest.approx({"AAA": 3000.0, "BBB": 3000.0, "CCC": 3000.0}, abs=0.02)
+    assert sl.run_sleeves({**p, "allocation": "split"})["to_target"] is None
+    assert sl.run_sleeves({**p, "mode": "rebalance"})["to_target"] is None
+
+
 def test_default_weighting_is_equal_and_all_strategies_accepted() -> None:
     sl = load_script(SL)
     assert sl.run_sleeves(_params(settings={}))["settings_used"]["weighting"] == "equal"
@@ -1566,14 +1592,55 @@ def test_rebalance_two_accounts_with_cap_binding_sells_all_at_once() -> None:
     assert sl.run_sleeves(_after_trades(p, sl.run_sleeves(p)))["trades"] == []
 
 
+def _sel_lots(units: float) -> dict:
+    """SEL lots of which only 12 units (600.00) are long-term: under hold, all it may sell."""
+    return {"SEL": [{"units": 12, "cost_per_unit": 10.0, "term": "long", "account": "t1"},
+                    {"units": units - 12, "cost_per_unit": 10.0, "term": "short", "acquired": "2026-06-01", "account": "t1"}]}
+
+
 def test_rebalance_proceeds_go_furthest_below_target_first() -> None:
+    # targets 4000, band 1000: SEL is 2400 over and may sell 600; BBB is 900 short, DDD 800, CCC 700
+    p = _rb_params({"SEL": 6400, "BBB": 3100, "CCC": 3300, "DDD": 3200}, {}, mode="rebalance", weighting="equal",
+                   lots=_sel_lots(128), settings={**_RB_SETTINGS, "short_term_gain_policy": "hold"})
+    out = load_script(SL).run_sleeves(p)
+    assert _rb_trades(out) == pytest.approx({"SEL": -600.0, "BBB": 600.0}, abs=0.02)
+
+
+def test_rebalance_proceeds_go_to_a_pick_under_its_band_before_one_further_below_in_dollars() -> None:
     caps = {"SEL": 1e11, "BIG": 1e12, "SML": 1e11}                          # targets 1000, 10000, 1000
-    lots = {"SEL": [{"units": 12, "cost_per_unit": 10.0, "term": "long", "account": "t1"},
-                    {"units": 38, "cost_per_unit": 10.0, "term": "short", "acquired": "2026-06-01", "account": "t1"}]}
     p = _rb_params({"SEL": 2500, "BIG": 9000, "SML": 500}, {}, mode="rebalance", weighting="market_cap", market_caps=caps,
-                   lots=lots, settings={**_RB_SETTINGS, "short_term_gain_policy": "hold"})
-    out = load_script(SL).run_sleeves(p)                                    # only 600 of SEL may sell; BIG is 1000 short, SML 500
-    assert _rb_trades(out) == pytest.approx({"SEL": -600.0, "BIG": 600.0}, abs=0.02)
+                   lots=_sel_lots(50), settings={**_RB_SETTINGS, "short_term_gain_policy": "hold"})
+    out = load_script(SL).run_sleeves(p)    # 600 of SEL may sell; SML is 500 short, past its 250 band; BIG is 1000 short, inside its 2500
+    assert _rb_trades(out) == pytest.approx({"SEL": -600.0, "SML": 500.0, "BIG": 100.0}, abs=0.02)
+
+
+def test_rebalance_funds_a_pick_under_its_band_from_picks_above_target_inside_theirs() -> None:
+    # targets 4000, band 1000: no pick is a band above target. DDD is 1100 short, a breach; CCC is 300 short, inside its band.
+    sat = {"AAA": 4900, "BBB": 4500, "CCC": 3700, "DDD": 2900}
+    out = _rb_mode(sat)
+    assert _rb_trades(out) == pytest.approx({"AAA": -707.14, "BBB": -392.86, "DDD": 1100.0}, abs=0.02)   # pro rata to 900 and 500 above target
+    assert "UNDER_BAND" in _split_flags(out, "AAA") and "UNDER_BAND" in _split_flags(out, "BBB")
+    assert "IN_BAND" in _split_flags(out, "CCC") and "IN_BAND" not in _split_flags(out, "AAA")
+    assert "DDD sits at least one band below target" in _flag_message(out, "UNDER_BAND", "DDD")
+    assert out["satellite_net"] == pytest.approx(0.0, abs=0.02)
+    sl = load_script(SL)
+    p = _rb_params(sat, {}, mode="rebalance", weighting="equal")
+    assert sl.run_sleeves(_after_trades(p, sl.run_sleeves(p)))["trades"] == []      # a second run has nothing to do
+
+
+def test_rebalance_under_band_takes_only_what_the_banded_trims_leave_short() -> None:
+    # targets 4000, band 1000: AAA is 1300 over (a breach) and BBB 500 over (inside); DDD is 1800 short (a breach).
+    out = _rb_mode({"AAA": 5300, "BBB": 4500, "CCC": 4000, "DDD": 2200})
+    assert _rb_trades(out) == pytest.approx({"AAA": -1300.0, "BBB": -500.0, "DDD": 1800.0}, abs=0.02)
+    out = _rb_mode({"AAA": 5300, "BBB": 4500, "CCC": 3500, "DDD": 2700})     # DDD 1300 short: AAA covers it, BBB is left alone
+    assert _rb_trades(out) == pytest.approx({"AAA": -1300.0, "DDD": 1300.0}, abs=0.02)
+    assert not [f for f in out["flags"] if f["code"] == "UNDER_BAND"]
+
+
+def test_rebalance_under_band_never_trims_a_held_pick() -> None:
+    held = _deep(central=60.0, er=0.07, recheck_due=True)
+    out = _rb_mode({"AAA": 6000, "BBB": 4400, "CCC": 2000}, {"AAA": held})   # AAA holds 6000; BBB and CCC share 6400: targets 3200
+    assert _rb_trades(out) == pytest.approx({"BBB": -1200.0, "CCC": 1200.0}, abs=0.02)
 
 
 def test_in_band_only_for_a_pick_inside_its_band() -> None:

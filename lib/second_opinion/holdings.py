@@ -32,19 +32,30 @@ def fund_marked(entry: dict) -> bool:
             and market.looks_like_a_fund_name(entry.get("name")))
 
 
-def drop_sweep_copies(positions: list[dict], cash_by_account: dict[str, float]) -> list[dict]:
+def drop_sweep_copies(positions: list[dict], cash_by_account: dict[str, float],
+                      totals_by_account: dict[str, float | None] | None = None) -> list[dict]:
     """Positions without the money-market position a broker also reports as the account's cash.
 
     Per account with cash above 0, the cash-bucket position whose value is within $1 or 1% of
     that cash (the closest, when more than one) is the same money counted twice; it is dropped
-    and the account's cash stays, since cash is what funds buys."""
+    and the account's cash stays, since cash is what funds buys.
+
+    When no position matches the cash, the broker's own account total (``totals_by_account``,
+    optional) settles it: the cash can also hold money not yet swept into the fund, and then the
+    account's positions plus cash overshoot the broker's total by the fund's value. The cash-bucket
+    position no larger than the cash whose value is within $1 or 1% of that overshoot is dropped."""
     drop: set[int] = set()
     for aid, cash in cash_by_account.items():
         if cash <= 0:
             continue
-        near = [(abs(cash - p["units"] * p["price"]), i) for i, p in enumerate(positions)
-                if p["account"] == aid and p["bucket"] == "cash"
-                and abs(cash - p["units"] * p["price"]) <= max(1.0, 0.01 * p["units"] * p["price"])]
+        mine = [(i, p["units"] * p["price"]) for i, p in enumerate(positions) if p["account"] == aid]
+        funds = [(i, v) for i, v in mine if positions[i]["bucket"] == "cash"]
+        near = [(abs(cash - v), i) for i, v in funds if abs(cash - v) <= max(1.0, 0.01 * v)]
+        total = (totals_by_account or {}).get(aid)
+        if not near and total is not None and total > 0:
+            excess = sum(v for _, v in mine) + cash - total
+            near = [(abs(excess - v), i) for i, v in funds
+                    if v <= cash + max(1.0, 0.01 * v) and abs(excess - v) <= max(1.0, 0.01 * v)]
         if near:
             drop.add(min(near)[1])
     return [p for i, p in enumerate(positions) if i not in drop]

@@ -551,6 +551,60 @@ def test_summary_matches_a_single_core_fund_beside_a_second_money_market_positio
     assert account["cash_adjusted_for_money_market"] == 1250.40
 
 
+def _summary_for_unswept_cash(capsys, monkeypatch, **account) -> dict:
+    import io
+    import json
+    import sys
+
+    from scripts_util import load_script
+
+    payload = {
+        "accounts": [
+            {
+                "account_id": "fido-1",
+                "cash": 240816.54,
+                "positions": [
+                    {"symbol": "SPAXX", "units": 224623.22, "price": 1.0},
+                    {"symbol": "FXAIX", "units": 80.0, "price": 250.0},
+                ],
+                **account,
+            }
+        ],
+        "asset_info": {
+            "SPAXX": {"quote_type": "MONEYMARKET", "name": "Government Money Market"},
+            "FXAIX": {"quote_type": "MUTUALFUND", "name": "Fidelity 500 Index Fund"},
+        },
+    }
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+    load_script("portfolio-analysis/scripts/summary.py").main()
+    return json.loads(capsys.readouterr().out)
+
+
+def test_summary_backs_out_a_core_fund_when_cash_also_holds_unswept_money(capsys, monkeypatch) -> None:
+    # Fidelity reports cash 240,816.54: SPAXX (224,623.22) plus 16,193.32 not yet swept into it.
+    # The cash is 7% above SPAXX, so the cash match misses; the broker's own total (cash plus
+    # the 20,000 index fund, off by a price lag) shows SPAXX is counted on both sides.
+    out = _summary_for_unswept_cash(capsys, monkeypatch, balance_total=260901.57)
+    account = out["accounts"][0]
+    assert account["cash_adjusted_for_money_market"] == 224623.22
+    assert account["cash"] == round(240816.54 - 224623.22, 2)
+    assert account["total_value"] == round(240816.54 + 20000.0, 2)
+    assert out["totals"]["total_value"] == round(240816.54 + 20000.0, 2)
+    assert out["totals"]["cash_like"] == 240816.54
+
+
+def test_summary_leaves_cash_beside_a_money_market_fund_when_the_broker_total_includes_both(capsys, monkeypatch) -> None:
+    # The broker's total covers the cash and SPAXX as separate money: nothing is subtracted.
+    out = _summary_for_unswept_cash(capsys, monkeypatch, balance_total=485439.76)
+    assert out["accounts"][0]["cash_adjusted_for_money_market"] == 0.0
+    assert out["totals"]["total_value"] == round(240816.54 + 224623.22 + 20000.0, 2)
+
+
+def test_summary_without_a_broker_total_keeps_the_cash_match_only(capsys, monkeypatch) -> None:
+    out = _summary_for_unswept_cash(capsys, monkeypatch)
+    assert out["accounts"][0]["cash_adjusted_for_money_market"] == 0.0
+
+
 def test_summary_sub_dollar_money_market_never_zeroes_a_margin_debit(capsys, monkeypatch) -> None:
     import io
     import json

@@ -70,7 +70,7 @@ Output JSON contract (stdout)::
                                       # split flags: PICK_CAP, NO_MARKET_CAP, PICK_BASELINE_MISSING,
                                       # LIGHT_VALUATION, NO_SAVED_VALUATION, RECHECK_DUE,
                                       # HELD_FOR_RECHECK, DEEP_VALUATION_NEEDED,
-                                      # IN_BAND, TRIM_HELD_BACK, TRIM_UNPLACEABLE (rebalance),
+                                      # IN_BAND, TRIM_HELD_BACK, TRIM_UNPLACEABLE, UNDER_BAND (rebalance),
                                       # GROWTH_HELD, GROWTH_OVER_CAP
       "held_back": [{symbol, value, account, long_term_date}],
       "accounts": [{account, funding: {cash, core_sells}, rebalance}],
@@ -80,6 +80,15 @@ Output JSON contract (stdout)::
       "unallocated_amount",           # money left as cash: pick-cap leftover, buys scaled
                                       # down by ACCOUNT_SHORT, whole-share rebalance remainder
       "satellite_net",                # satellite-pick BUY values less SELL values in trades
+      "to_target": null | {amount, limited_by},
+                                      # add under fill, value group only (null otherwise, and in a mix):
+                                      # the new money at which every pick taking money sits at or below
+                                      # its strategy share, so the fill ends with each of them on target;
+                                      # limited_by is the pick furthest above its share. With less,
+                                      # the picks above their share keep the difference and the others end
+                                      # short of target. It ignores the 5% pick cap, the sleeve target
+                                      # and the cash on hand; amount is null when a pick with holdings
+                                      # has a zero weight
       "settings_used": {ceiling, weighting, allocation, include_light, short_term_gain_policy,
                         employer_symbol, depth, group: "value" | "growth" | "mix"},
                                    # group: an add's group ("mix" with group_amounts), a new pick's
@@ -90,7 +99,7 @@ Output JSON contract (stdout)::
                                    # UNALLOCATED, VALUATION_FALLBACK, LIGHT_VALUATION,
                                    # NO_SAVED_VALUATION, RECHECK_DUE, HELD_FOR_RECHECK,
                                    # DEEP_VALUATION_NEEDED, NO_MARKET_CAP,
-                                   # CORE_HELD_BACK, TRIM_HELD_BACK, TRIM_UNPLACEABLE,
+                                   # CORE_HELD_BACK, TRIM_HELD_BACK, TRIM_UNPLACEABLE, UNDER_BAND,
                                    # BOND_FUND_SOLD, GROWTH_HELD, GROWTH_BY_REQUEST_ONLY,
                                    # NO_GROWTH_PICKS, GROWTH_OVER_CAP,
                                    # PICK_CAP (a growth new pick's amount above the cap)
@@ -173,9 +182,11 @@ sleeve's current value. Sells fund buys in the same account: no cash is used, no
 ceiling is not consulted. A held pick (as in adding money) keeps its value and its share goes to the
 others. A target never passes the 5% pick cap (PICK_CAP), and overflow never goes to a pick overvalued
 under valuation. A pick is trimmed when at least weights.band above target, under the short-term-gain
-policy (TRIM_HELD_BACK), and each account trims no further than the picks routed to it can take. Any pick
-below target can receive the proceeds, furthest below target first; a sale's proceeds buy only picks
-routed to its own account, and proceeds no buy spends are not sold, whole-share buys rounding down; what
+policy (TRIM_HELD_BACK), and each account trims no further than the picks routed to it can take. A pick at
+least weights.band below target is a breach too (UNDER_BAND): what those trims leave it short, the picks
+above target inside their bands give, pro rata to their excess and no further than their targets. Any pick
+below target can receive the proceeds, a pick under its band first, then furthest below target first; a
+sale's proceeds buy only picks routed to its own account, and proceeds no buy spends are not sold, whole-share buys rounding down; what
 whole shares leave as cash is unallocated_amount. IN_BAND marks a pick off target, inside its band, with
 no trade. A pick above its band that keeps part of its excess says why: TRIM_HELD_BACK for what the
 short-term-gain policy keeps from a buy that could take it, TRIM_UNPLACEABLE for what no pick below target
@@ -876,6 +887,8 @@ def _strategy_deltas(amount: float, ctx: dict, positions: list[dict], params: di
             raw, current = {**raw, new["symbol"]: new_w}, {**current, new["symbol"]: 0.0}
             room = {**(room or {}), new["symbol"]: weights.PICK_CAP * ctx["total"]}
         deltas = weights.fill_gaps(raw, current, amount, room) if raw else {}
+        if new is None and raw and group == "value" and not used.get("_mixed"):
+            ctx["to_target"] = weights.amount_to_target(raw, current)
     else:
         deltas = weights.split_capped(raw, amount, room)
     new_delta = deltas.pop(new["symbol"], 0.0) if new_w is not None else None
@@ -906,8 +919,10 @@ def _rebalance(ctx: dict, positions: list[dict], spare: dict[str, float], params
 
     Held picks keep their value. The 5% cap limits targets only: a pick above its target can be
     trimmed however large. Picks at least one band above target are trimmed, in each account no
-    further than the picks routed to it can take; each account's proceeds go to its picks furthest
-    below target first, and proceeds no buy spends are not sold. Returns {alloc, held_back,
+    further than the picks routed to it can take. When a pick sits at least one band below target,
+    the picks above target inside their bands give what those trims leave it short. Each account's
+    proceeds go to its picks under their band first, then furthest below target first, and
+    proceeds no buy spends are not sold. Returns {alloc, held_back,
     lot_override, targets, unplaced}, ``unplaced`` being what whole shares leave as cash.
     """
     sat = _holdings(positions, "satellite")
@@ -963,6 +978,31 @@ def _rebalance(ctx: dict, positions: list[dict], spare: dict[str, float], params
     # each account trims only what its own buys can take, so a second run on the result has
     # nothing to do: an account still short has no pick left that can sell
     split = _trim_split(over, sat, demand, free, dust)
+    # a pick at least one band below target is a breach too: what the banded trims above leave it
+    # short, the picks above target inside their bands give, pro rata to their excess
+    under = {sym for sym in movable if targets[sym] - current[sym] >= weights.band(targets[sym])}
+    owed: dict[str, float] = {}
+    for sym in sorted(under):
+        aid = _route(sat[sym])
+        owed[aid] = owed.get(aid, 0.0) + short(sym)
+    for aid in list(owed):       # the banded trims pay the under-band picks first
+        owed[aid] -= sum(min(split[sym].get(aid, 0.0), free[sym].get(aid, 0.0)) for sym in over)
+    owed = {aid: v for aid, v in owed.items() if v > dust}
+    soft = {sym: current[sym] - targets[sym] for sym in movable
+            if sym not in over and current[sym] - targets[sym] > dust} if owed else {}
+    if soft:
+        free.update({sym: {aid: _trim_account(sym, aid, value, price[sym], units[(sym, aid)],
+                                              [lot for lot in lots_in.get(sym) or [] if lot.get("account") in (None, aid)],
+                                              used["short_term_gain_policy"] == "allow", whole)[0]
+                           for aid, value in sat[sym].items()} for sym in soft})
+        soft_split = _trim_split(soft, sat, owed, free, dust)
+        soft_split = {sym: parts for sym, parts in soft_split.items() if sum(parts.values()) > _EPS}
+        if soft_split:
+            split.update(soft_split)
+            names = ", ".join(sorted(under))
+            _flag(flags, "UNDER_BAND", f"{names} {'sits' if len(under) == 1 else 'sit'} at least one band below target, so {sum(sum(p.values()) for p in soft_split.values()):.2f} is trimmed from picks above target inside their bands ({', '.join(sorted(soft_split))})")
+            for sym in soft_split:
+                pick_flags.setdefault(sym, []).append("UNDER_BAND")
     cuts = {sym: sum(parts.values()) for sym, parts in split.items() if sum(parts.values()) > _EPS}
     before = dict(spare)
     trims, held_back, lot_override, _ = _apply_trims(cuts, sat, price, units, params, used, spare, flags, pick_flags, split)
@@ -973,7 +1013,7 @@ def _rebalance(ctx: dict, positions: list[dict], spare: dict[str, float], params
                 spare[aid] -= v - trims[aid][sym]
     for aid in sorted(trims):        # a sale's proceeds buy only picks routed to its own account
         here = [sym for sym in movable if _route(sat[sym]) == aid]
-        place(sum(trims[aid].values()), sorted(here, key=lambda x: (-short(x), x)))
+        place(sum(trims[aid].values()), sorted(here, key=lambda x: (x not in under, -short(x), x)))
     buys = {sym: v if v > dust else 0.0 for sym, v in buys.items()}
 
     for sym in movable:
@@ -1479,6 +1519,7 @@ def run_sleeves(params: dict) -> dict:
         "over_ceiling_amount": _r2(over),
         "unallocated_amount": _r2(unplaced),
         "satellite_net": _r2(_satellite_net(positions, accounts, (new_pick or {}).get("symbol"))),
+        "to_target": ctx.get("to_target"),
         "settings_used": {**used, "ceiling": _r4(used["ceiling"])},
         "flags": flags,
     }

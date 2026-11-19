@@ -59,6 +59,7 @@ One portfolio plan over the connected accounts. The global plan rebalances class
 - **`equal` is the default.** Research finds equal or size weights hard to beat and estimated returns the weakest input, so `valuation` runs only when the person asks for it or has saved it. The person chooses the strategy; never question the choice.
 - **Adding money only buys.** Adding to picks, a contribution and the rest of an opened pick with `--amount` never sell a pick.
 - **Adding money fills toward target (the default).**
+  - `to_target.amount` is the new money at which every pick taking money ends on target, and `to_target.limited_by` the pick furthest above its share. With less, the picks above their share keep the difference and the others end short of target. It ignores the 5% cap, the picks target and the cash on hand.
   - Each pick's target is its strategy share of the picks taking money plus the new money.
   - The money goes to the picks below target, in proportion to how far below they are; a pick above target gets nothing.
   - `--split` instead splits the money by the strategy's shares, whatever the picks hold. Under `size` the two are the same. `settings_used.allocation` says which ran.
@@ -71,7 +72,9 @@ One portfolio plan over the connected accounts. The global plan rebalances class
   - Under `size`, with `--split`, or under `market_cap` with no market cap for it (`NO_MARKET_CAP`), it opens at the median and the rest is split.
   - Either way it is capped at 5% of total value and opens in the trading account holding the most pick value (with no picks yet, the one with the most cash plus core). With an open re-check or a needed valuation rerun it still opens, and carries the flag.
 - **Rebalancing the picks happens only on request.** It moves money between picks and keeps the sleeve total, using no cash and selling no core fund.
-  - A pick is trimmed only when it is above target by at least max(25% of its target, $250). Any pick below target can receive proceeds, furthest below first (`IN_BAND` means it is inside its band and did not trade).
+  - The band is max(25% of a pick's target, $250). A pick at least one band above target is trimmed (`IN_BAND` means it is inside its band and did not trade).
+  - A pick at least one band below target is a breach too (`UNDER_BAND`). What the trims above leave it short, the picks above target inside their bands give, in proportion to how far above they are and no further than their targets.
+  - Any pick below target can receive proceeds: a pick under its band first, then the one furthest below.
   - Each account trims no further than the picks in that account can take, and proceeds buy picks in the same account only. With whole shares, under one share's worth can remain (`UNALLOCATED`).
 - **The 5% cap** limits a pick's target under every strategy except `size`.
 - **Growth picks.** A saved pick carries a style, value (the default) or growth. Both count toward the sleeve's size; the style decides who receives money:
@@ -209,6 +212,7 @@ Vested shares arrive as shares and show up as employer stock. The employer polic
 2. If the person just placed a new pick and it is not in the holdings the run read, say so and wait for it to settle.
 3. Reply with the sleeve format, then the hand-off.
    - `ABOVE_CEILING` can appear from the mix; a picks rebalance keeps the sleeve total, so the target does not limit it.
+   - For `UNDER_BAND`, give the flag's message: the picks it names were trimmed inside their bands to fund a pick that sat a band below target.
    - For a pick carrying `TRIM_UNPLACEABLE`, say it stays above target because no pick below target in its account can take the proceeds. For `TRIM_HELD_BACK`, say the short-term-gain policy keeps its `held_back` amount from selling.
 
 **"I have a new pick"**
@@ -283,6 +287,7 @@ The **Next step** line, used in every format, is: "This is a plan. To place thes
 
 1. **Mix** — as in the status format, from `sleeve.mix`.
 2. **Split** — table from `sleeve.splits`. Adding: Symbol · Current · Buy (`delta`) · After (`target`) · Account · Flags. Rebalance: Symbol · Current · Target · Delta · Account · Flags. Add the new pick as a row when `sleeve.new_pick` is present. State `weighting_used`; when it is `equal` and the weighting was `valuation`, say no pick had an eligible valuation.
+   - Adding, when `sleeve.to_target.amount` is above the amount added, one line under the table: "Every pick reaches target at `to_target.amount` of new money. With AMOUNT, the picks below target end short of it; `to_target.limited_by` is the pick furthest above its share."
 3. **Held back** — only when `sleeve.held_back` is not empty: Symbol · Value · Account · Long-term date.
 4. **Trades** — table from `trades`: Account · Symbol · Side · Units · Price · Value · Est. gain · Est. tax. Under it, for each SELL, its `trades[].lots`: acquired date, `units` and `term`, or "no lot record" when `lots` is `null`. Then one line per `sleeve.accounts[]`: funding `funding.cash` cash and `funding.core_sells` core sales. Write "No trades." when `trades` is empty.
 5. **Flags**, then **Settings used** — one line from `sleeve.settings_used` (`ceiling` is the target in force; `employer_symbol` "unset" when `null`; `depth`), naming any flag passed for this run only. Then the **Next step** line.
@@ -314,6 +319,7 @@ Do not repeat the sections the page carries. If the user asks for a number the p
 
 - Never place orders from this skill. Orders go through the trading skill's order protocol after the person's yes.
 - Every number comes from the scripts. The only arithmetic is converting the person's percentages to fractions or dollars.
+- Never add up the gaps below target to say what an amount will fill. The amount that reaches target is `to_target.amount`; quote it, or run the command with the amount and read the After column.
 - Run each script command once per answer. The exceptions are a rerun after a saved setting or an E*Trade login, and the `status` after orders are placed.
 - Deliver one of the published page, the saved page or the markdown fallback, never two.
 - Never plan the picks sleeve above its target. Pass `--over-ceiling` only when the person asked in their own words to go above it.

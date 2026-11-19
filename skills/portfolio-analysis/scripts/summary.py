@@ -19,6 +19,9 @@ Input JSON contract (stdin)::
           "institution_name": "E*Trade",  # optional
           "account_type": "cash",         # optional ("cash" | "margin")
           "supports_trading": true,       # optional
+          "balance_total": 1500.0,        # optional; the broker's own account
+                                          #   total, used to spot a money-market
+                                          #   fund counted inside "cash"
           "cash": 500.0,                  # optional; OR "balances": [SnapTrade
                                           #   balance objects] whose "cash"
                                           #   fields are summed
@@ -271,7 +274,11 @@ book, so a second money-market position in the same account is never folded into
 counted once, as a holding. A reported cash of zero or a margin debit never gets an adjustment (a
 sub-dollar money-market position can't zero out a debit), and real settled cash held beside a
 money-market fund (reported cash well above any single position's value) is left alone, as is a
-position worth more than the reported cash. The matched position's value is recorded on the
+position worth more than the reported cash. One exception needs the account's optional
+``balance_total`` (the broker's own account total): when no position matches the cash and positions
+plus cash overshoot that total by one cash-bucket position's value (same tolerance, the position
+no larger than the cash), the broker counted that position inside a cash figure that also holds
+money not yet swept into it, and that position's value is subtracted. The matched position's value is recorded on the
 account row as ``cash_adjusted_for_money_market`` (0.0 when nothing matched -- e.g. E*Trade's
 MVRXX, whose value is not close to E*Trade's reported cash). ``totals.cash``/``cash_pct`` are
 this settled cash, signed (a margin debit stays negative); ``totals.cash_like``/``cash_like_pct``
@@ -659,6 +666,13 @@ def run_summary(params: dict) -> dict:
         # must be positive for any adjustment (a sub-dollar money-market position can never zero
         # out a margin debit); real settled cash sitting beside a money-market fund (reported cash
         # far above any single position's value) is left alone.
+        #
+        # When no position matches the cash on its own, the broker's own account total settles
+        # it (``balance_total``, optional). A core fund counted on both sides makes positions
+        # plus cash overshoot that total by the fund's value, even when the reported cash also
+        # holds money not yet swept into the fund (a deposit or sale proceeds), which is the case
+        # the cash match misses. The cash-bucket position no larger than the cash whose value is
+        # within the same tolerance of that overshoot -- the closest one -- is backed out.
         mm_value_total += mm_value
         cash_adjustment = 0.0
         if cash > 0 and cash_bucket_values:
@@ -667,6 +681,18 @@ def run_summary(params: dict) -> dict:
                 match_value = min(qualifying, key=lambda v: abs(cash - v))
                 cash_adjustment = match_value
                 cash = max(0.0, cash - match_value)
+            else:
+                broker_total = _number(a.get("balance_total"), "balance_total")
+                if broker_total is not None and broker_total > 0:
+                    excess = acc_mv + cash - broker_total
+                    qualifying = [
+                        v for v in cash_bucket_values
+                        if v <= cash + max(1.0, 0.01 * v) and abs(excess - v) <= max(1.0, 0.01 * v)
+                    ]
+                    if qualifying:
+                        match_value = min(qualifying, key=lambda v: abs(excess - v))
+                        cash_adjustment = match_value
+                        cash = max(0.0, cash - match_value)
         account_rows.append(
             {
                 "account_id": a["account_id"],

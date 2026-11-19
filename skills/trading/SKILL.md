@@ -66,6 +66,11 @@ It prints `{"out", "title", "symbol", "observations"}`.
 
 - **`orders.py` rows** carry flat `order_id`, `symbol`, `side` and `quantity` next to the broker's own keys. `order_id` is the id `cancel-order.py` takes.
 - **Preview flags.** A preview may carry `flags` with `UNSETTLED_CASH`.
+- **An order E*Trade did not answer.** A place request that times out can still execute minutes later, after the order list showed nothing. `place-order.py` handles it:
+  - It remembers the order for 10 minutes and watches the order list for 30 seconds. When the order shows up, it returns it with the flag `CONFIRMED_BY_ORDER_LIST`: the order is placed.
+  - Otherwise it exits 5 with code `ORDER_UNCONFIRMED` and a `retry_after` time. Say the order may or may not have gone through, and place the block's other orders.
+  - Running the same command again inside the 10 minutes sends nothing. It reads the order list and returns the order with the flag `ALREADY_PLACED`, or exits 5 with `ORDER_UNCONFIRMED` again.
+  - After `retry_after`, the same command checks the order list once more and, with no such order there, places it. The person's earlier `confirm` covers that rerun, since the order is unchanged.
 - **Fractional quantities.** `<qty>` may be fractional (e.g. `0.5`) only on an account whose `broker` is `etrade`. A refusal exits 2 with one of these codes:
 
   | Rule | Refusal code |
@@ -158,6 +163,7 @@ Every script prints JSON.
 | 4 | Credentials missing | Show the `hint`. |
 | 4 with code `ETRADE_REAUTH` | E*Trade needs today's authorization | Show the `url`, get the verifier code from the user, run the connect skill's `etrade-login.py --verifier CODE`, then rerun the command once. |
 | 5 | Broker or Yahoo error. For `gate.py`, a corrupt journal or ledger. | Show the error. |
+| 5 with code `ORDER_UNCONFIRMED` | E*Trade did not answer the place request, and the order can still execute | Follow "An order E*Trade did not answer" in Order facts. Never send that order again by another route. |
 | 6 | Python dependencies missing | Show the error. |
 
 ## Steps
@@ -235,6 +241,8 @@ NEVER place an order without, in this exact order:
 If the preview carries `flags` with `UNSETTLED_CASH`, say so before asking for confirmation.
 
 On `confirm`, place the block's orders in the order it lists them, sells first. Stop at the first non-zero exit, and say which orders were placed and which were not.
+
+The one exception is exit 5 with code `ORDER_UNCONFIRMED` on a buy: go on to the block's other orders, then rerun that order's same command after its `retry_after`. On a sell, stop as for any other error, since later buys may count on its proceeds.
 
 When `gate.py` runs:
 

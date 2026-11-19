@@ -24,7 +24,9 @@ reports SPYM, "SPDR Portfolio S&P 500 ETF", that way); cash for MONEYMARKET; sat
 a plain EQUITY. A holding of any other or unknown type is left out (UNCLASSIFIED). A broker that
 reports its money-market core position (Fidelity's SPAXX) both as a holding and as the account's
 cash is counted once: per account with cash above 0, the one cash-bucket position within $1 or 1%
-of that cash (the closest, when more than one) is dropped, the rule portfolio-analysis uses. Core
+of that cash (the closest, when more than one) is dropped, the rule portfolio-analysis uses; when
+none matches, the position whose value equals the account's overshoot of the broker's own total
+(positions plus cash minus balance_total, same tolerance) is dropped. Core
 sale order: ``core_rank`` from the shared asset_bucket (second_opinion.proxies, the buckets
 portfolio-analysis uses): US equity 0, international equity 1, other or unknown 2, bonds 3.
 ``--sell`` names core funds sold first, in the order given, before that order (``sell_first``);
@@ -407,7 +409,8 @@ def run(args: list[str]) -> dict:
     if new_sym:
         _check_new_pick(new_sym, info.get(new_sym))
     positions, unclassified = _classify(book["positions"], info, employer, _deep_symbols() if employer else set())
-    positions = _drop_sweep_copies(positions, book["cash_by_account"])
+    positions = _drop_sweep_copies(positions, book["cash_by_account"],
+                                   {a["account_id"]: a.get("balance_total") for a in accounts})
     sell_first = _sell_first(ns.sell, positions, roles)
     if unclassified:
         flags.append(_flag("UNCLASSIFIED", f"type of {', '.join(unclassified)} is unknown (not a stock, fund or money market); left out of the mix and the plan"))

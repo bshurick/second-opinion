@@ -15,6 +15,11 @@ its ``raw`` share (all-zero: equal) of sum(current) + amount; the amount is spli
 each pick's gap below target, max(0, target - current), through split_capped with ``room``. The gaps
 sum to at least the amount, so without a cap no pick is pushed past its target.
 
+amount_to_target(raw, current): the new money at which a fill_gaps run leaves every pick on target:
+the largest current / share over the picks, less sum(current). With less money, the picks above their
+share keep the difference and the others end short. Returns {amount, limited_by}: the pick furthest above
+its share (null when none holds anything); amount is null when a pick with holdings has a zero weight.
+
 tilt_factor: one pick's valuation weight, with score a = SHRINK_K x confidence x (expected_return -
 MARKET_RETURN) on an absolute scale (not standardised across picks), so near-equal returns give
 near-equal weights. A pick is overvalued when price is above central_value x (1 + TRIM_MIN_GAP); its
@@ -145,6 +150,21 @@ def fill_gaps(raw: dict[str, float], current: dict[str, float], amount: float,
     share = {s: (raw[s] / weight if weight > 0 else 1.0 / len(raw)) for s in raw}
     gaps = {s: max(0.0, share[s] * total - current.get(s, 0.0)) for s in raw}
     return split_capped(gaps, amount, room)
+
+
+def amount_to_target(raw: dict[str, float], current: dict[str, float]) -> dict:
+    share_total = sum(raw.values())
+    worst, need = None, 0.0
+    for s in sorted(raw):
+        share = raw[s] / share_total if share_total > 0 else 1.0 / len(raw)
+        held = current.get(s, 0.0)
+        if share <= 0:
+            if held > _EPS:
+                return {"amount": None, "limited_by": s}
+            continue
+        if held / share > need + _EPS:
+            worst, need = s, held / share
+    return {"amount": _r2(max(0.0, need - sum(current.get(s, 0.0) for s in raw))), "limited_by": worst}
 
 
 def band(target: float) -> float:

@@ -7,12 +7,14 @@ Endpoints (all suffixed .json): /v1/accounts/list, /v1/accounts/{key}/balance,
 from __future__ import annotations
 
 import secrets
+import time
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from second_opinion import config
 from second_opinion.brokerage import OrderSpec, validate_account_id, validate_order
-from second_opinion.brokers.etrade_auth import REAUTH_HINT, ETradeAuth, Token, load_token, token_state
+from second_opinion.brokers.etrade_auth import REAUTH_HINT, ETradeAuth, Token, _parse, _read, _write_private, load_token, token_state
 from second_opinion.errors import ApiError, ConfigError, InvalidInput
 
 PROD_BASE = "https://api.etrade.com"
@@ -23,6 +25,14 @@ QUOTE_BATCH = 25
 # $5.00, under one share market orders only, no good-till-cancelled; no fractional shorts.
 FRACTION_DECIMALS = 3
 FRACTION_MIN_NOTIONAL = 5.0
+# A place request E*Trade did not answer (a timeout, a 5xx with no error body) can still execute
+# minutes later. Such an order is remembered for this long, and the same order is not sent again
+# inside it: the order list decides whether the first request went through.
+UNCONFIRMED_WINDOW = timedelta(minutes=10)
+UNCONFIRMED_POLLS = 3
+UNCONFIRMED_POLL_SECONDS = 10.0
+UNCONFIRMED_CLOCK_SLACK = timedelta(seconds=30)
+_DEAD_STATUSES = ("CANCELLED", "CANCEL_REQUESTED", "REJECTED", "EXPIRED")
 SECURITY_TYPE_CODES = {"EQ": "cs", "MF": "mf", "OPTN": "op", "BOND": "bnd"}
 
 Transport = Callable[[str, str, dict[str, Any] | None, dict[str, Any] | None, Token], tuple[int, Any]]
@@ -66,6 +76,22 @@ def _error(status: int, body: Any) -> ApiError:
         code = err.get("code")
         return ApiError(f"E*Trade error {code}: {err.get('message')}", http_status=status, etrade_code=str(code) if code is not None else None)
     return ApiError(f"E*Trade HTTP {status}", http_status=status, etrade_code=None)
+
+
+def unconfirmed_path():
+    return config.data_dir() / "etrade-unconfirmed-orders.json"
+
+
+def _order_key(spec: OrderSpec) -> dict[str, Any]:
+    return {"account_id": spec.account_id, "symbol": spec.symbol, "side": spec.side, "quantity": float(spec.quantity),
+            "order_type": spec.order_type, "limit_price": spec.limit_price, "stop_price": spec.stop_price}
+
+
+def _unanswered(e: ApiError) -> bool:
+    """True when a place request's failure leaves the order's fate unknown: no HTTP answer, or a
+    5xx without an E*Trade error code. An error E*Trade names (a 4xx, error 8503) is a refusal."""
+    status = e.extra.get("http_status")
+    return status is None or (status >= 500 and e.extra.get("etrade_code") is None)
 
 
 # ── pure mappers ────────────────────────────────────────────────────────────
@@ -301,9 +327,10 @@ def order_body(spec: OrderSpec, client_order_id: str, preview_ids: list[int] | N
 class ETradeBroker:
     name = "etrade"
 
-    def __init__(self, auth: ETradeAuth, transport: Transport | None = None) -> None:
+    def __init__(self, auth: ETradeAuth, transport: Transport | None = None, sleep: Callable[[float], None] = time.sleep) -> None:
         self.auth = auth
         self._transport = transport or requests_transport(auth)
+        self._sleep = sleep
 
     @property
     def base_url(self) -> str:
@@ -495,21 +522,96 @@ class ETradeBroker:
         out.pop("_preview_ids", None)
         return out
 
+    # ── place requests E*Trade did not answer ────────────────────────────────
+    def _unconfirmed(self) -> list[dict[str, Any]]:
+        """The remembered unanswered place requests still inside UNCONFIRMED_WINDOW."""
+        rows = (_read(unconfirmed_path()) or {}).get("orders") or []
+        cutoff = self.auth._now() - UNCONFIRMED_WINDOW
+        out = []
+        for r in rows:
+            try:
+                if isinstance(r, dict) and _parse(str(r["at"])) > cutoff:
+                    out.append(r)
+            except (KeyError, ValueError):
+                continue
+        return out
+
+    def _save_unconfirmed(self, rows: list[dict[str, Any]]) -> None:
+        _write_private(unconfirmed_path(), {"orders": rows})
+
+    def _find_placed(self, spec: OrderSpec, since: datetime) -> dict[str, Any] | None:
+        """The live order matching ``spec`` that E*Trade placed at or after ``since``, if any."""
+        for row in self.list_orders(spec.account_id, symbol=spec.symbol, count=25):
+            placed = row.get("time_placed")
+            qty = row.get("total_quantity")
+            if (row.get("action") == spec.side and qty is not None and abs(qty - float(spec.quantity)) < 1e-9
+                    and (row.get("status") or "") not in _DEAD_STATUSES
+                    and placed and _parse(placed) >= since - UNCONFIRMED_CLOCK_SLACK):
+                return row
+        return None
+
+    def _from_order_list(self, row: dict[str, Any], preview: dict[str, Any] | None, code: str, message: str) -> dict[str, Any]:
+        status = row.get("status") or "OPEN"
+        return {"order_id": row["brokerage_order_id"], "status": status, "state": status, "preview": preview,
+                "broker": "etrade", "flags": [{"code": code, "message": message}], "raw": {}}
+
     def place_order(self, spec: OrderSpec) -> dict[str, Any]:
         spec = validate_fraction(validate_order(spec, fractional=True))
+        key = _order_key(spec)
+        pending = self._unconfirmed()
+        mine = [r for r in pending if all(r.get(k) == v for k, v in key.items())]
+        if mine:
+            # the same order got no answer a few minutes ago: the order list decides, never a second request
+            first = min(_parse(str(r["at"])) for r in mine)
+            found = self._find_placed(spec, first)
+            if found is not None:
+                self._save_unconfirmed([r for r in pending if r not in mine])
+                return self._from_order_list(found, None, "ALREADY_PLACED",
+                                             f"the place request E*Trade did not answer at {first.isoformat(timespec='seconds')} went through as order {found['brokerage_order_id']}; no new order was sent")
+            retry = first + UNCONFIRMED_WINDOW
+            raise ApiError(f"E*Trade did not answer a request to place this order at {first.isoformat(timespec='seconds')} and can still execute it; "
+                           f"it is not in the order list yet, so no second order was sent. Run the same command after {retry.isoformat(timespec='seconds')}",
+                           code="ORDER_UNCONFIRMED", http_status=None, retry_after=retry.isoformat(timespec="seconds"))
         client_order_id = new_client_order_id()
         preview = self._preview(spec, client_order_id)  # always fresh; a stale preview can never execute
         ids = preview.pop("_preview_ids", [])
         if not ids:
             raise ApiError("E*Trade preview returned no preview id", http_status=None)
-        raw = self._request("POST", f"/v1/accounts/{spec.account_id}/orders/place", json=order_body(spec, client_order_id, preview_ids=ids))
-        resp = raw.get("PlaceOrderResponse") or {}
-        order_ids = [o.get("orderId") for o in resp.get("OrderIds") or [] if isinstance(o, dict) and o.get("orderId") is not None]
-        if not order_ids:
-            # the order may or may not exist at E*Trade: say so instead of returning a null id
-            raise ApiError("E*Trade place returned no order id", http_status=None)
+        at = self.auth._now()
+        try:
+            raw = self._request("POST", f"/v1/accounts/{spec.account_id}/orders/place", json=order_body(spec, client_order_id, preview_ids=ids))
+            resp = raw.get("PlaceOrderResponse") or {}
+            order_ids = [o.get("orderId") for o in resp.get("OrderIds") or [] if isinstance(o, dict) and o.get("orderId") is not None]
+            if not order_ids:
+                # the order may or may not exist at E*Trade: say so instead of returning a null id
+                raise ApiError("E*Trade place returned no order id", http_status=None)
+        except ApiError as e:
+            if not _unanswered(e):
+                raise
+            return self._unanswered_place(spec, key, client_order_id, preview, at, e)
         status = ((resp.get("Order") or [{}])[0]).get("status") or "OPEN"
         return {"order_id": str(order_ids[0]), "status": status, "state": status, "preview": preview, "broker": "etrade", "raw": raw}
+
+    def _unanswered_place(self, spec: OrderSpec, key: dict[str, Any], client_order_id: str, preview: dict[str, Any],
+                          at: datetime, cause: ApiError) -> dict[str, Any]:
+        """Remember the order, watch the order list for it, and return it or raise ORDER_UNCONFIRMED."""
+        record = {**key, "client_order_id": client_order_id, "at": at.isoformat(timespec="seconds")}
+        self._save_unconfirmed(self._unconfirmed() + [record])
+        for _ in range(UNCONFIRMED_POLLS):
+            self._sleep(UNCONFIRMED_POLL_SECONDS)
+            try:
+                found = self._find_placed(spec, at)
+            except ApiError:
+                continue
+            if found is not None:
+                self._save_unconfirmed([r for r in self._unconfirmed() if r != record])
+                return self._from_order_list(found, preview, "CONFIRMED_BY_ORDER_LIST",
+                                             f"E*Trade did not answer the place request ({cause}); the order list shows it as order {found['brokerage_order_id']}")
+        retry = at + UNCONFIRMED_WINDOW
+        raise ApiError(f"E*Trade did not answer the place request ({cause}); the order can still execute and is not in the order list yet. "
+                       f"Do not place it again: run the same command after {retry.isoformat(timespec='seconds')}, which checks the order list first",
+                       code="ORDER_UNCONFIRMED", http_status=None, retry_after=retry.isoformat(timespec="seconds"),
+                       client_order_id=client_order_id) from cause
 
     def cancel_order(self, account_id: str, order_id: str) -> dict[str, Any]:
         account_id = validate_account_id(account_id)

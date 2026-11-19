@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Usage: render_brief.py [--in snapshot.json] --out page.html [--summary summary.json]
+"""Usage: render_brief.py [--in snapshot.json] --out page.html [--summary summary.json] [--history history.json]
 
 Turns one ``snapshot.py`` result (a file, or stdin when ``--in`` is omitted) into a self-contained
 interactive HTML page for the Artifact tool: a Headlines card with a collapsed Coverage table when the
@@ -17,6 +17,11 @@ The page is a fragment (no html/head/body tags): the Artifact host wraps it. Eve
 from the snapshot JSON; the page formats, sorts and filters, it never recomputes totals. The one exception
 is ``--summary``: the headline analysis card at the top is text the model wrote, which ``summary_card``
 holds to its rules. A summary that breaks one is exit 2 and no page is written. Without the flag there is no card.
+
+``--history`` takes a ``history_report.py`` result and adds a "Performance vs. the market" card right after the
+stat tiles: the portfolio's time-weighted return against the S&P 500, Nasdaq and Dow, an account picker, and range
+buttons (1M, 3M, YTD, 1Y, All) that rebase every line to 0% at the start of the range. The history's flags join
+the Flags section. Without the flag the page is byte-for-byte what it was before the card existed.
 """
 
 from __future__ import annotations
@@ -75,6 +80,16 @@ BODY = """
 <section data-help="none" id="flags-section"><h2>Flags</h2>""" + page.FLAGS_INTRO + """<ul class="flags" id="flags"></ul></section>
 <p class="note">Headlines are the newest dated stories Yahoo lists for each mover in the last 7 days; the dateline is the publication date, and a story is context, not the cause of the move. Quotes are delayed. Weights are of total value across every connected account. Unrealized P&amp;L excludes positions with no cost basis. General information, not financial advice.</p>
 """
+
+PERF_CARD = """<section class="card" id="perf-card"><h2>Performance vs. the market</h2>
+  <p class="sub" id="perf-sub"></p>
+  <div class="controls" id="perf-controls">
+    <select id="perf-account" aria-label="Account"></select>
+    <span id="perf-ranges" role="group" aria-label="Range"></span>
+  </div>
+  <p class="hl-totals" id="perf-summary"></p>
+  <div id="perf-chart"></div>
+  <p class="note" id="perf-note"></p></section>"""
 
 SCRIPT = r"""
 (() => {
@@ -314,16 +329,98 @@ SCRIPT = r"""
 })();
 """
 
+PERF_SCRIPT = r"""
+(() => {
+  const D = window.DATA, F = FA, H = D.history || {};
+  const g = id => document.getElementById(id);
+  const card = g('perf-card');
+  const series = H.series || [], bench = H.benchmarks || [], excluded = H.excluded || [];
+  const hflags = H.flags || [];
+  // history flags join the flags section
+  const fl = (D.flags || []).concat(hflags);
+  g('flags').innerHTML = fl.length ? fl.map(f => `<li><b>${F.esc(f.code)}</b>${F.esc(f.message)}</li>`).join('') : '<li class="muted">None</li>';
+  F.help(card, {lead: 'How your money has grown compared with the S&P 500, the Nasdaq and the Dow over the range you pick, with deposits and withdrawals left out.',
+    sections: [{title: 'What the lines are', html: '<p>Your line is a time-weighted return: it chains the gain or loss of each day, so adding or taking out money moves the balance but not the line. Dividends, interest, fees, realized gains and price moves all count. The market lines are total returns with dividends reinvested, using the SPY, QQQ and DIA funds as stand-ins for the S&amp;P 500, Nasdaq-100 and Dow.</p><p>Every line starts at 0% on the first day of the range, so the gap at the right edge is the difference in return over that range, in percentage points.</p>'},
+      {title: 'Estimated accounts', html: '<p>Some funds, such as a 401(k) fund with no public price, have no daily price history. Their past values are estimated from a similar public fund, and the account is labelled with the fund used. Those lines are approximate.</p>'}]});
+  if (!series.length) {
+    g('perf-controls').hidden = true; g('perf-summary').hidden = true;
+    const why = hflags.length ? hflags.map(f => F.esc(f.message)).join('. ') + '.' : 'No performance history could be built.';
+    g('perf-sub').innerHTML = `No history to chart yet: ${why} Run a statement import to build the ledger this chart is drawn from.`;
+    return;
+  }
+  g('perf-sub').textContent = 'Your return against the market over the range you pick, with deposits and withdrawals left out. Every line starts at 0%.';
+  // which public funds stand in for an account's unpriced funds, from the PROXY_PRICED flags
+  const proxyBy = {};
+  for (const f of hflags) if (f.code === 'PROXY_PRICED') { const m = /^(.*?): .* estimated from (\S+)$/.exec(f.message || ''); if (m) (proxyBy[m[1]] = proxyBy[m[1]] || new Set()).add(m[2]); }
+  const estVia = s => { if (!s.estimated) return '';
+    const px = new Set(); (s.accounts || [s.key]).forEach(id => (proxyBy[id] || []).forEach(x => px.add(x)));
+    return px.size ? `estimated via ${[...px].sort().join('/')}` : 'estimated via proxy ETFs'; };
+  const acctName = id => { const a = (D.accounts || []).find(x => x.account_id === id); return a && a.name ? a.name : id; };
+  const sel = g('perf-account');
+  series.forEach(s => { const o = F.el('option', {value: s.key}, ''); o.textContent = s.label + (s.estimated ? ` (${estVia(s)})` : ''); sel.appendChild(o); });
+  excluded.forEach(x => { const o = F.el('option', {value: '', disabled: '', title: x.reason || ''}, ''); o.textContent = `${acctName(x.account_id)} (left out)`; sel.appendChild(o); });
+  const iso = d => d.toISOString().slice(0, 10);
+  // a range's start day; months subtract with the day clamped (Mar 31 - 1M is Feb 28/29, Feb 29 - 1Y is Feb 28)
+  const startOf = (r, end) => { const d = new Date(end + 'T00:00:00Z');
+    if (r === 'YTD') return `${d.getUTCFullYear()}-01-01`;
+    if (r === 'All') return '0000-00-00';
+    const m = d.getUTCFullYear() * 12 + d.getUTCMonth() - (r === '1M' ? 1 : r === '3M' ? 3 : 12), y = Math.floor(m / 12), mo = m % 12;
+    const last = new Date(Date.UTC(y, mo + 1, 0)).getUTCDate();
+    return iso(new Date(Date.UTC(y, mo, Math.min(d.getUTCDate(), last)))); };
+  const RANGES = ['1M', '3M', 'YTD', '1Y', 'All'];
+  let cur = series.find(s => s.key === 'combined') || series[0], range = 'All';
+  const endOf = s => s.points[s.points.length - 1][0], firstOf = s => s.points[0][0];
+  // every line is rebased to its value at its last point on or before the range start, so the range's first
+  // day's move counts (history.py's headline uses the same rule). The portfolio clamps to its first point;
+  // a benchmark with no point on or before the portfolio's base day is not drawn rather than based later.
+  const baseIdx = (pts, from) => { let i = -1; for (let k = 0; k < pts.length && pts[k][0] <= from; k++) i = k; return i; };
+  const rebased = (pts, i) => { if (i < 0 || !(pts[i][1] > 0)) return [];
+    const base = pts[i][1]; return pts.slice(i).map(p => [Date.parse(p[0]), p[1] / base - 1]); };
+  const COLORS = {SPY: F.S[1], QQQ: F.S[2], DIA: F.S[3]};
+  const bar = g('perf-ranges');
+  RANGES.forEach(r => { const b = F.el('button', {type: 'button', class: 'chip', 'data-range': r}, r); b.addEventListener('click', () => { if (b.disabled) return; range = r; draw(); }); bar.appendChild(b); });
+  const draw = () => {
+    const end = endOf(cur);
+    bar.querySelectorAll('button').forEach(b => { const r = b.dataset.range; b.disabled = r !== 'All' && startOf(r, end) < firstOf(cur); b.setAttribute('aria-pressed', r === range ? 'true' : 'false'); });
+    const mine = rebased(cur.points, Math.max(0, baseIdx(cur.points, startOf(range, end)))), note = g('perf-note');
+    if (mine.length < 2) { g('perf-chart').innerHTML = '<span class="muted">Not enough history in this range.</span>'; g('perf-summary').textContent = ''; note.textContent = ''; return; }
+    const baseDay = iso(new Date(mine[0][0]));  // the benchmarks start where the portfolio line does
+    const lines = [{name: cur.label, points: mine, color: F.S[0], width: 2.6}];
+    bench.forEach((b, i) => { const pts = rebased(b.points, baseIdx(b.points, baseDay)); if (pts.length > 1) lines.push({name: b.label, points: pts, color: COLORS[b.symbol] || F.S[4 + i % 4], width: 1.8, symbol: b.symbol}); });
+    const last = l => l.points[l.points.length - 1][1];
+    const sg = v => `<span class="${F.cls(v)}">${F.pct(v, 1, true)}</span>`;
+    const spy = lines.find(l => l.symbol === 'SPY');
+    let sum = `Your portfolio ${sg(last(lines[0]))}` + lines.slice(1).map(l => ` · ${F.esc(l.name)} ${sg(last(l))}`).join('');
+    if (spy) { const d = (last(lines[0]) - last(spy)) * 100;
+      sum += ` · <b>${d > 0 ? '+' : d < 0 ? '−' : ''}${Math.abs(d).toFixed(1)} pts vs. ${F.esc(spy.name)}</b>`; }
+    g('perf-summary').innerHTML = sum;
+    F.lines(g('perf-chart'), {series: lines, xIsDate: true, yFmt: v => F.pct(v, 1, true), zeroLine: true, height: 260,
+      xFmt: x => new Date(x).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: '2-digit', timeZone: 'UTC'}),
+      aria: `${cur.label} return against the S&P 500, Nasdaq and Dow since ${baseDay}`});
+    const est = estVia(cur);
+    note.textContent = (est ? `${cur.label}: ${est}; its past values are approximate. ` : '') + `Lines start at 0% on ${baseDay}.`;
+  };
+  sel.addEventListener('change', () => { cur = series.find(s => s.key === sel.value) || cur; if (range !== 'All' && startOf(range, endOf(cur)) < firstOf(cur)) range = 'All'; draw(); });
+  sel.value = cur.key; range = startOf('1Y', endOf(cur)) >= firstOf(cur) ? '1Y' : 'All'; draw();
+})();
+"""
+
 
 class _Parser(argparse.ArgumentParser):
     def error(self, message: str) -> None:  # type: ignore[override]
         raise InvalidInput(f"render_brief.py: {message}")
 
 
-def build(snapshot: dict, summary: dict | None = None) -> str:
+def build(snapshot: dict, summary: dict | None = None, history: dict | None = None) -> str:
     if not isinstance(snapshot, dict) or "totals" not in snapshot:
         raise InvalidInput("input must be a snapshot.py result (a JSON object with totals)")
-    return page.render(TITLE, snapshot, BODY.replace("{{SUMMARY}}", summary_card.card_html(summary)), SCRIPT)
+    body = BODY.replace("{{SUMMARY}}", summary_card.card_html(summary))
+    if history is None:
+        return page.render(TITLE, snapshot, body, SCRIPT)
+    if not isinstance(history, dict) or not isinstance(history.get("series"), list):
+        raise InvalidInput("history must be a history_report.py result (a JSON object with series)")
+    body = body.replace('<div class="tiles" id="tiles"></div>', '<div class="tiles" id="tiles"></div>\n' + PERF_CARD, 1)
+    return page.render(TITLE, {**snapshot, "history": history}, body, SCRIPT + PERF_SCRIPT)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -332,6 +429,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--in", dest="inp", default=None)
         p.add_argument("--out", required=True)
         p.add_argument("--summary", default=None)
+        p.add_argument("--history", default=None)
         ns = p.parse_args(args)
         try:
             raw = Path(ns.inp).read_text(encoding="utf-8") if ns.inp else sys.stdin.read()
@@ -339,7 +437,13 @@ def main(argv: list[str] | None = None) -> int:
         except (OSError, json.JSONDecodeError) as exc:
             raise InvalidInput(f"could not read snapshot JSON: {exc}") from exc
         summary = summary_card.load(ns.summary, TARGETS) if ns.summary else None
-        out = page.write(ns.out, build(snapshot, summary))
+        history = None
+        if ns.history:
+            try:
+                history = json.loads(Path(ns.history).read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise InvalidInput(f"could not read history JSON: {exc}") from exc
+        out = page.write(ns.out, build(snapshot, summary, history))
         return {"out": str(out), "title": TITLE, "positions": len(snapshot.get("positions") or []), "flags": len(snapshot.get("flags") or []),
                 "headlines": len(snapshot.get("headlines") or [])}
 

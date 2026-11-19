@@ -404,6 +404,7 @@ def build(args: list[str]) -> dict:
                 "institution_name": a.get("institution_name"),
                 "account_type": a.get("account_type", "cash"),
                 "supports_trading": a.get("supports_trading"),
+                "balance_total": a.get("balance_total"),
                 "positions": hub.get_portfolio(aid)["positions"] or [],
                 "balances": hub.get_balance(aid)["balances"] or [],
             }
