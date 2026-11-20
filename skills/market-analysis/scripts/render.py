@@ -5,7 +5,8 @@ Turns a ``flows.py`` result and/or an ``indices.py`` result (at least one) into 
 interactive HTML page for the Artifact tool: stat tiles (S&P 500 with its 200-week level, VIX and its one-year percentile,
 the 10-year yield and the 10y-13w spread, breadth, and one S&P futures tile with each trader class's percentile; a tile whose source delivered nothing is
 left out), a chart of the S&P 500's weekly close with its 50-, 100- and 200-week averages and a table of each gap's level (with ``indices.py --history`` data, range
-buttons zoom it to daily closes over the latest week, month, three months or year, and out to weekly closes over 10 and 20 years), an indices/rates/macro table (each name opens its daily-close chart when the row
+buttons zoom it to daily closes over the latest week, month, three months or year, and out to weekly closes over 10 and 20 years), an interest rates
+chart beside it from ``indices.py --history``'s ``interest_rates`` (fed funds, 2- and 10-year Treasury, 30-year mortgage; range buttons from a week to 20 years), an indices/rates/macro table (each name opens its daily-close chart when the row
 carries ``history``), the
 positioning block (a crowdedness heatmap of every contract's percentile per trader class, a sortable
 contracts table; clicking a contract opens its weekly net-position chart when flows.py ran with
@@ -41,7 +42,7 @@ from second_opinion.errors import InvalidInput  # noqa: E402
 TITLE = "Market Flows"
 
 # The sections a headline analysis link may point to.
-TARGETS = ("trend-card", "idx-card", "pos-card", "sec-card", "etf-card", "cash-card", "short-card", "flags-section")
+TARGETS = ("trend-card", "rates-card", "idx-card", "pos-card", "sec-card", "etf-card", "cash-card", "short-card", "flags-section")
 
 BODY = """
 <h1>Market Flows</h1>
@@ -50,6 +51,7 @@ BODY = """
 {{SUMMARY}}
 <div class="tiles" id="tiles"></div>
 <section class="card" id="trend-card"><h2>S&amp;P 500 against its weekly averages</h2><p class="sub" id="trend-sub">The weekly close over five years against its <span class="term" data-term="200-week average" tabindex="0">200-week moving average</span>. The shaded zone is where the 200-week gap is neutral: above it is extended, below it depressed. The 100- and 50-week averages are context; the 50-week is a momentum line. The table ranks today's gap to each average against every week since 1950.</p><div id="trend-chart"></div><div class="twrap" id="trend-table"></div><p class="note" id="trend-note"></p></section>
+<section class="card" id="rates-card" hidden><h2>Interest rates</h2><p class="sub" id="rates-sub">The fed funds rate, the 2- and 10-year Treasury yields and the 30-year mortgage rate, in percent, with each rate's change over the range in percentage points.</p><p class="hl-totals" id="rates-summary"></p><div id="rates-chart"></div></section>
 <section class="card" id="idx-card"><h2>Indices, rates and macro</h2><p class="sub">Where the market closed and how far it moved over the day and the week. Stock indexes and prices move in percent; Treasury yields move in basis points (1 bp = 0.01 percentage point).</p><div class="twrap" id="indices"></div><p class="note" id="idx-note"></p></section>
 <section class="card" id="pos-card"><h2 id="pos-h">Positioning</h2><p class="sub" id="pos-sub">Who holds the futures: the net position of each trader class per contract, its change over the week, and where the latest reading sits within the window (0 = most net-short of the window, 100 = most net-long). Click a contract for its history.</p>
   <h3 id="crowd-h">Crowdedness</h3><p class="sub" id="crowd-sub">Percentile of each class's net position within the window. Deep red is the most net-long the class has been over the window, deep blue the most net-short; both are crowded readings.</p><div id="crowd"></div>
@@ -314,6 +316,32 @@ SCRIPT = r"""
       rows.map(([n, w]) => `<tr><td class="l">${n === 200 ? FA.term('200-week average', '200-week') : n + '-week'}</td><td class="l"><b>${F.esc(w.level)}</b></td><td>${n0(w.average)}</td><td class="${F.cls(w.gap_pct)}">${sg(w.gap_pct)}</td><td>${p0(w.percentile)}</td><td>${sg(w.median_gap_pct)}</td><td>${isNum(w.share_below_pct) ? w.share_below_pct + '% of weeks' : '—'}</td></tr>`).join('') + '</tbody></table>');
     setHtml('trend-note', `Closes as of ${F.esc(T.as_of || '—')}; the week in progress counts at its latest close.${DAILY ? ` The range buttons switch between weekly closes over ${YEARS.map(([y]) => y).join(', ').replace(/, (\d+)$/, ' or $1')} years and daily closes over the latest week, month, quarter or year.` : ''} Levels: extended at or above the 80th percentile of the gap's own history, depressed at or below the 20th, neutral between. The gap measures distance from trend, not value, and since 1950 it has said little about the returns that followed.`);
   } else hide('trend-card');
+  // interest rates beside the trend: FRED levels, every observation in the latest year and weekly before it
+  const IR = I && I.interest_rates;
+  const irs = ((IR && IR.series) || []).filter(r => r && Array.isArray(r.points) && r.points.length > 1);
+  if (irs.length) {
+    g('rates-card').hidden = false;
+    const RCOL = {DFF: F.S[4], DGS2: F.S[5], DGS10: F.S[6], MORTGAGE30US: F.S[3]};
+    const lastDay = irs.map(r => r.points[r.points.length - 1][0]).sort().pop(), end = Date.parse(lastDay);
+    const back = days => new Date(end - days * 864e5).toISOString().slice(0, 10);
+    const sgn = d => `${d > 0 ? '+' : d < 0 ? '−' : ''}${Math.abs(d).toFixed(2)}`;
+    // each line starts at its last value on or before the range's first day, so weekly and monthly series join in
+    const drawRates = (box, from, label, short) => {
+      const lines = irs.map((r, i) => { let k = 0; r.points.forEach((p, j) => { if (p[0] <= from) k = j; });
+        return {name: r.label, color: RCOL[r.series] || F.S[i % 8], width: 1.8, points: r.points.slice(k).map((p, j) => [j === 0 && p[0] < from ? Date.parse(from) : Date.parse(p[0]), p[1]])}; })
+        .filter(l => l.points.length > 1);
+      setHtml('rates-summary', lines.map(l => { const a = l.points[0][1], b = l.points[l.points.length - 1][1];
+        return `${F.esc(l.name)} <b>${b.toFixed(2)}%</b> <span class="muted">(${sgn(b - a)} pts)</span>`; }).join(' · '));
+      const xs = [...new Set(lines.flatMap(l => l.points.map(p => p[0])))].sort((a, b) => a - b);
+      F.lines(box, {series: lines, xIsDate: true, xFmt: short ? snapFmt(xs, dayFmt) : undefined, xTicks: short ? tickAt(xs) : undefined, yFmt: v => v.toFixed(2) + '%', height: 260, aria: `Fed funds, Treasury and mortgage rates over ${label}`});
+      return `${F.esc(fullFmt(Date.parse(from)))} to ${F.esc(fullFmt(end))}.`; };
+    const RR = [['1 week', 7, 1], ['1 month', 31, 1], ['3 months', 92, 1], ['1 year', 366, 0], ['5 years', 1827, 0], ['10 years', 3653, 0], ['20 years', 7305, 0]];
+    const first = irs.map(r => r.points[0][0]).sort()[0];
+    const avail = RR.filter(([, d], i) => i < 4 || back(RR[i - 1][1]) >= first);
+    ranged(g('rates-chart'), avail.map(([label, d, short]) => [label, box => drawRates(box, back(d), label, !!short)]), Math.max(0, avail.findIndex(([l]) => l === '5 years')));
+    const miss = (IR.unavailable || []).map(u => `${F.esc(u.label)} (${F.esc(u.series)})`);
+    if (miss.length) g('rates-card').insertAdjacentHTML('beforeend', `<p class="note">FRED did not serve ${miss.join(', ')}; ${miss.length === 1 ? 'it is' : 'they are'} left off the chart.</p>`);
+  }
   // card help
   const ord = v => { if (!isNum(v)) return '—'; const n = Math.round(v), t = n % 100; return n + (t >= 11 && t <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th'); };
   const help = (id, spec) => { const c = g(id); if (c && !c.hidden) F.help(c, spec); };
@@ -322,6 +350,9 @@ SCRIPT = r"""
     sections: [{title: 'About the 200-week average', html: '<p>The 200-week average is the mean of the last 200 weekly closes, about four years. It is known to many investors from a line attributed to Charlie Munger: that buying high-quality stocks at their 200-week average would beat the S&P 500 by a wide margin. That line was about single stocks, not the index.</p><p>For the S&P 500 it has worked as a deep floor. Since 1950 the index has closed below it about one week in six, in long stretches during 1969–71, 1973–76, 2001–04 and 2008–10, and briefly in 1962, 1966, 1982, 2011, 2020 and 2022. The 1987 crash never closed a week below it.</p>'},
       {title: 'How to read it', html: '<p>The index drifts up, so it normally sits well above this line: the typical gap since 1950 is about +17%. The shaded zone is the middle 60% of that history. Above the zone is extended, inside it neutral, below it depressed; below the line itself is the rare case.</p><p>Since 1950, extended readings were followed by a down year about one time in three and depressed ones about one in five, with similar average returns, and the gap said almost nothing about the next five years. It shows how far price has run from its trend. It is not a valuation and not a timing signal.</p>'},
       {title: 'Reading the levels', html: '<p>The index drifts up over time, so it usually sits above these averages: the typical gap is the yardstick, not zero. Extended means the gap is in the top fifth of its history since 1950, depressed the bottom fifth.</p><p>This is not a valuation. Since 1950, extended 100- and 200-week gaps were followed by a down year somewhat more often, an extended 50-week gap less often, and none said much about the next five years.</p>'}]});
+  help('rates-card', {lead: 'Four interest rates over the same kind of range as the S&P 500 chart: the Fed\u2019s policy rate, two Treasury yields and the 30-year mortgage rate.',
+    sections: [{title: 'What the lines are', html: '<p>All four come from the Federal Reserve Bank of St. Louis (FRED). The fed funds rate is what banks charge each other overnight; it moves when the Fed changes policy. The 2-year Treasury yield tracks where the market expects that rate to go. The 10-year Treasury yield is the benchmark for long-term borrowing and for what bonds pay. The 30-year mortgage rate is Freddie Mac\u2019s weekly average for a fixed-rate home loan.</p>'},
+      {title: 'How to read it', html: '<p>The change beside each rate is in percentage points over the range. Rising rates tend to weigh on bond prices and on stocks valued for growth far in the future; falling rates tend to help both. A 2-year yield below the fed funds rate means the market expects cuts. Over the latest year the lines use every published value; before that, the last value of each week.</p>'}]});
   help('idx-card', {lead: 'Where the main stock indexes, interest rates and a few macro prices closed, and how far they moved over the day and the week.',
     sections: [{title: 'The spread line', html: `<p>A spread is one yield minus another. The 10-year minus the 13-week Treasury yield${isNum(sp2) ? ` is ${n2(sp2)} points` : ''}: positive is the usual shape, with long loans paying more; negative (an inverted curve) has often come before recessions, with a variable lag.</p>`}]});
   const c0 = contracts[0], am0 = c0 && c0.classes && c0.classes.asset_managers;

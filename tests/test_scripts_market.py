@@ -26,6 +26,9 @@ def test_indices_script(monkeypatch, capsys) -> None:
 
 
 def test_indices_script_passes_its_flags(monkeypatch, capsys) -> None:
+    from second_opinion import fred
+
+    monkeypatch.setattr(fred, "observations", lambda sid, n: [{"date": "2026-01-02", "value": 4.0}, {"date": "2026-01-05", "value": 4.1}])
     seen = []
     monkeypatch.setattr(market, "index_snapshot", lambda **kw: seen.append(kw) or {"as_of": "x", "indices": []})
     for args in ([], ["--history"], ["--history", "--holdings"]):
@@ -436,3 +439,82 @@ def test_market_page_zooms_the_trend_and_opens_name_and_sector_modals(tmp_path, 
 def test_market_page_without_history_has_no_buttons(tmp_path, capsys) -> None:
     out = _probe(tmp_path, capsys, INDICES)
     assert out["trend"] == [] and out["names"] == [] and out["sectors"] == []
+
+
+def _fred_obs(rows):
+    return lambda sid, n: [{"date": d, "value": v} for d, v in rows]
+
+
+def test_indices_history_adds_interest_rates(monkeypatch, capsys) -> None:
+    from second_opinion import fred
+    from second_opinion.errors import ApiError
+
+    def obs(sid, n):
+        if sid == "DGS2":
+            raise ApiError("FRED request failed", code="FRED_HTTP")
+        return _fred_obs([("2000-01-03", 9.0), ("2024-01-01", 5.0), ("2024-01-02", 5.1), ("2024-01-08", 5.2), ("2026-11-02", 4.0), ("2026-11-03", 4.1)])(sid, n)
+
+    monkeypatch.setattr(fred, "observations", obs)
+    monkeypatch.setattr(market, "index_snapshot", lambda **kw: {"as_of": "x", "indices": []})
+    rc, out = run_json(load_script("market-analysis/scripts/indices.py"), ["--history"], capsys)
+    ir = out["interest_rates"]
+    assert rc == 0 and [r["series"] for r in ir["series"]] == ["DFF", "DGS10", "MORTGAGE30US"]
+    assert [u["series"] for u in ir["unavailable"]] == ["DGS2"]
+    # 2000 is before the 20-year start, so the line starts at its last value on or before it; the two Jan 2024 days share a week
+    assert ir["series"][0]["points"][:3] == [["2000-01-03", 9.0], ["2024-01-02", 5.1], ["2024-01-08", 5.2]]
+    assert ir["series"][0]["points"][-2:] == [["2026-11-02", 4.0], ["2026-11-03", 4.1]] or ir["series"][0]["points"][-1] == ["2026-11-03", 4.1]
+    rc, out = run_json(load_script("market-analysis/scripts/indices.py"), [], capsys)
+    assert "interest_rates" not in out
+
+
+def _rates_indices() -> dict:
+    days = [f"2026-{m:02d}-{d:02d}" for m in range(1, 12) for d in (1, 15)]
+    return {**INDICES, "interest_rates": {"series": [{"series": sid, "label": label, "points": [[d, round(base + 0.01 * i, 2)] for i, d in enumerate(days)]}
+                                                     for sid, label, base in (("DFF", "Fed funds", 4.0), ("DGS10", "10-yr Treasury", 4.5))],
+                                          "unavailable": [{"series": "DGS2", "label": "2-yr Treasury", "error": "down"}]}}
+
+
+def test_market_page_puts_the_rates_card_after_the_trend(tmp_path, capsys) -> None:
+    (tmp_path / "indices.json").write_text(json.dumps(_rates_indices()))
+    rc, _ = run_json(load_script("market-analysis/scripts/render.py"), ["--indices", str(tmp_path / "indices.json"), "--out", str(tmp_path / "p.html")], capsys)
+    html = (tmp_path / "p.html").read_text()
+    assert rc == 0 and html.index('id="trend-card"') < html.index('id="rates-card"') < html.index('id="idx-card"')
+
+
+_RATES_PROBE = """<script>window.addEventListener('load', () => setTimeout(() => {
+  const c = document.getElementById('rates-card'), out = {hidden: c.hidden};
+  out.ranges = [...c.querySelectorAll('#rates-chart button.chip')].map(b => { b.click(); return [b.textContent, document.getElementById('rates-summary').textContent]; });
+  out.text = c.innerText;
+  const s = document.createElement('script'); s.type = 'application/json'; s.id = 'probe'; s.textContent = JSON.stringify(out); document.body.appendChild(s);
+}, 200));</script>"""
+
+
+def _rates_probe(tmp_path, capsys, indices: dict) -> dict:
+    import re
+    import subprocess
+
+    from page_dom import CHROME
+
+    (tmp_path / "indices.json").write_text(json.dumps(indices))
+    rc, _ = run_json(load_script("market-analysis/scripts/render.py"), ["--indices", str(tmp_path / "indices.json"), "--out", str(tmp_path / "p.html")], capsys)
+    assert rc == 0
+    (tmp_path / "probe.html").write_text("<!doctype html><meta charset=utf8>" + (tmp_path / "p.html").read_text() + _RATES_PROBE)
+    dom = subprocess.run([CHROME, "--headless=new", "--disable-gpu", "--no-sandbox", "--virtual-time-budget=4000", "--dump-dom", (tmp_path / "probe.html").as_uri()], capture_output=True, text=True, timeout=90).stdout
+    m = re.search(r'<script type="application/json" id="probe">(.*?)</script>', dom, re.S)
+    assert m, "the probe did not run"
+    return json.loads(m.group(1))
+
+
+@requires_chrome
+def test_market_page_rates_chart_follows_its_range(tmp_path, capsys) -> None:
+    out = _rates_probe(tmp_path, capsys, _rates_indices())
+    assert out["hidden"] is False
+    assert [r[0] for r in out["ranges"]] == ["1 week", "1 month", "3 months", "1 year"]  # ten months of data reach no 5-year range
+    year = dict(out["ranges"])["1 year"]
+    assert "Fed funds 4.21% (+0.21 pts)" in year and "10-yr Treasury 4.71% (+0.21 pts)" in year
+    assert "FRED did not serve 2-yr Treasury (DGS2)" in out["text"]
+
+
+@requires_chrome
+def test_market_page_without_rates_hides_the_card(tmp_path, capsys) -> None:
+    assert _rates_probe(tmp_path, capsys, INDICES)["hidden"] is True

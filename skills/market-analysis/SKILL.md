@@ -32,6 +32,7 @@ Reports the big picture: market status, index levels, sector trends, news, upcom
 - `band_low_pct` and `band_high_pct` are the gaps at the 20th and 80th percentiles, which bound the neutral zone. `series` holds the last five years of weekly closes and averages for the page's chart.
 - `--history` adds each row's daily closes over the trailing year (`history`, with `high_1y`, `low_1y` and `change_1y_pct`) and `trend.daily`, a year of daily S&P 500 closes. It also lengthens `trend.series` from five years of weeks to twenty. Each day in `trend.daily` carries the three averages with that day's close counted as its week's close.
 - `--holdings` adds `top_holdings` to each sector row: Yahoo's ten largest holdings of the sector fund with each one's share of the fund. Yahoo gives the list no date. A failed lookup makes that row's list null.
+- `--history` also adds `interest_rates` from FRED: the fed funds rate (DFF), the 2- and 10-year Treasury yields (DGS2, DGS10) and the 30-year mortgage rate (MORTGAGE30US) over twenty years, every observation in the latest year and the last of each week before it. A series FRED can't serve goes to `unavailable`.
 - Both flags feed the page. Leave them off when reading the levels, because they add about 400 KB of output.
 - `level` is `extended` at a percentile of 80 or more, `depressed` at 20 or less, and `neutral` between. The cut-offs sit on the gap's own history because the index drifts up, so the average lags below it and the typical gap is positive (about +17% for the 200-week, +9% for the 100-week, +5% for the 50-week).
 
@@ -68,6 +69,7 @@ One self-contained HTML page for the Artifact tool, light and dark themes, no ex
 - Five stat tiles: the S&P 500 with its 200-week level, the VIX and its one-year percentile, the 10-year yield and 10y−13w spread, breadth, and S&P futures positioning as each trader class's percentile (asset managers, leveraged funds, small traders).
 - A line chart of the S&P 500's weekly close over five years against its 200-week average, with the 200-week neutral zone shaded and the 100- and 50-week averages drawn faint as context, and a table of each gap's level, percentile and typical gap.
 - Range buttons on that chart, with `--history` data: daily closes over the latest week, month, three months or year, and weekly closes over 5, 10 or 20 years. The three shorter ranges scale to the close and name any average that falls off the scale.
+- An interest rates chart right after it, with `--history` data: fed funds, 2- and 10-year Treasury and 30-year mortgage, each with its level and change in points over the range, and range buttons from a week to 20 years.
 - An indices, rates and macro table grouped by kind: stocks and volatility, Treasury yields (moves in basis points), and commodities, currency and crypto, each value with its unit. With `--history` data, clicking a name opens its chart of daily closes with the same range buttons.
 - A crowdedness heatmap of every contract's percentile per trader class, with a sortable contracts table. Clicking a contract opens its weekly history chart and class table.
 - A sectors table joining sector ETF moves, sector futures positioning and sector ETF flows. Clicking a sector opens its fund's ten largest holdings (`--holdings`) and its price chart (`--history`).
@@ -190,7 +192,7 @@ Use this case for "who is buying", "is money leaving equities", "are institution
 A small card at the top of the page: a headline, "What stands out", "What to look into", and a folded "What this means for you". The file is `{"headline", "stands_out", "look_into", "for_you"}`.
 
 - Limits, which `render.py` enforces: `headline` 20 words, `stands_out` 90, `look_into` 90, `for_you` 70. `for_you` is optional and the rest are required.
-- Links take the form `[Sectors](sec-card)`, in `look_into` only, to these ids: `trend-card`, `idx-card`, `pos-card`, `sec-card`, `etf-card`, `cash-card`, `short-card`, `flags-section`.
+- Links take the form `[Sectors](sec-card)`, in `look_into` only, to these ids: `trend-card`, `rates-card`, `idx-card`, `pos-card`, `sec-card`, `etf-card`, `cash-card`, `short-card`, `flags-section`.
 - Every number comes from this run's script output, quoted as the script gives it.
 - Lead with what is unusual today, not a tour of the page. Say plainly when nothing stands out.
 - Separate data from inference, using words like "may" for inference.

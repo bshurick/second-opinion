@@ -381,11 +381,18 @@ const FA = (() => {
     bands.forEach((b, i) => { const lo = b.lo.filter(p => isNum(p[1])), hi = b.hi.filter(p => isNum(p[1]));
       const path = hi.map((p, j) => (j ? 'L' : 'M') + X(+p[0]).toFixed(1) + ' ' + Y(p[1]).toFixed(1)).join('') + lo.slice().reverse().map(p => 'L' + X(+p[0]).toFixed(1) + ' ' + Y(p[1]).toFixed(1)).join('') + 'Z';
       g += `<path d="${path}" fill="${b.color || S[i % 8]}" opacity="${b.opacity ?? 0.18}"/>`; });
+    const ends = [];
     series.forEach((s, i) => { const pts = s.points.filter(p => isNum(p[1])); const color = s.color || S[i % 8];
       const d = pts.map((p, j) => (j ? 'L' : 'M') + X(+p[0]).toFixed(1) + ' ' + Y(p[1]).toFixed(1)).join('');
       if (s.area && pts.length) g += `<path d="${d}L${X(+pts[pts.length - 1][0]).toFixed(1)} ${Y(opts.zeroLine ? 0 : y0).toFixed(1)}L${X(+pts[0][0]).toFixed(1)} ${Y(opts.zeroLine ? 0 : y0).toFixed(1)}Z" fill="${color}" opacity="0.12"/>`;
       g += `<path d="${d}" fill="none" stroke="${color}" stroke-width="${s.width ?? 2}"${s.dash ? ` stroke-dasharray="${s.dash}"` : ''}${s.opacity != null ? ` opacity="${s.opacity}"` : ''}${s.dash ? ' stroke-linecap="round"' : ''} stroke-linejoin="round"/>`;
-      if (pts.length && (s.endLabel ?? opts.endLabels !== false)) { const last = pts[pts.length - 1]; g += `<text x="${W - m.r + 8}" y="${(Y(last[1]) + 4).toFixed(1)}" font-size="11.5" font-weight="600" fill="var(--ink)">${esc(s.name)}</text>`; } });
+      if (pts.length && (s.endLabel ?? opts.endLabels !== false)) ends.push({y: Y(pts[pts.length - 1][1]) + 4, name: s.name}); });
+    // end labels sit beside their line's last point, pushed apart so close finishes stay readable
+    ends.sort((a, b) => a.y - b.y);
+    for (let k = 1; k < ends.length; k++) ends[k].y = Math.max(ends[k].y, ends[k - 1].y + 13);
+    const over = ends.length ? ends[ends.length - 1].y - (H - 4) : 0;
+    if (over > 0) { ends[ends.length - 1].y -= over; for (let k = ends.length - 2; k >= 0; k--) ends[k].y = Math.min(ends[k].y, ends[k + 1].y - 13); }
+    g += ends.map(e => `<text x="${W - m.r + 8}" y="${e.y.toFixed(1)}" font-size="11.5" font-weight="600" fill="var(--ink)">${esc(e.name)}</text>`).join('');
     g += `<line id="cx" x1="0" x2="0" y1="${m.t}" y2="${m.t + ih}" stroke="var(--muted)" stroke-dasharray="3 3" opacity="0"/>`;
     g += `<rect id="hit" x="${m.l}" y="${m.t}" width="${iw}" height="${ih}" fill="transparent"/></svg>`;
     root.innerHTML = g;

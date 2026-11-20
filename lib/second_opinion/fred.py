@@ -39,6 +39,7 @@ SERIES_NAMES = {
     "WRMFNS": "Retail Money Market Funds",
     "DGS2": "2-Year Treasury Constant Maturity Rate",
     "FEDFUNDS": "Federal Funds Effective Rate",
+    "DFF": "Federal Funds Effective Rate (daily)",
     "BAMLC0A4CBBBEY": "ICE BofA BBB US Corporate Index Effective Yield",
     "MORTGAGE30US": "30-Year Fixed Rate Mortgage Average",
     "UNRATE": "Unemployment Rate",

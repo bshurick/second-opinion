@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- market flows: an "Interest rates" card right after the S&P 500 weekly-averages chart: the fed funds rate, the 2- and 10-year Treasury yields and the 30-year mortgage rate from FRED, with range buttons from a week to 20 years and each rate's level and change in points. `indices.py --history` adds them as `interest_rates`; a series FRED can't serve is listed under the chart and left off. (The chart briefly sat under the portfolio summary's performance chart; it has moved here.)
+- pages: line-chart end labels that would overlap are pushed apart, so close finishes ("Dow" and "All accounts") stay readable.
+
 ## 1.17.1
 
 - portfolio summary: the performance chart fetches history by default. An account with no ledger rows gets the last two years of broker activity (E*Trade direct or SnapTrade) on the first summary, so no separate statement import is needed; accounts with rows still get the one-week overlap. `LEDGER_EMPTY` now means the brokers returned nothing, and points to CSV imports for older history.
