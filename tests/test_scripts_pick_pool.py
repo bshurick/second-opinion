@@ -123,7 +123,7 @@ def test_health_statuses_drops_and_batches(monkeypatch, capsys, tmp_path):
         "group2": [industry("Asset Managers", "Financials", ["AMG", "BANK"]), industry("Utilities", "Utilities", ["UTL"])],
         "group3": [industry("Machinery", "Industrials", ["IND1", "IND2", "IND3", "IND4", "IND5", "IND6"])],
     }, {"value": screen(["FOREIGN", "NEWCO", "YFIN"]), "smallcap": screen(["YFIN"], sector="Financial Services")})
-    fake_health(monkeypatch, failed={"AMG": ["max_net_debt_to_ebit"], "IND2": ["min_piotroski", "max_share_growth"], "YFIN": ["min_fcf_margin_avg"]},
+    fake_health(monkeypatch, failed={"AMG": ["max_net_debt_to_ebit"], "UTL": ["min_fcf_margin_avg", "max_net_debt_to_ebit"], "IND2": ["min_piotroski", "max_share_growth"], "YFIN": ["min_fcf_margin_avg"]},
                 financial=("BANK",), not_found=("FOREIGN",), incomplete=("NEWCO",))
     rc, out = run_json(pool, ["--run", str(run)], capsys)
     assert rc == 0, out
@@ -131,13 +131,14 @@ def test_health_statuses_drops_and_batches(monkeypatch, capsys, tmp_path):
     by = {n["ticker"]: n for n in saved["names"]}
     assert by["AMG"]["health"] == "judge_in_quick_read" and by["AMG"]["failed_tests"] == ["max_net_debt_to_ebit"]
     assert by["YFIN"]["health"] == "judge_in_quick_read"  # Yahoo's name for the sector counts too
+    assert by["UTL"]["health"] == "judge_in_quick_read"  # a utility's capital spending is its business, as for a REIT
     assert by["BANK"]["health"] == "financial" and by["FOREIGN"]["health"] == "not_found" and by["NEWCO"]["health"] == "incomplete"
     assert by["IND1"]["health"] == "passed" and "IND2" not in by
     assert saved["dropped"] == [{"ticker": "IND2", "name": "IND2 Inc", "industry": "Machinery", "origin": "industry", "held": False,
                                  "health": "failed", "failed_tests": ["min_piotroski", "max_share_growth"]}]
     assert out["dropped"] == [{"ticker": "IND2", "failed_tests": ["min_piotroski", "max_share_growth"]}]
     assert saved["counts"]["kept"] == 11 and saved["counts"]["dropped"] == 1
-    assert saved["counts"]["health"] == {"passed": 6, "judge_in_quick_read": 2, "financial": 1, "not_found": 1, "incomplete": 1, "failed": 1}
+    assert saved["counts"]["health"] == {"passed": 5, "judge_in_quick_read": 3, "financial": 1, "not_found": 1, "incomplete": 1, "failed": 1}
     batches = saved["batches"]
     assert all(1 <= len(b) <= 5 for b in batches) and sorted(t for b in batches for t in b) == sorted(by)
     flat = [t for b in batches for t in b]

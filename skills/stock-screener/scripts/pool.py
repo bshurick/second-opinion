@@ -43,8 +43,8 @@ Health. ``screen.py --symbols <the pool> --preset health --no-price [--held ...]
 when the run's ``run.json`` says ``growth``: ``growth.run_profile``, ``value`` without a ``run.json``), then
 per name ``health`` is ``passed``, ``financial`` (a bank, lender or insurer the screen sets
 aside), ``not_found`` (no SEC filer), ``incomplete`` (no four years of US-GAAP history),
-``judge_in_quick_read`` (failed, but its sector is Financials: the cash tests misread an asset
-manager, broker or BDC) or ``failed``. Only ``failed`` names leave the pool, into ``dropped``
+``judge_in_quick_read`` (failed, but its sector is Financials, Utilities or Real Estate: the cash
+and leverage tests misread an asset manager, broker, BDC, utility or REIT) or ``failed``. Only ``failed`` names leave the pool, into ``dropped``
 with their tests. When the health screen itself fails every name stays, as ``unchecked``,
 flagged ``HEALTH_CHECK_FAILED``.
 
@@ -91,6 +91,9 @@ HEALTH_TIMEOUT = 1500  # seconds; a cold frames cache is about 180 throttled EDG
 DEFAULT_MAX = 40
 BATCH = 5
 FINANCIAL_SECTORS = {"financials", "financial services", "financial"}  # the scan's name and Yahoo's
+# sectors whose capital spending and debt are the business model (a rate base, a property book):
+# the health screen's cash and leverage tests misread them, as they misread financials
+MISREAD_SECTORS = FINANCIAL_SECTORS | {"utilities", "real estate"}
 HEALTH_ORDER = ("passed", "judge_in_quick_read", "financial", "not_found", "incomplete", "unchecked", "failed")
 
 
@@ -304,7 +307,7 @@ def apply_health(names: list[dict], data: dict | None) -> None:
             r["health"] = "financial"
         else:
             r["failed_tests"] = [str(f) for f in c.get("failed") or []]
-            r["health"] = "judge_in_quick_read" if str(r.get("sector") or "").strip().lower() in FINANCIAL_SECTORS else "failed"
+            r["health"] = "judge_in_quick_read" if str(r.get("sector") or "").strip().lower() in MISREAD_SECTORS else "failed"
 
 
 def batches(names: list[dict]) -> list[list[str]]:
