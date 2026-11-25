@@ -60,6 +60,8 @@ All scripts print JSON.
 
 ## Steps
 
+A call with no ticker (the skill invoked on its own) asks one question, which security, and runs nothing until it is answered.
+
 1. If the user asks to place an options trade, say options orders cannot be placed through this plugin and stop. Stock orders belong to portfolio-analysis.
 2. Run `chain.py <symbol>` once. Add `--expiry` when the user names one.
 3. If the user asks how IV, skew or the straddle varies by expiry, run `chain.py <symbol> --term-structure` instead.

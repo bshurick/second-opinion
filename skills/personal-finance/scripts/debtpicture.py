@@ -31,7 +31,8 @@ Output JSON contract (stdout)::
     {"as_of": ...,
      "accounts": [                      # sorted by id
        {"id", "name", "kind", "issuer", "period_end", "statement_age_days",
-        "balance", "apr", "minimum_payment", "due_date", "days_to_due",
+        "balance", "apr", "minimum_payment", "due_date",  # due_date: as printed on the statement
+        "next_due_date", "due_projected", "days_to_due",   # next date on or after as_of; days to it
         "credit_limit", "utilization",   # balance / limit for revolving, else null
         "interest_this_period", "fees_this_period",
         "interest_ttm", "fees_ttm", "periods_in_ttm",   # snapshots within 365 days before as_of
@@ -54,16 +55,22 @@ Output JSON contract (stdout)::
                   "change"}, ...],        # every snapshot, by account id then period_end
      "assumptions": {...}}
 
+Statements are typed in by hand, so the latest one is often a month or two
+old. Its due_date is read as a monthly schedule: next_due_date is due_date
+when that is on or after as_of, else due_date rolled forward a month at a
+time (the day clamped to the month's end) to the first date on or after
+as_of, with due_projected true. No account is ever reported past due.
+
 Per-account flags, in this order: NO_STATEMENTS, STALE (statement older
-than stale_days), PAST_DUE (due_date before as_of on the latest statement),
-OVER_LIMIT (revolving-account balance above its limit), HIGH_UTILIZATION
+than stale_days), OVER_LIMIT (revolving-account balance above its limit), HIGH_UTILIZATION
 (above utilization_warn), MINIMUM_ONLY (the latest two card payments each
 within $1 of the prior statement's minimum), MINIMUM_BELOW_INTEREST (the
 minimum payment does not cover the monthly interest run rate, i.e.
 minimum <= balance x apr / 12; the debt would never amortize at that
 payment). paid_in_full is payments >= previous_balance. weighted_apr is
-balance-weighted over positive balances. next_due is the earliest due
-date on or after as_of, else null. debt_input lists accounts with a
+balance-weighted over positive balances. next_due is the earliest
+next_due_date, with that row's minimum, or null when no account has a due
+date. debt_input lists accounts with a
 positive balance and a positive minimum, excluding any account flagged
 MINIMUM_BELOW_INTEREST (finance.py's debt action raises on a minimum
 that never amortizes). debt_input's apr is the unrounded statement APR;
@@ -80,6 +87,7 @@ account's prior snapshot). Money 2 dp, ratios 4 dp.
 
 from __future__ import annotations
 
+import calendar
 import json
 import sys
 from datetime import date, timedelta
@@ -88,7 +96,6 @@ REVOLVING = ("card", "heloc")
 FLAG_ORDER = (
     "NO_STATEMENTS",
     "STALE",
-    "PAST_DUE",
     "OVER_LIMIT",
     "HIGH_UTILIZATION",
     "MINIMUM_ONLY",
@@ -120,6 +127,23 @@ def _num(snapshot: dict, field: str, default: float | None = None) -> float | No
     if isinstance(v, bool) or not isinstance(v, (int, float)):
         raise ValueError(f"{field} must be a number")
     return float(v)
+
+
+def _add_months(d: date, n: int, day: int) -> date:
+    y, m = divmod(d.month - 1 + n, 12)
+    year, month = d.year + y, m + 1
+    return date(year, month, min(day, calendar.monthrange(year, month)[1]))
+
+
+def next_due(due: date, as_of: date) -> tuple[date, bool]:
+    """``(next due date on or after as_of, projected)``, rolling a statement's due date forward monthly."""
+    if due >= as_of:
+        return due, False
+    n = (as_of.year - due.year) * 12 + as_of.month - due.month
+    nxt = _add_months(due, n, due.day)
+    if nxt < as_of:
+        nxt = _add_months(due, n + 1, due.day)
+    return nxt, True
 
 
 def _minimum(snapshot: dict) -> float | None:
@@ -155,6 +179,8 @@ def _account_row(
                 "apr",
                 "minimum_payment",
                 "due_date",
+                "next_due_date",
+                "due_projected",
                 "days_to_due",
                 "credit_limit",
                 "utilization",
@@ -208,9 +234,8 @@ def _account_row(
     age = (as_of - period_end).days
     if age > stale_days:
         flags.append("STALE")
-    days_to_due = (due - as_of).days if due else None
-    if days_to_due is not None and days_to_due < 0:
-        flags.append("PAST_DUE")
+    nxt, projected = next_due(due, as_of) if due else (None, None)
+    days_to_due = (nxt - as_of).days if nxt else None
     if revolving and limit and balance > limit:
         flags.append("OVER_LIMIT")
     if utilization is not None and utilization > warn:
@@ -243,6 +268,8 @@ def _account_row(
         "apr": _r4(apr),
         "minimum_payment": _r2(minimum_val),
         "due_date": latest.get("due_date"),
+        "next_due_date": nxt.isoformat() if nxt else None,
+        "due_projected": projected,
         "days_to_due": days_to_due,
         "credit_limit": _r2(limit),
         "utilization": _r4(utilization),
@@ -273,7 +300,7 @@ def _account_row(
             "debt_min": debt_min,
             "interest_ttm": sum((_num(s, interest_field, 0.0) or 0.0) for s in in_window),
             "run_rate": run_rate if run_rate is not None else 0.0,
-            "due": due,
+            "due": nxt,
             "change": balance - (_num(prior, "new_balance", 0.0) or 0.0) if prior else None,
         },
     }
@@ -295,7 +322,7 @@ def _totals(rows: list[dict], as_of: date) -> dict:
         first = min(due_rows, key=lambda r: (r["_raw"]["due"], r["id"]))
         next_due = {
             "account_id": first["id"],
-            "due_date": first["due_date"],
+            "due_date": first["next_due_date"],
             "amount": _r2(first["_raw"]["minimum"]),
         }
     return {

@@ -34,7 +34,7 @@ Orders belong to the trading skill. General market conditions and fair value bel
 - **Cash.** `totals.cash` is settled cash. `totals.cash_like` is cash plus money-market fund positions, each counted once.
 - **Quotes.** Quotes are delayed, not live, unless `sources.quotes` is `etrade`. If `sources.quotes` is `snaptrade` (Yahoo unavailable or `--no-quotes`), the Day column shows "—" and the QUOTES_UNAVAILABLE flag explains why.
 - **The page.** `render_brief.py` turns the saved result into one self-contained HTML page for the Artifact tool. The page carries the accounts, holdings, allocation, movers, events and comparison sections.
-- **More detail.** Read `references/how-figures-are-built.md` before answering how cash, concentration, sector exposure or a headline's `answer` was computed, why a source is missing from the headlines, or what the page contains.
+- **More detail.** Read `references/how-figures-are-built.md` before answering how cash, concentration, sector exposure, a loan payment date or a headline's `answer` was computed, why a source is missing from the headlines, or what the page contains.
 - **Other skills.** Drift against targets and what to rebalance belong to portfolio-plan, a single holding's outlook to trading or valuation, and every order to trading. Follow-up questions about the numbers are answered under "The analysis" below.
 
 ### The analysis
@@ -190,7 +190,7 @@ Every script prints JSON.
 
 ## Steps
 
-**"How is my portfolio", a summary or a daily brief**
+**"How is my portfolio", a summary or a daily brief, or a call with no question (the skill on its own, "how am I doing")**
 
 1. Pick the flags for `brief.py`:
 
@@ -206,6 +206,7 @@ Every script prints JSON.
 3. If the run exits non-zero, follow the exit code table and stop. A `coverage` row with status `failed` or `skipped` is not an error: it is information for the page and the reply's sources line, never a chat error and never a reason to rerun.
 4. Deliver the page:
    1. Write the headline analysis to `DIR/summary.json`, following the section below.
+      - First run the market-analysis skill's `indices.py > DIR/indices.json` with no flags (`"${CLAUDE_PLUGIN_ROOT}/skills/market-analysis/scripts/indices.py"`), for the rates, sector moves and trend. If it fails, write "What this means for you" from the brief alone and say so in one reply line.
    2. Run `history_report.py > DIR/history.json`, with a Bash timeout of at least 300 seconds.
       - It tops up the ledger, so it may write new broker activity into `ledger.json`. Only this flow runs it: the check-in and `--no-headlines` briefs do not.
       - Exit 4 with code `ETRADE_REAUTH` is the same login handoff as `brief.py`; after it, rerun `history_report.py` once.
@@ -232,16 +233,16 @@ Every script prints JSON.
 
 ### The headline analysis
 
-A small card at the top of the page: a headline, "What stands out", "What to look into", and a folded "What this means for you". The file is `{"headline", "stands_out", "look_into", "for_you"}`.
+A small card at the top of the page: a headline, "What stands out", "What to look into", and a folded "What this means for you". The file is `{"headline", "stands_out", "look_into", "for_you"}`, where `for_you` is a list such as `[{"topic": "Cash", "text": "..."}]`.
 
-- Limits, which `render_brief.py` enforces: `headline` 20 words, `stands_out` 90, `look_into` 90, `for_you` 70. `for_you` is optional and the rest are required.
+- Limits, which `render_brief.py` enforces: `headline` 20 words, `stands_out` 90 and `look_into` 90. `for_you` is up to five `{"topic", "text"}` points, each `topic` up to 4 words and each `text` up to 70. `for_you` is optional and the rest are required.
 - Links take the form `[Sectors](sec-card)`, in `look_into` only, to these ids: `headlines-card`, `accounts-card`, `alloc-card`, `sector-card`, `movers-card`, `holdings-card`, `events-card`, `compare-card`, `flags-section`.
 - Every number comes from this run's script output, quoted as the script gives it.
 - Lead with what is unusual today, not a tour of the page. Say plainly when nothing stands out.
 - Separate data from inference, using words like "may" for inference.
 - Carry dates when a reading is older than the page's prices.
 - Name the bull and the bear side when reading a market condition or a security.
-- No buy, sell or hold call, and no forecast. `for_you` says how a reading touches the person's holdings, not what to do. The forbidden verbs are rejected in every field.
+- No buy, sell or hold call, and no forecast. `for_you` says what a reading does to the person's holdings, not what to do. It is the deep part of the card: read `references/what-this-means-for-you.md` before writing it. The forbidden verbs are rejected in every field.
 - `for_you` takes portfolio numbers only from a read taken on this run or today, never from memory. Non-numeric context from memory or the profile is allowed, such as a paycheck and stock awards both depending on one employer.
 - A file that breaks a rule exits 2 with `error` naming the rule and writes no page. Rewrite the file and render again.
 
@@ -253,16 +254,15 @@ Write each field so a reader follows it on the first read:
 - Name a group by what it is to the reader: "your 401(k) funds", "cash and bonds".
 - Write an estimated day change as "The 0.3% is partly an estimate, because your 401(k) funds have no public quote." The Flags section carries the share estimated.
 - Write a flag as the plain fact: "Cash and money-market funds are 48.8%, above the 20% line the page flags."
+- Explain the day from the `movers` that made it, with their dollar moves and any matching sector move from `indices.py`. Never give the cash or bond share as the reason: it is the same every day and the Allocation card and Flags carry it. Data entered by hand (statements, spending imports) is sparse; its age is not a finding.
 
-Before: "The day's move was -$1,808.75 (-0.3%), against S&P 500 -1.8%; 25.55% of market value uses an estimated day change. Cash and money-market funds at 48.8% and bonds at 25.4% may explain the gap."
-
-After: "You fell 0.3% while the S&P 500 fell 1.8%, likely because about 74% of the portfolio is in cash and bonds. The 0.3% is partly an estimate, because your 401(k) funds have no public quote."
+Before: "You gained $71.36 while the S&P 500 fell 0.50%, likely because 50.5% of the accounts sit in cash and money-market funds." After: "You gained $71.36 while the S&P 500 fell 0.50%. CTSH, YELP and LDOS each rose about 4%, adding $95.38, $96.80 and $90.13. ZTO fell 5.5% (−$157.92) and AMZN 1.21% (−$102.30), with technology down 3.26%."
 
 What to look for on this page:
 
-- The day's move against the S&P 500, and whether it is partly estimated (`DAY_CHANGE_ESTIMATED`).
-- Concentration and flags that changed, cash share, and new alerts in `headlines`.
-- Events in the next few days.
+- The day's move against the S&P 500, the movers behind it, and whether it is partly estimated (`DAY_CHANGE_ESTIMATED`).
+- Concentration and flags that changed since the last brief, and new alerts in `headlines`.
+- Events in the next few days, including loan and card payments.
 
 Start every request with step 0, then pick the case that matches.
 
@@ -308,9 +308,9 @@ Topics: the evidence behind a rule, weighting schemes, covariance or shrinkage c
 3. Ground the answer in what the file says. Do not answer these from memory.
 4. Present it in plain language ("research shows…"). Never cite internal reference codes, tags or source identifiers to the user.
 
-**The user asks for a deep review, or what they really depend on**
+**The user asks for a deep review**
 
-Run this when the person asks for a deep review or for depth, or when the session's depth rule makes the deep review the default. Otherwise answer from the holdings case; in standard depth, end with one line: a deep review is available and sends about eight research subagents.
+Run this only when the person asks for a deep review by name. Answer any other question, including what they depend on most, from the holdings case.
 
 1. If the risk-analysis skill is not installed, say the deep review needs it, and stop.
 2. Tell the person it has started and what it costs: about 8 subagents and 40 web searches, and it can take up to an hour.
@@ -338,10 +338,10 @@ Run this when the person asks for a deep review or for depth, or when the sessio
 
 **The user asks to re-check a deep review**
 
-1. Write `snapshot.py --no-news` to `DIR/snapshot.json`, then run `review_store.py check --book DIR/snapshot.json`. Exit 2 with "no saved review" means none has been run: offer one.
+1. Write `snapshot.py --no-news` to `DIR/snapshot.json`, then run `review_store.py check --book DIR/snapshot.json`. Exit 2 with "no saved review" means none is saved: say so, and stop.
 2. Present each bet's then and now figures, `gone`, `watch_due` and `new_uncovered`.
 3. Say that this re-measures dollars only. The shares, shocks and verdicts are the review's own, and no new research ran.
-4. If `rerun_due` is true, give `rerun_reasons` and say a new deep review would refresh the evidence.
+4. If `rerun_due` is true, give `rerun_reasons` as what changed since the review. Add nothing about a new review.
 
 **The user wants to place, cancel or see orders**
 
@@ -376,7 +376,7 @@ Do not repeat the sections the page carries. If the user asks for a number the p
 
 ### Markdown fallback (only when no page could be published or saved)
 
-Open with the whole headline analysis as text: the headline, "What stands out", "What to look into" without its links, and "What this means for you" when written. `render_brief.py` does not run here, so nothing enforces the limits and rules in the headline analysis section. Keep to them.
+Open with the whole headline analysis as text: the headline, "What stands out", "What to look into" without its links, and "What this means for you" when written, one short paragraph per point led by its topic. `render_brief.py` does not run here, so nothing enforces the limits and rules in the headline analysis section. Keep to them.
 
 Then render the script's JSON in exactly this order, then stop.
 

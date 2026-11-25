@@ -1,14 +1,46 @@
-"""Debt source: past-due or due within 7 days is an alert; high utilization and stale statements are notices."""
+"""Debt source: the next payment due within 7 days is an alert; high utilization is a notice.
+
+Statements are typed in by hand, so they are sparse and often a month or two old. A due date on a recorded
+statement is read as a monthly schedule: it rolls forward a month at a time to the next date on or after
+today. A payment therefore never shows as past due because the newer statement was not recorded, and an old
+statement still gives the next date. ``upcoming`` turns the same projection into rows for the brief's
+Upcoming events table.
+"""
 from __future__ import annotations
+
+import calendar
+from datetime import date
 
 from second_opinion import headlines as H
 
 SKILL = "personal-finance"
 DUE_WINDOW_DAYS = 7
-WHY = {"PAST_DUE": "A payment past its due date accrues interest and can be reported late.",
-       "DUE_SOON": "A statement payment falls due within a week.",
-       "HIGH_UTILIZATION": "Utilization above 30% weighs on credit scores.",
-       "STALE": "The debt picture is only as fresh as the last statement recorded."}
+WHY = {"DUE_SOON": "A loan or card payment falls due within a week.",
+       "HIGH_UTILIZATION": "Utilization above 30% weighs on credit scores."}
+
+
+def _add_months(d: date, n: int, day: int) -> date:
+    y, m = divmod(d.month - 1 + n, 12)
+    year, month = d.year + y, m + 1
+    return date(year, month, min(day, calendar.monthrange(year, month)[1]))
+
+
+def next_due(due: object, today: date) -> tuple[date, bool] | None:
+    """``(next due date on or after today, projected)`` from a statement's due date, or None if unparseable.
+
+    ``projected`` is True when the date was rolled forward from the statement rather than printed on it.
+    """
+    try:
+        d = date.fromisoformat(str(due)[:10])
+    except ValueError:
+        return None
+    if d >= today:
+        return d, False
+    n = (today.year - d.year) * 12 + today.month - d.month
+    nxt = _add_months(d, n, d.day)
+    if nxt < today:
+        nxt = _add_months(d, n + 1, d.day)
+    return nxt, True
 
 
 def _payment_answer(a: dict) -> str:
@@ -18,33 +50,57 @@ def _payment_answer(a: dict) -> str:
     return f"Minimum {H.money(minimum)} on {H.money(balance)} at {apr:.1%} APR ({H.money(run_rate)} interest a month)"
 
 
+def _next(a: dict, today: date) -> tuple[date, bool] | None:
+    """debts.py's own ``next_due_date`` when present, else the same roll-forward from ``due_date``."""
+    if a.get("next_due_date"):
+        try:
+            d = date.fromisoformat(str(a["next_due_date"])[:10])
+        except ValueError:
+            d = None
+        if d is not None and d >= today:
+            return d, bool(a.get("due_projected"))
+    return next_due(a.get("due_date"), today)
+
+
+def _accounts(results: dict) -> list[dict]:
+    return [a for a in ((results.get("main") or {}).get("accounts") or []) if isinstance(a, dict)]
+
+
+def upcoming(results: dict, today: date) -> list[dict]:
+    """One Upcoming-events row per account with a due date: its next payment on or after today."""
+    rows = []
+    for a in _accounts(results):
+        nd = _next(a, today)
+        if nd is None:
+            continue
+        minimum = a.get("minimum_payment")
+        label = f"payment {H.money(minimum)}" if isinstance(minimum, (int, float)) else "payment"
+        if nd[1]:
+            label += " (from the monthly schedule)"
+        rows.append({"symbol": str(a.get("name") or a.get("id") or "account"), "type": "payment", "date": nd[0].isoformat(),
+                     "label": label, "projected": nd[1]})
+    return rows
+
+
 def extract(results: dict, ctx: dict) -> list[dict]:
-    res = results.get("main") or {}
-    today = str(ctx["today"])
+    today = ctx["today"]
     alerts: list[dict] = []
     notices: list[dict] = []
-    for a in res.get("accounts") or []:
+    for a in _accounts(results):
         aid, name = str(a.get("id") or ""), str(a.get("name") or a.get("id") or "account")
-        flags = set(a.get("flags") or [])
-        due, days = a.get("due_date"), a.get("days_to_due")
         interest_ask = f"How much interest am I paying on {name}?"
-        payment_answer = _payment_answer(a)
-        if "PAST_DUE" in flags:
-            ago = f" ({abs(int(days))} days ago)" if isinstance(days, (int, float)) else ""
-            alerts.append(H.make(SKILL, "PAST_DUE", "alert", f"{name} payment was due {due}{ago}", discriminator=f"{aid}:{due}", as_of=today, ask=interest_ask,
-                                 answer=payment_answer, why=WHY["PAST_DUE"]))
-        elif isinstance(days, (int, float)) and 0 <= days <= DUE_WINDOW_DAYS:
-            alerts.append(H.make(SKILL, "DUE_SOON", "alert", f"{name} payment is due {due} ({int(days)} days)", discriminator=f"{aid}:{due}", as_of=today, ask=interest_ask,
-                                 answer=payment_answer, why=WHY["DUE_SOON"]))
-        if "HIGH_UTILIZATION" in flags:
+        nd = _next(a, today)
+        if nd is not None and (nd[0] - today).days <= DUE_WINDOW_DAYS:
+            due, days = nd[0].isoformat(), (nd[0] - today).days
+            answer = _payment_answer(a)
+            if nd[1] and answer:
+                answer += f"; date from the monthly schedule of the {str(a.get('due_date'))[:10]} statement"
+            alerts.append(H.make(SKILL, "DUE_SOON", "alert", f"{name} payment is due {due} ({days} days)", discriminator=f"{aid}:{due}",
+                                 as_of=str(today), ask=interest_ask, answer=answer, why=WHY["DUE_SOON"]))
+        if "HIGH_UTILIZATION" in set(a.get("flags") or []):
             util, limit, balance = a.get("utilization"), a.get("credit_limit"), a.get("balance")
             text = f"{name} utilization is {float(util) * 100:.1f}%" if isinstance(util, (int, float)) else f"{name} utilization is high"
             answer = f"{H.money(balance)} of a {H.money(limit)} limit" if isinstance(balance, (int, float)) and isinstance(limit, (int, float)) else ""
-            notices.append(H.make(SKILL, "HIGH_UTILIZATION", "notice", text, discriminator=aid, as_of=today, ask=interest_ask,
+            notices.append(H.make(SKILL, "HIGH_UTILIZATION", "notice", text, discriminator=aid, as_of=str(today), ask=interest_ask,
                                   answer=answer, why=WHY["HIGH_UTILIZATION"]))
-        if "STALE" in flags:
-            period_end = a.get("period_end")
-            answer = f"Last statement {period_end}" if period_end else ""
-            notices.append(H.make(SKILL, "STALE", "notice", f"{name} statement is {a.get('statement_age_days')} days old", discriminator=aid, as_of=today,
-                                  ask="What do I owe across all my accounts?", answer=answer, why=WHY["STALE"]))
     return alerts + notices

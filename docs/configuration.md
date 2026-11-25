@@ -47,10 +47,10 @@ Settings files are schema 2 since 1.3.0. A schema-1 file upgrades in place on fi
 |---|---|---|
 | Valuation | Quick: scripted DCF, comps, DDM, Graham/Buffett | Researched scenarios by segment, sourced ledger |
 | Stock picking | Screen and funnel, light picks | Deep picker, downside gate, deep picks only |
-| Reviews (portfolio, property, trades, tax plans) | Scripted answer; deep run on request | Deep run is the default answer |
+| Reviews (portfolio, property, trades, tax plans) | Deep run on request only | Deep run on request only |
 | Cost | Seconds, little usage | Minutes, 5 to 40 subagents per run |
 
-At deep depth a saved deep result answers until its own re-check says a rerun is due, each deep run is announced with its size, and a request that would start more than `deep.ask_above` (default 3) deep valuations asks first. Light picks already saved are kept and marked as needing a deep valuation. Quotes, ratios, filing sections, option chains and screen candidates are the same at both depths. Six skills have a deep path (valuation, stock-screener, portfolio-analysis, real-estate, tax-aware, trade-review); the others answer as before. The scripts follow a change on the next command, and the session rule from the next session.
+At deep depth a saved deep result answers until its own re-check says a rerun is due, each deep run is announced with its size, and a request that would start more than `deep.ask_above` (default 3) deep valuations asks first. Light picks already saved are kept and marked as needing a deep valuation. Quotes, ratios, filing sections, option chains and screen candidates are the same at both depths. Two skills follow depth (valuation, stock-screener). The four deep reviews (portfolio-analysis, real-estate, tax-aware, trade-review) run only when you ask for one by name, at either depth. The other skills answer as before. The scripts follow a change on the next command, and the session rule from the next session.
 
 ## Environment variables
 

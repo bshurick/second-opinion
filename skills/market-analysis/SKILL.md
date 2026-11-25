@@ -144,6 +144,8 @@ Run with the Bash tool. Every script prints JSON.
 
 Pick the case that matches the request. If a question touches individual stocks or portfolio topics, still answer it with the tools available here.
 
+A call with no question (the skill invoked on its own, or "how's the market") runs **Flows and positioning**, so the page is the default answer.
+
 **Market overview**
 
 1. Check market status: open or closed, and session times.
@@ -189,18 +191,42 @@ Use this case for "who is buying", "is money leaving equities", "are institution
 
 **The headline analysis**
 
-A small card at the top of the page: a headline, "What stands out", "What to look into", and a folded "What this means for you". The file is `{"headline", "stands_out", "look_into", "for_you"}`.
+A small card at the top of the page: a headline, "What stands out", "What to look into", and a folded "What this means for you". The file is `{"headline", "stands_out", "look_into", "for_you"}`, where `for_you` is a list such as `[{"topic": "Cash", "text": "..."}]`.
 
-- Limits, which `render.py` enforces: `headline` 20 words, `stands_out` 90, `look_into` 90, `for_you` 70. `for_you` is optional and the rest are required.
+- Limits, which `render.py` enforces: `headline` 20 words, `stands_out` 90 and `look_into` 90. `for_you` is up to five `{"topic", "text"}` points, each `topic` up to 4 words and each `text` up to 70. `for_you` is optional and the rest are required.
 - Links take the form `[Sectors](sec-card)`, in `look_into` only, to these ids: `trend-card`, `rates-card`, `idx-card`, `pos-card`, `sec-card`, `etf-card`, `cash-card`, `short-card`, `flags-section`.
 - Every number comes from this run's script output, quoted as the script gives it.
 - Lead with what is unusual today, not a tour of the page. Say plainly when nothing stands out.
 - Separate data from inference, using words like "may" for inference.
 - Carry dates when a reading is older than the page's prices.
 - Name the bull and the bear side when reading a market condition or a security.
-- No buy, sell or hold call, and no forecast. `for_you` says how a reading touches the person's holdings, not what to do. The forbidden verbs are rejected in every field.
+- No buy, sell or hold call, and no forecast. `for_you` says what a reading does to the person's holdings, not what to do. The forbidden verbs are rejected in every field.
 - `for_you` takes portfolio numbers only from a read taken on this run or today, never from memory. Non-numeric context from memory or the profile is allowed, such as a paycheck and stock awards both depending on one employer.
 - A file that breaks a rule exits 2 with `error` naming the rule and writes no page. Rewrite the file and render again.
+
+"What this means for you" is the deep part of the card. The other three fields describe the page. This one works out what the readings do to this person's accounts, and it sits folded, so it has room.
+
+- Write one point per asset class the person owns, largest first by value, up to five. A class no reading touches gets no point.
+- Build each point from two results: this run's market output and today's accounts read (`DIR/portfolio.json`: `allocation`, `sector_weights`, `positions`).
+- Each point carries four things: the reading with its number and date, the holding with its value and weight, the mechanism that links the two, and the side that helps and the side that hurts.
+- Do the arithmetic when the outputs give both numbers, and show both: a weight times a move is a contribution to the day, and a cash balance times a rate is a year of interest at today's rate. Label the result as arithmetic at today's figures.
+- Say where the data stops. A fund is not looked through, so a sector reading reaches an index fund only through the index.
+- A point that restates a weight or a day change with no market reading beside it is a recap. Cut it or finish it.
+
+Readings to trace for each asset class:
+
+| The person owns | Readings to trace |
+|---|---|
+| Cash and money-market funds | The 13-week bill yield and the fed funds rate set what the cash earns. Their change over the week and the year says which way that income is heading. Retail money-fund assets, with their date, show whether households are adding to cash. |
+| Bonds and bond funds | The 2-, 10- and 30-year yield changes in basis points: a bond fund's price moves against yields. The 10-year against the 13-week spread, for what longer bonds pay over cash. Asset-manager and leveraged-fund positioning in Treasury futures, with the report date. |
+| Stock index funds | The S&P 500's move, the three trend gaps in the order 200-, 100- and 50-week, and equal-weight against cap-weight returns for a cap-weighted fund. S&P 500 futures positioning per trader class and SPY flows with their dates. |
+| Single stocks and sector tilts | The person's sector weights against each sector fund's day and week move. That sector's fund flow and futures positioning, and a holding that appears in a sector fund's `top_holdings`. |
+| International stocks | The dollar index and its week change: a rising dollar cuts the dollar value of foreign shares. Dollar index futures positioning. |
+| Pay and stock awards from one employer | The employer's sector move, as non-numeric context from memory or the profile. |
+
+Before: "Cash and money-market funds are 51.5% and bonds 26.5%, so US stocks (19.4%) carry most of the move."
+
+After: `{"topic": "Cash", "text": "Cash and money-market funds are $298,340, 51.5% of the accounts. They earn close to the 13-week bill yield of 4.122%, about $12,300 a year at today's rate. The fed funds rate sets that income, and it has not moved this week. The helping side: this half of the accounts sat out the S&P 500's 8.05% week. The hurting side: it also sits out any rebound."}`
 
 What to look for on this page:
 
@@ -231,7 +257,7 @@ The page carries the tables and charts. Do not repeat them in the reply.
 
 **Markdown fallback (only when no page could be published or saved):** prose and tables, in this order.
 
-Open with the whole headline analysis as text: the headline, "What stands out", "What to look into" without its links, and "What this means for you" when written. `render.py` does not run here, so nothing enforces the limits and rules in the headline analysis section. Keep to them.
+Open with the whole headline analysis as text: the headline, "What stands out", "What to look into" without its links, and "What this means for you" when written, one short paragraph per point led by its topic. `render.py` does not run here, so nothing enforces the limits and rules in the headline analysis section. Keep to them.
 
 1. Then the newest report dates. CFTC data is Tuesday's positions released Friday. SPDR and FINRA are the prior close. FRED money funds are weekly data published monthly and up to six weeks behind.
 2. Per contract, the net position and week-over-week change for asset managers, leveraged funds and small traders, with the percentile. Name crowded readings (percentile ≤ 10 or ≥ 90) and say what a crowded position has historically meant, without forecasting.

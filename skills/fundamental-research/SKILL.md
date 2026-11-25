@@ -116,6 +116,8 @@ All scripts print JSON.
 
 ## Steps
 
+A call with no company or manager named (the skill invoked on its own) asks one question, which company or manager, and runs nothing until it is answered.
+
 Pick the case that matches the request.
 
 **The user asks about a company**

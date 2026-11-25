@@ -63,6 +63,8 @@ Run with the Bash tool. All three scripts print JSON.
 
 ## Steps
 
+A call with no question (the skill invoked on its own) runs the steps below with no flags: the income report.
+
 1. Pick the flags for `dividends.py`:
 
    | The request | Flags |

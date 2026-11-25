@@ -62,6 +62,8 @@ Every script prints JSON.
 
 ## Steps
 
+A call with no question (the skill invoked on its own) offers two choices in one question, refresh broker history or import a file, and runs nothing until it is answered.
+
 Pick the case that matches the request. After any import, finish with the "After any import" steps.
 
 **The user has a CSV file**

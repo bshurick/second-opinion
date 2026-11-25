@@ -168,6 +168,8 @@ Every script prints JSON.
 
 ## Steps
 
+A call with no ticker (the skill invoked on its own) asks one question, which security, and runs nothing until it is answered.
+
 Pick the case that matches the request.
 
 **The user asks about a chart, trend, momentum, support or resistance, or entry and exit timing**

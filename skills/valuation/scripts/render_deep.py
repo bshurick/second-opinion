@@ -162,6 +162,7 @@ SCRIPT = r"""
     if (text) card.insertAdjacentHTML('beforeend', `<p style="font-size:14px;margin:0 0 6px">${text}</p>
       <p class="muted" style="font-size:12px;margin:0 0 10px">${CO.summary ? 'Business summary written from this valuation’s research.' : 'Business description from Yahoo Finance.'}</p>`);
     if (PP.length > 1) {
+      card.insertAdjacentHTML('beforeend', `<h3 id="price-chart-title" style="font-size:13px;font-weight:600;margin:14px 0 6px">${esc(D.symbol || 'Share')} share price: weekly close, last five years</h3>`);
       const box = F.el('div', {id: 'price-chart'}); card.appendChild(box);
       F.lines(box, {series: [{name: D.symbol || 'Price', points: PP.map(p => [Date.parse(p.date), p.close]), color: F.S[0], area: true}],
         xIsDate: true, yFmt: v => F.money(v, 2), height: 260, aria: `${D.symbol || 'Share'} five-year weekly share price`});

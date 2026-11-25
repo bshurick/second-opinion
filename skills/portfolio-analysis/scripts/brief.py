@@ -7,7 +7,8 @@ from the other installed second-opinion skills. Every ``snapshot.py`` flag passe
 subprocess in a thread pool; a missing skill, an unmet prerequisite, a timeout or a failure becomes a
 ``coverage`` row and never fails the brief. Afterward, an enrichment pass fills in ``answer`` on a few
 headlines that need a cross-source lookup or one extra script call (EX_DIVIDEND, EARNINGS, FILING); it
-too never fails the brief and never touches ``coverage``. ``brief-last.json`` in the plugin data dir
+too never fails the brief and never touches ``coverage``. Each recorded loan or card's next payment (the
+statement's due date rolled forward monthly) joins ``events`` as a ``payment`` row with a ``label``. ``brief-last.json`` in the plugin data dir
 remembers the last run's headline keys (so this run marks each ``new`` or ``still``) and its risk
 figures. A write failure there becomes a ``BRIEF_MEMORY_UNAVAILABLE`` flag rather than failing the run.
 
@@ -29,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
 
 from second_opinion import config, headlines, output  # noqa: E402
 from second_opinion.errors import InvalidInput  # noqa: E402
+from second_opinion.headlines import debt as debt_headlines  # noqa: E402
 from second_opinion.headlines import risk as risk_headlines  # noqa: E402
 from second_opinion.headlines import sources  # noqa: E402
 
@@ -59,6 +61,19 @@ def _single_stock_symbols(snap: dict) -> list[str]:
     return [str(p.get("symbol")).upper() for p in candidates]
 
 
+def _with_payments(snap: dict, ctx: dict) -> dict:
+    """Add each recorded loan or card's next payment to ``events``, sorted by date with the holdings' events."""
+    try:
+        rows = debt_headlines.upcoming((ctx.get("results") or {}).get("debt") or {}, ctx["today"])
+    except Exception:  # noqa: BLE001 — a bad statement file must never fail the brief
+        rows = []
+    if not rows:
+        return snap
+    events = [*(snap.get("events") or []), *rows]
+    events.sort(key=lambda e: (str(e.get("date")), str(e.get("symbol")), str(e.get("type"))))
+    return {**snap, "events": events}
+
+
 def build(args: list[str]) -> dict:
     p = _Parser(prog="brief.py", add_help=False)
     p.add_argument("--no-headlines", dest="no_headlines", action="store_true")
@@ -84,6 +99,7 @@ def build(args: list[str]) -> dict:
     }
     found, coverage = sources.run_all(ctx, timeout=ns.timeout, workers=ns.workers)
     found = sources.enrich(found, ctx, timeout=ns.timeout)
+    snap = _with_payments(snap, ctx)
     risk_memory = risk_headlines.snapshot_for_last(ctx["risk_results"]) or (ctx["previous"].get("risk") or {})
     failed_skills = {row["skill"] for row in coverage if row.get("status") != "ok"}
     extra_keys = [k for k in ctx["previous"].get("keys") or [] if k.split(":", 1)[0] in failed_skills]

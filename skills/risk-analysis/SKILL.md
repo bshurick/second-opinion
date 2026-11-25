@@ -113,6 +113,8 @@ Run with the Bash tool. All three scripts print JSON.
 
 ## Steps
 
+A call with no question (the skill invoked on its own) runs the steps below with no flags: "how risky is my portfolio".
+
 1. Pick the flags for `stress.py`:
 
    | The request | Flags |

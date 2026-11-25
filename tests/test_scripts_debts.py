@@ -49,7 +49,14 @@ def test_debts_picture_from_the_store(data_dir, capsys) -> None:
     assert rc == 0, out
     assert out["as_of"] == "2026-09-11"
     assert out["totals"]["total_debt"] == 406127.92 and out["totals"]["weighted_apr"] == 0.0516
-    assert out["totals"]["next_due"]["account_id"] == "amex-gold-9876"
+    assert out["totals"]["next_due"] == {"account_id": "amex-gold-9876", "due_date": "2026-09-15", "amount": 105.0}
+    rows = {r["id"]: r for r in out["accounts"]}
+    # a due date that has passed rolls forward a month at a time; nothing is ever past due
+    assert {k: (r["due_date"], r["next_due_date"], r["due_projected"], r["days_to_due"]) for k, r in rows.items()} == {
+        "amex-gold-9876": ("2026-09-15", "2026-09-15", False, 4),
+        "chase-sapphire-1234": ("2026-09-09", "2026-10-09", True, 28),
+        "sample-mortgage-5678": ("2026-09-01", "2026-10-01", True, 20)}
+    assert not any(f.startswith("PAST_DUE") for f in out["flags"])
     assert [r["id"] for r in out["accounts"]] == ["amex-gold-9876", "chase-sapphire-1234", "sample-mortgage-5678"]
     assert out["flags"][0] == "HIGH_UTILIZATION:amex-gold-9876"
     assert out["debt_input"]["debts"][0]["name"] == "Amex Gold"
@@ -183,7 +190,7 @@ def test_render_builds_a_self_contained_page(data_dir, capsys, tmp_path) -> None
     src, out = tmp_path / "debts.json", tmp_path / "page.html"
     src.write_text(json.dumps(picture))
     rc, res = run_json(load_script("personal-finance/scripts/render_debts.py"), ["--in", str(src), "--out", str(out)], capsys)
-    assert rc == 0 and res == {"out": str(out), "title": "Debt Picture", "accounts": 3, "flags": 5}
+    assert rc == 0 and res == {"out": str(out), "title": "Debt Picture", "accounts": 3, "flags": 3}
     html = out.read_text()
     assert html.startswith("<title>Debt Picture</title>") and "<html" not in html and "<body" not in html
     assert '<p class="sub" id="lede">as of 2026-09-11 · total debt $406,127.92 · revolving $7,730.00 · installment $398,397.92 · weighted APR 5.16% · minimums $3,172.25 · next due 2026-09-15 (amex&lt;gold&gt;)</p>' in html
@@ -212,3 +219,13 @@ def test_every_card_explains_itself(data_dir, capsys, tmp_path) -> None:
     src = tmp_path / "debts.json"
     src.write_text(json.dumps(picture))
     assert_page_help(render_and_audit("personal-finance/scripts/render_debts.py", ["--in", str(src)], tmp_path, capsys))
+
+
+def test_next_due_rolls_forward_and_clamps_month_end() -> None:
+    from datetime import date
+    dp = load_script("personal-finance/scripts/debtpicture.py")
+    assert dp.next_due(date(2026, 9, 20), date(2026, 9, 14)) == (date(2026, 9, 20), False)
+    assert dp.next_due(date(2026, 9, 14), date(2026, 9, 14)) == (date(2026, 9, 14), False)
+    assert dp.next_due(date(2026, 1, 31), date(2026, 2, 10)) == (date(2026, 2, 28), True)
+    assert dp.next_due(date(2026, 1, 31), date(2026, 3, 1)) == (date(2026, 3, 31), True)
+    assert dp.next_due(date(2025, 12, 5), date(2026, 3, 6)) == (date(2026, 4, 5), True)

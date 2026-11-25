@@ -70,9 +70,9 @@ All these scripts print JSON.
 
 ## Steps
 
-**The user asks a calculator question**
+A call with no question (the skill invoked on its own) asks one question, which property or which calculation (mortgage, refinance, rent vs buy, rental, affordability, REIT), and runs nothing until it is answered.
 
-When the question names one property, in standard depth, end the reply with one line: a deep review is available and sends about six research subagents.
+**The user asks a calculator question**
 
 1. Pick the calculator that matches the question.
 
@@ -97,7 +97,7 @@ When the question names one property, in standard depth, end the reply with one 
 
 **The user asks for a deep review of a property or market**
 
-Run this when the person asks for a deep review or for depth, or when the session's depth rule makes the deep review the default.
+Run this only when the person asks for a deep review by name.
 
 1. Establish the subject: an address or a market, and whether it would be a home or a rental. Ask for what is missing, plus the loan terms and how long they would hold or stay. Ask once for the paths of any documents: listing, HOA papers, inspection report, disclosures. Go on without them if there are none, and say what that leaves out.
 2. Tell the person it has started: about 6 subagents and 35 web searches, one fewer for a market. The Documents role has nothing to read for a market, so it does not run.
@@ -122,7 +122,7 @@ Run this when the person asks for a deep review or for depth, or when the sessio
 1. Run `case_store.py list` to find the slug, then `case_store.py check SLUG`, with `--set FIELD=VALUE` for each number the person gave, such as a new rate or a signed lease's rent.
 2. Present each scenario's `then`, `now` and `moved`, the `even_price`, `watch_due` and `open_questions`.
 3. Say that this reruns the arithmetic only. The other evidence is the review's own, and no new research ran.
-4. If `rerun_due` is true, give `rerun_reasons` and say a new deep review would refresh the evidence.
+4. If `rerun_due` is true, give `rerun_reasons` as what changed since the review. Add nothing about a new review.
 
 ## Reply format
 

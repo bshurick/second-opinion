@@ -212,3 +212,51 @@ def test_full_read_today_compares_local_dates(monkeypatch, tmp_path):
     finally:
         monkeypatch.undo()
         time.tzset()
+
+
+POINTS = [
+    {"topic": "Cash", "text": "Cash is 51.5% of the accounts and earns about the 13-week bill rate of 4.122%."},
+    {"topic": "Bonds", "text": "The 10-year yield fell to 4.922%, which lifts the price of the bond fund."},
+]
+
+
+def test_load_accepts_for_you_as_topic_points(tmp_path):
+    summary = {**GOOD, "for_you": POINTS}
+    assert load(_write(tmp_path, summary), TARGETS) == summary
+
+
+def test_for_you_points_hold_each_text_to_the_paragraph_limit(tmp_path):
+    ok = [{"topic": "Cash", "text": _words(70)}] * 5
+    assert load(_write(tmp_path, {**GOOD, "for_you": ok}), TARGETS)["for_you"] == ok
+    with pytest.raises(InvalidInput, match=r"for_you\[1\] text is 71 words"):
+        load(_write(tmp_path, {**GOOD, "for_you": [POINTS[0], {"topic": "Bonds", "text": _words(71)}]}), TARGETS)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        [],
+        [{"topic": "Cash", "text": "Fine."}] * 6,
+        ["Cash is 51.5%."],
+        [{"topic": "Cash"}],
+        [{"topic": "Cash", "text": "Fine.", "extra": 1}],
+        [{"topic": " ", "text": "Fine."}],
+        [{"topic": "one two three four five", "text": "Fine."}],
+        [{"topic": "Cash", "text": ""}],
+        [{"topic": "Cash", "text": "You should trim it."}],
+        [{"topic": "Cash", "text": "See [Sectors](sec-card)."}],
+        [{"topic": "What we recommend", "text": "Fine."}],
+        {"topic": "Cash", "text": "Fine."},
+    ],
+)
+def test_load_rejects_malformed_for_you_points(tmp_path, bad):
+    with pytest.raises(InvalidInput, match="for_you"):
+        load(_write(tmp_path, {**GOOD, "for_you": bad}), TARGETS)
+
+
+def test_card_html_draws_one_labelled_paragraph_per_point():
+    html = card_html({**GOOD, "for_you": [*POINTS, {"topic": "A <b>", "text": "x & y"}]})
+    fold = html[html.index("<details") :]
+    assert fold.count("<p>") == 3 and "<details open" not in fold
+    assert '<span class="summary-label">Cash</span>Cash is 51.5%' in fold
+    assert '<span class="summary-label">A &lt;b&gt;</span>x &amp; y' in fold

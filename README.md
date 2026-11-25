@@ -92,7 +92,7 @@ Skills that produce a report publish an interactive page as a private Artifact o
 
 ## Skills
 
-23 skills, all installed. You do not call them by name; ask a question and Claude picks the right one. **key** means a SnapTrade or E*Trade key. **EDGAR** means an SEC contact address in `EDGAR_USER_AGENT`.
+23 skills, all installed. You do not need to call them by name; ask a question and Claude picks the right one. To call one directly, see [Slash commands](#slash-commands). **key** means a SnapTrade or E*Trade key. **EDGAR** means an SEC contact address in `EDGAR_USER_AGENT`.
 
 | | Skill | What it does | Needs |
 |---|---|---|---|
@@ -122,18 +122,36 @@ Skills that produce a report publish an interactive page as a private Artifact o
 
 `trade-journal` is an extra that is on by default and adds a confirmation step to every buy. `financial-education` and suggested follow-up questions are extras you turn on. Every script behind the skills is listed in [docs/scripts.md](docs/scripts.md).
 
+### Slash commands
+
+Every skill is also a slash command: `/second-opinion:` plus the skill name, as in `/second-opinion:market-analysis`. Add a question after it, or send the command on its own for the skill's default:
+
+| Command on its own | What it does |
+|---|---|
+| `/second-opinion:portfolio-analysis` | The daily brief |
+| `/second-opinion:market-analysis` | The market flows and positioning page |
+| `/second-opinion:portfolio-plan` | Your mix and drift against your plan, with no trades |
+| `/second-opinion:stock-screener` | Re-checks of your saved picks (the deep picker runs only when you ask for it) |
+| `/second-opinion:watchlist` | What moved, and which alerts triggered |
+| `/second-opinion:dividend-income` | The income report |
+| `/second-opinion:risk-analysis` | The risk and stress-test report |
+| `/second-opinion:fixed-income` | Today's rate environment against history |
+| `/second-opinion:retirement` | The "am I on track" projection, asking only for what it is missing |
+| `/second-opinion:tax-aware` | This year's tax position |
+| `/second-opinion:trade-review` | The review of your past trades |
+| `/second-opinion:trade-journal` | Your journal, and whether you are following your plans |
+| `/second-opinion:spending` | The latest month's spending review |
+
+`valuation`, `options`, `trading`, `fundamental-research`, `real-estate` and `statement-import` need something to work on, so on their own they ask one question first, such as which ticker. `get-started` runs the first-run setup, or, once you have a profile, offers to revisit it with your current answers shown.
+
 ## Deep research
 
-Six modes go beyond the scripted answers. Research subagents work through filings, primary sources, and the news, so a run takes minutes and uses much more of your Claude usage than an ordinary question.
+Two modes go beyond the scripted answers. Research subagents work through filings, primary sources, and the news, so a run takes minutes and uses much more of your Claude usage than an ordinary question.
 
 | Mode | Ask | Subagents |
 |---|---|---|
 | Deep valuation | *"Do a deep dive on PHM: what has to go right?"* | 8 to 11 |
 | Deep picker | *"Find me the best opportunities right now."* | 25 to 35 |
-| Portfolio review | *"What single belief does my portfolio depend on most?"* | 8 |
-| Property review | *"Run a deep review of 12 Main Street as a rental."* | 6 |
-| Decision review | *"Which of my trades were skill and which were luck?"* | 10 |
-| Tax plan comparison | *"Compare selling my stock awards over three years against a Roth conversion."* | 5 |
 
 Scripts still do the math and every claim carries a source and date, but the scenarios are the model's judgment. Saved results can be re-checked later without rerunning the research ("how are my picks doing?"). Details, the deep picker's test, and re-checks are in [docs/deep-research.md](docs/deep-research.md).
 
@@ -171,7 +189,7 @@ Sensible precautions: connect accounts read-only unless you need to trade, start
 - [Connecting brokerages](docs/connecting-brokerages.md): SnapTrade, E*Trade, read-only and margin accounts
 - [Configuration](docs/configuration.md): settings and environment variables
 - [Example questions](docs/examples.md): what to ask each skill
-- [Deep research](docs/deep-research.md): the six modes and their re-checks
+- [Deep research](docs/deep-research.md): deep valuation, the deep picker, their re-checks, and the reviews that run on request
 - [Running on open models with Ollama](docs/ollama.md)
 - [Running the scripts yourself](docs/running-scripts.md) and the [script reference](docs/scripts.md)
 - [How skills are written](docs/skill-style.md)

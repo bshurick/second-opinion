@@ -7,7 +7,7 @@
 
 The one command-line door to ``settings.json`` (the plugin data dir). ``show`` prints every setting
 by group with its value, default, meaning and the date it last changed (saved per-account and
-per-sleeve keys included), the skills that have a deep path (``deep_paths``), plus the migration warnings. ``get --plain`` prints the bare value
+per-sleeve keys included), the skills that follow depth (``deep_paths``), plus the migration warnings. ``get --plain`` prints the bare value
 (on/off for booleans) for hooks. ``set`` validates, records history and prints the previous value.
 ``version`` reports the installed plugin version, the latest one found in the local marketplace
 clone (no network), the version last announced, and the command that updates this install.

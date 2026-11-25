@@ -194,10 +194,14 @@ def test_depth_raises_on_corrupt_settings(tmp_data):
     assert e.value.code == "SETTINGS_CORRUPT"
 
 
-def test_deep_paths_cover_every_skill_with_deep_references():
+ON_REQUEST_REVIEWS = {"portfolio-analysis", "real-estate", "tax-aware", "trade-review"}
+
+
+def test_deep_paths_are_the_deep_skills_that_follow_depth():
     found = {p.parent.parent.name for p in SKILLS.glob("*/references/*.md")
              if p.name.startswith("deep-") or p.name == "picker-roles.md"}
-    assert set(settings.DEEP_PATHS) == found
+    assert ON_REQUEST_REVIEWS <= found
+    assert set(settings.DEEP_PATHS) == found - ON_REQUEST_REVIEWS == {"valuation", "stock-screener"}
 
 
 

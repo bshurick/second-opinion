@@ -265,6 +265,8 @@ Run with the Bash tool. All print JSON on stdout.
 
 ## Steps
 
+A call with no ticker (the skill invoked on its own) asks one question, which company, and runs nothing until it is answered.
+
 **Quick (standard depth; one company or several)**
 
 1. Identify the security. Run `fundamentals.py <symbol>` for current market data (price, market cap, shares outstanding) and the statements: at minimum 3-5 years of income statements, balance sheets and cash flow statements.

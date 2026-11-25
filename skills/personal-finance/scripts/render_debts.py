@@ -2,10 +2,10 @@
 """Usage: render_debts.py [--in debts.json] --out page.html
 
 Turns one ``debts.py`` result (a file, or stdin when ``--in`` is omitted) into a self-contained
-interactive HTML page for the Artifact tool: a banner for STALE and PAST_DUE, stat tiles (total debt,
+interactive HTML page for the Artifact tool: a banner for STALE, stat tiles (total debt,
 revolving against installment, weighted APR, minimums due with the next due date, interest paid over
-the trailing twelve months), the register as a table sortable by balance, APR, due date and the rest
-with past-due and stale rows highlighted, balance by account and utilization bars for the revolving
+the trailing twelve months), the register as a table sortable by balance, APR, next due date and the
+rest with stale rows marked (a due date rolled forward from an older statement says so), balance by account and utilization bars for the revolving
 accounts, an interest-paid trend line from ``history`` when any account has more than one statement,
 the flags in plain words and a closing note. Prints ``{"out": path, "title": ..., "accounts": n,
 "flags": n}``. Exit 2 on a missing or malformed input.
@@ -31,8 +31,6 @@ TITLE = "Debt Picture"
 
 BODY = """
 <style>
-tr.past-due td{background:color-mix(in srgb,var(--down) 9%,transparent)}
-tr.past-due td:first-child{box-shadow:inset 3px 0 0 var(--down)}
 tr.stale td{color:var(--muted)}tr.stale td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
 .fchip{display:inline-block;font-size:10.5px;letter-spacing:.04em;border:1px solid var(--grid);border-radius:999px;padding:1px 7px;margin-right:4px;color:var(--ink2)}
 .fchip.hot{border-color:var(--down);color:var(--down)}.fchip.warm{border-color:var(--warn);color:var(--warn)}
@@ -45,7 +43,7 @@ tr.stale td{color:var(--muted)}tr.stale td:first-child{box-shadow:inset 3px 0 0 
 <ul class="flags" id="banner" hidden></ul>
 <div class="tiles" id="tiles"></div>
 <div class="kv" id="kv"></div>
-<section class="card" id="reg-card"><h2>Register</h2><p class="sub" id="reg-sub">Latest statement per account. Click a heading to sort; past-due rows are marked red, stale ones amber.</p>
+<section class="card" id="reg-card"><h2>Register</h2><p class="sub" id="reg-sub">Latest statement per account. Click a heading to sort; rows with an older statement are marked amber.</p>
   <div class="twrap" id="register"></div></section>
 <div class="grid2">
   <div class="card" id="bal-card"><h2>Balance by account</h2><p class="sub">How the total you owe splits across accounts, largest balance first.</p><div id="balances"></div></div>
@@ -71,15 +69,13 @@ SCRIPT = r"""
     'interest run rate': ['What carrying the current balance costs in interest each month at its APR: balance × APR ÷ 12.', 'https://www.investopedia.com/terms/r/runrate.asp'],
     'credit limit': ['The most a card lets you borrow; balances near it push utilization up and weigh on credit scores.', 'https://www.investopedia.com/terms/c/credit_limit.asp'],
     'interest': ['What the lender charges for the balance you carry, added to what you owe each statement.', 'https://www.investopedia.com/terms/i/interest.asp'],
-    'past due': ['A payment whose due date has passed; late fees and penalty rates can follow.', 'https://www.investopedia.com/terms/p/past-due.asp'],
   });
   FA.explain(g('explain'),
     `<p>This page shows every card and loan you have recorded, using the latest statement for each one. <b>Total debt</b> adds up those balances; ${FA.term('revolving debt', 'revolving')} is cards you can keep drawing on and ${FA.term('installment debt', 'installment')} is loans repaid in fixed payments. The ${FA.term('weighted apr', 'weighted APR')} is the average interest rate with big balances counting for more, and ${FA.term('utilization')} is how much of your card limits you are using.</p>` +
-    `<p>The register lists one row per account; click a heading to sort. Red rows are ${FA.term('past due')}, grey rows have a statement older than ${AS.stale_days ?? 45} days. The bars compare balances and how full each card is, and the line chart tracks ${FA.term('interest')} charged statement by statement.</p>` +
+    `<p>The register lists one row per account; click a heading to sort. Amber rows have a statement older than ${AS.stale_days ?? 45} days. The due date is the next one on or after today: when the latest statement's date has passed, it is carried forward one month at a time. The bars compare balances and how full each card is, and the line chart tracks ${FA.term('interest')} charged statement by statement.</p>` +
     `<p>The main caveat: figures are only as current as the statements you have recorded. A payment made since the last statement is not reflected, and the ${FA.term('minimum payment', 'minimums')} shown are what keeps the accounts in good standing, not what pays them off.</p>`);
   const WORDS = {
     STALE: `the latest statement is older than ${AS.stale_days ?? 45} days`,
-    PAST_DUE: 'the due date on the latest statement has passed; whether the payment was made is not recorded here',
     HIGH_UTILIZATION: `balance above ${F.pct(AS.utilization_warn, 0)} of the limit`,
     MINIMUM_ONLY: 'the last two payments were the minimum',
     MINIMUM_BELOW_INTEREST: 'the minimum does not cover a month of interest, so it is left out of the payoff input',
@@ -87,7 +83,7 @@ SCRIPT = r"""
     NO_STATEMENTS: 'no statement recorded yet',
   };
   const flagLine = f => { const [code, id] = f.split(':'); return `<li><b>${F.esc(code)}</b>${F.esc(name(id))} — ${F.esc(WORDS[code] || '')}</li>`; };
-  const banner = FL.filter(f => f.startsWith('STALE:') || f.startsWith('PAST_DUE:'));
+  const banner = FL.filter(f => f.startsWith('STALE:'));
   if (banner.length) { g('banner').hidden = false; g('banner').innerHTML = banner.map(flagLine).join(''); }
   // tiles
   const nd = T.next_due;
@@ -105,8 +101,8 @@ SCRIPT = r"""
     `${FA.term('utilization', 'Utilization')} <b>${F.pct(T.utilization)}</b> of the revolving limits`,
   ].map(s => `<span>${s}</span>`).join('');
   // register
-  g('reg-sub').innerHTML = `Latest statement per account. Click a heading to sort; ${FA.term('past due', 'past-due')} rows are marked red, stale ones (statement older than ${AS.stale_days ?? 45} days) amber.`;
-  const chips = fl => (fl || []).map(f => `<span class="fchip ${f === 'PAST_DUE' || f === 'OVER_LIMIT' ? 'hot' : f === 'STALE' || f === 'HIGH_UTILIZATION' ? 'warm' : ''}">${F.esc(f.replace(/_/g, ' '))}</span>`).join('');
+  g('reg-sub').innerHTML = `Latest statement per account. Click a heading to sort; rows whose statement is older than ${AS.stale_days ?? 45} days are marked amber.`;
+  const chips = fl => (fl || []).map(f => `<span class="fchip ${f === 'OVER_LIMIT' ? 'hot' : f === 'STALE' || f === 'HIGH_UTILIZATION' ? 'warm' : ''}">${F.esc(f.replace(/_/g, ' '))}</span>`).join('');
   const reg = rows.map(r => ({...r, flag_text: (r.flags || []).join(' ')}));
   F.table(g('register'), [
     {key: 'name', label: 'Account', left: true, fmt: (v, r) => `<b>${F.esc(v)}</b>${r.issuer ? `<div class="muted" style="font-size:11.5px">${F.esc(r.issuer)}</div>` : ''}`},
@@ -114,7 +110,7 @@ SCRIPT = r"""
     {key: 'balance', label: 'Balance', fmt: v => F.money(v)},
     {key: 'apr', label: 'APR', fmt: v => F.pct(v, 2)},
     {key: 'minimum_payment', label: 'Min / payment', fmt: v => F.money(v)},
-    {key: 'due_date', label: 'Due', left: true, fmt: (v, r) => v ? `${F.esc(day(v))}<div class="muted" style="font-size:11.5px">${F.isNum(r.days_to_due) ? (r.days_to_due < 0 ? `${-r.days_to_due} days past` : `in ${r.days_to_due} days`) : ''}</div>` : '—'},
+    {key: 'next_due_date', label: 'Next due', left: true, fmt: (v, r) => v ? `${F.esc(day(v))}<div class="muted" style="font-size:11.5px">${F.isNum(r.days_to_due) ? `in ${r.days_to_due} days` : ''}${r.due_projected ? ' · from the monthly schedule' : ''}</div>` : '—'},
     {key: 'utilization', label: 'Utilization', fmt: v => F.pct(v)},
     {key: 'interest_this_period', label: 'Interest', fmt: v => F.money(v)},
     {key: 'change_vs_prior', label: 'Change', fmt: v => F.moneyS(v), cls: v => F.isNum(v) ? (v > 0 ? 'neg' : v < 0 ? 'pos' : '') : ''},
@@ -122,7 +118,7 @@ SCRIPT = r"""
     {key: 'flag_text', label: 'Flags', left: true, fmt: (v, r) => chips(r.flags) || '<span class="muted">—</span>'},
   ], reg, {sortKey: 'balance', onDraw: vis => {
     const trs = g('register').querySelectorAll('tbody tr');
-    vis.forEach((r, i) => { const fl = r.flags || []; trs[i].className = fl.includes('PAST_DUE') ? 'past-due' : fl.includes('STALE') ? 'stale' : ''; });
+    vis.forEach((r, i) => { const fl = r.flags || []; trs[i].className = fl.includes('STALE') ? 'stale' : ''; });
   }});
   // jargon in the table headings: FA.table escapes labels, so mark the terms after the head is built (the head is not redrawn on sort)
   const termHeads = (root, map) => { root.querySelectorAll('th[data-key]').forEach(th => { if (map[th.dataset.key]) { th.innerHTML = map[th.dataset.key]; } }); FA.armTerms(root); };

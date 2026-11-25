@@ -161,3 +161,27 @@ def test_save_last_failure_becomes_a_flag_not_a_crash(brief, monkeypatch, capsys
     assert rc == 0
     assert any(f.get("code") == "BRIEF_MEMORY_UNAVAILABLE" for f in out["flags"])
     assert "disk full" in next(f["message"] for f in out["flags"] if f["code"] == "BRIEF_MEMORY_UNAVAILABLE")
+
+
+def test_brief_adds_next_loan_payments_to_events_in_date_order(brief, monkeypatch, capsys) -> None:
+    def run_all(ctx, **kw):
+        ctx["results"] = {"debt": {"main": {"accounts": [
+            {"id": "m", "name": "Mortgage", "due_date": "2020-01-01", "minimum_payment": 3894.31},
+            {"id": "c", "name": "Card", "due_date": "2999-01-05"}]}}}
+        return [], []
+
+    monkeypatch.setattr(S, "run_all", run_all)
+    rc, out = run_json(brief, [], capsys)
+    assert rc == 0, out
+    pays = [e for e in out["events"] if e["type"] == "payment"]
+    assert [e["symbol"] for e in pays] == ["Mortgage", "Card"]
+    assert pays[0]["projected"] is True and pays[0]["date"][8:] == "01" and pays[0]["date"] >= out["brief_as_of"][:10]
+    assert pays[0]["label"] == "payment $3,894.31 (from the monthly schedule)"
+    assert pays[1] == {"symbol": "Card", "type": "payment", "date": "2999-01-05", "label": "payment", "projected": False}
+    assert [e["date"] for e in out["events"]] == sorted(e["date"] for e in out["events"])
+
+
+def test_brief_without_debt_results_leaves_events_alone(brief, monkeypatch, capsys) -> None:
+    monkeypatch.setattr(S, "run_all", lambda ctx, **kw: ([], []))
+    rc, out = run_json(brief, [], capsys)
+    assert rc == 0 and out["events"] == SNAP["events"]

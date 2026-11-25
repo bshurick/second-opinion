@@ -51,31 +51,47 @@ def test_journal_stop_drifted_headlines_keyed_by_entry() -> None:
     assert hs[0]["why"] == "The stop was moved after entry, which weakens the original plan."
 
 
-def test_debt_past_due_due_soon_utilization_and_stale() -> None:
+def test_debt_due_soon_rolls_old_statements_forward_and_never_past_due() -> None:
     res = {"main": {"accounts": [
+        # an old statement whose due date passed: rolled forward to 2026-10-12, outside the window
         {"id": "amex", "name": "Amex Gold", "due_date": "2026-09-12", "days_to_due": -2, "utilization": 0.1, "statement_age_days": 10, "flags": ["PAST_DUE"],
          "minimum_payment": 45.0, "balance": 1200.0, "apr": 0.2499, "monthly_interest_run_rate": 24.99, "credit_limit": 12000.0, "period_end": "2026-08-25"},
         {"id": "chase", "name": "Chase Sapphire", "due_date": "2026-09-19", "days_to_due": 5, "utilization": 0.42, "statement_age_days": 12, "flags": ["HIGH_UTILIZATION"],
          "minimum_payment": 90.0, "balance": 4200.0, "apr": 0.2199, "monthly_interest_run_rate": 76.99, "credit_limit": 10000.0, "period_end": "2026-08-30"},
-        {"id": "mortgage", "name": "Sample Mortgage", "due_date": "2026-10-01", "days_to_due": 17, "utilization": None, "statement_age_days": 70, "flags": ["STALE"],
+        # a stale statement two months back: rolled forward to 2026-09-18, inside the window
+        {"id": "mortgage", "name": "Sample Mortgage", "due_date": "2026-07-18", "days_to_due": -58, "utilization": None, "statement_age_days": 70, "flags": ["STALE", "PAST_DUE"],
          "minimum_payment": 2900.0, "balance": 420000.0, "apr": 0.0475, "monthly_interest_run_rate": 1662.5, "period_end": "2026-07-05"},
         {"id": "auto", "name": "Auto loan", "due_date": "2026-09-30", "days_to_due": 16, "utilization": None, "statement_age_days": 5, "flags": []}]}}
     hs = DB.extract(res, CTX)
-    assert [h["key"] for h in hs] == ["personal-finance:PAST_DUE:-:amex:2026-09-12", "personal-finance:DUE_SOON:-:chase:2026-09-19",
-                                       "personal-finance:HIGH_UTILIZATION:-:chase", "personal-finance:STALE:-:mortgage"]
-    assert hs[0]["severity"] == "alert" and hs[0]["title"] == "Amex Gold payment was due 2026-09-12 (2 days ago)"
-    assert hs[1]["severity"] == "alert" and hs[1]["title"] == "Chase Sapphire payment is due 2026-09-19 (5 days)"
+    assert [h["key"] for h in hs] == ["personal-finance:DUE_SOON:-:chase:2026-09-19", "personal-finance:DUE_SOON:-:mortgage:2026-09-18",
+                                       "personal-finance:HIGH_UTILIZATION:-:chase"]
+    assert not any(h["code"] in ("PAST_DUE", "STALE") for h in hs)
+    assert hs[0]["severity"] == "alert" and hs[0]["title"] == "Chase Sapphire payment is due 2026-09-19 (5 days)"
+    assert hs[0]["answer"] == "Minimum $90.00 on $4,200.00 at 22.0% APR ($76.99 interest a month)"
+    assert hs[0]["why"] == "A loan or card payment falls due within a week."
+    assert hs[1]["title"] == "Sample Mortgage payment is due 2026-09-18 (4 days)"
+    assert hs[1]["answer"].endswith("; date from the monthly schedule of the 2026-07-18 statement")
     assert hs[2]["severity"] == "notice" and hs[2]["title"] == "Chase Sapphire utilization is 42.0%"
-    assert hs[3]["title"] == "Sample Mortgage statement is 70 days old" and hs[3]["ask"] == "What do I owe across all my accounts?"
-    assert hs[0]["ask"] == "How much interest am I paying on Amex Gold?"
-    assert hs[0]["url"] == "" and hs[0]["answer"] == "Minimum $45.00 on $1,200.00 at 25.0% APR ($24.99 interest a month)"
-    assert hs[0]["why"] == "A payment past its due date accrues interest and can be reported late."
-    assert hs[1]["answer"] == "Minimum $90.00 on $4,200.00 at 22.0% APR ($76.99 interest a month)"
-    assert hs[1]["why"] == "A statement payment falls due within a week."
     assert hs[2]["answer"] == "$4,200.00 of a $10,000.00 limit"
-    assert hs[2]["why"] == "Utilization above 30% weighs on credit scores."
-    assert hs[3]["answer"] == "Last statement 2026-07-05"
-    assert hs[3]["why"] == "The debt picture is only as fresh as the last statement recorded."
+    assert hs[0]["ask"] == "How much interest am I paying on Chase Sapphire?" and hs[0]["url"] == ""
+
+
+def test_debt_next_due_clamps_month_end_and_keeps_printed_dates() -> None:
+    assert DB.next_due("2026-09-20", date(2026, 9, 14)) == (date(2026, 9, 20), False)
+    assert DB.next_due("2026-09-14", date(2026, 9, 14)) == (date(2026, 9, 14), False)
+    assert DB.next_due("2026-01-31", date(2026, 2, 10)) == (date(2026, 2, 28), True)
+    assert DB.next_due("2025-12-05", date(2026, 3, 6)) == (date(2026, 4, 5), True)
+    assert DB.next_due("not a date", date(2026, 3, 6)) is None
+
+
+def test_debt_upcoming_gives_one_payment_row_per_account() -> None:
+    res = {"main": {"accounts": [
+        {"id": "bmw", "name": "BMW X5 loan", "due_date": "2026-08-10", "minimum_payment": 1254.56},
+        {"id": "card", "name": "Card", "due_date": "2026-09-30"},
+        {"id": "none", "name": "No date"}]}}
+    assert DB.upcoming(res, CTX["today"]) == [
+        {"symbol": "BMW X5 loan", "type": "payment", "date": "2026-10-10", "label": "payment $1,254.56 (from the monthly schedule)", "projected": True},
+        {"symbol": "Card", "type": "payment", "date": "2026-09-30", "label": "payment", "projected": False}]
 
 
 def test_spending_category_moves_and_new_recurring() -> None:

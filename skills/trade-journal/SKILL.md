@@ -56,6 +56,8 @@ All commands print JSON.
 
 ## Steps
 
+A call with no question (the skill invoked on its own) runs **The user asks to see the journal**, then **The user asks whether they are following their plan**.
+
 Pick the case that matches the request.
 
 **The user is about to place a trade, or asks to log one**

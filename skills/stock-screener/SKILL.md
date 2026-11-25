@@ -248,7 +248,7 @@ Run with the Bash tool. Scripts print JSON.
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/sentiment.py" SYM[,SYM...] [--days 20] [--news-days 30] [--news 10]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/picks.py" save-deep SYM (--case DIR/deep-SYM | --page FILE) [--thesis TEXT] [--source URL] [--added-price P] [--base-end YYYY-MM-DD]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/picks.py" save-light SYM --in DIR/light-SYM.json   # standard depth only
-"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/picks.py" list | remove SYM | due [--move 0.15]
+"${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/picks.py" list | remove SYM | sync-watchlist | due [--move 0.15]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/picks.py" check SYM [--release FILE] [--segments FILE] [--evidence FILE] [--exclude SEG,SEG] [--record]
 "${SNAPTRADE_PY:-python3}" "${CLAUDE_PLUGIN_ROOT}/skills/stock-screener/scripts/track_math.py" < track.json
 ```
@@ -269,7 +269,7 @@ Run with the Bash tool. Scripts print JSON.
 | `gate.py` | The deep picker's gate: `pass`, `pass_flagged` or `fail` per finalist, with reasons. The downside rule for a value run, the best-case rule for a growth run (`profile`, `min_upside`). `pick_assemble.py` runs it. |
 | `render_pick.py` | The deep picker's page: picks, near misses, funnel, industry map, candidates. `pick_assemble.py` runs it. |
 | `sentiment.py` | Per symbol, FINRA daily short-sale volume (not short interest), dated Yahoo headlines and `analysts` (Yahoo's price targets, rating counts, rating actions and estimates), with flags when a part is missing. `cards.py` runs it into each pack. |
-| `picks.py` | The saved picks: save a deep or light baseline, list, remove, `check` one against its baseline (`--record` keeps the result; `--release` uses an earnings release before the 10-Q), and `due`. |
+| `picks.py` | The saved picks: save a deep or light baseline, list, remove, `check` one against its baseline (`--record` keeps the result; `--release` uses an earnings release before the 10-Q), and `due`. `save-deep` also sets a watchlist alert at the valuation's worst-case value, `remove` takes it off, and `sync-watchlist` sets it for every deep pick. |
 | `track_math.py` | The re-check arithmetic `picks.py check` runs. Its docstring is the contract. |
 
 | Exit code | Meaning | What to show |
@@ -281,7 +281,7 @@ Run with the Bash tool. Scripts print JSON.
 
 ## Steps
 
-Pick the case that matches the request.
+Pick the case that matches the request. A call with no question (the skill invoked on its own) runs **The person asks how their picks are doing, or the session says a pick is due**. It never starts the deep picker, which sends 20 or more subagents; offer it in one line instead.
 
 **The user wants companies to look at (the funnel; standard depth)**
 
@@ -404,7 +404,7 @@ The scripts do the fetching and the file assembly. Do not write `macro.md`, `poo
 1. Run `picks.py list`. When it is empty, say re-checks start from a saved pick, and stop.
    - When a brokerage is connected, compare the list with today's holdings (portfolio-analysis's `brief.py --no-headlines` when there is no read from today). Name held single stocks that are not saved picks, and offer to save the ones with a published deep page.
    - When the person names a pick that is not saved and its deep page was published, read the page with the Artifact tool and save its HTML to `DIR/deep-SYM.html`.
-   - Then run `picks.py save-deep SYM --page DIR/deep-SYM.html --source <link>`, with `--added-price` from their cost when they hold it.
+   - Then run `picks.py save-deep SYM --page DIR/deep-SYM.html --source <link>`, with `--added-price` from their cost when they hold it. Say in one line what the save did on the watchlist: the alert price from `watchlist_rule`, or the `watchlist_kept` or `watchlist_error` message.
 2. Without a named pick, run `picks.py due` and re-check the due ones. Re-check every pick when the person asks for all of them.
 3. For each pick, run `picks.py check SYM`.
    - When every metric sits far from every scenario in the same direction, look at the model's segments first. Leave out a segment the company does not report yet (`--exclude`).

@@ -1,7 +1,13 @@
 # Changelog
 
-## Unreleased
+## 1.18.0
 
+- debts, daily brief: payments are never reported past due. Statements are entered by hand and often weeks old, so the latest statement's due date is carried forward a month at a time to the next date on or after today (`next_due_date`, with `due_projected` when it was carried). The `PAST_DUE` flag, the brief's past-due and stale-statement headlines and the debts page's red past-due rows are gone. Each loan or card's next payment now appears in the brief's Upcoming events table, and a payment due within 7 days is still an alert.
+- portfolio summary: "What stands out" explains the day from the positions that moved and their dollar amounts, not from the cash share, which is the same every day.
+- deep reviews: the portfolio, property, trade and tax-plan deep reviews run only when asked for by name. The depth setting now governs valuations and picks alone, no reply offers a review, and a re-check reports what changed without proposing a new run.
+- picks, watchlist: the watchlist follows the picks. Saving a deep pick puts it on the watchlist with an alert at the valuation's worst-case value (the lowest scenario value, leaving out stress tests and reference scenarios), saving it again moves the alert, and removing the pick takes it off. A price alert the person or the trade journal set is left alone. `picks.py sync-watchlist` sets the alert for every saved deep pick.
+- portfolio summary, market flows: "What this means for you" goes deep. It is now up to five labelled points, one per asset class the person owns, each tracing a market reading (rates, yields, trend, sector moves, flows, positioning) to the holding it acts on, with the arithmetic shown and both sides named. The portfolio summary runs `indices.py` first so it has the rates and sector moves to read against. A plain-string `for_you` still renders as one paragraph.
+- deep valuation: the share price chart in the About card has a title naming the symbol, the interval and the span.
 - market flows: an "Interest rates" card right after the S&P 500 weekly-averages chart: the fed funds rate, the 2- and 10-year Treasury yields and the 30-year mortgage rate from FRED, with range buttons from a week to 20 years and each rate's level and change in points. `indices.py --history` adds them as `interest_rates`; a series FRED can't serve is listed under the chart and left off. (The chart briefly sat under the portfolio summary's performance chart; it has moved here.)
 - pages: line-chart end labels that would overlap are pushed apart, so close finishes ("Dow" and "All accounts") stay readable.
 

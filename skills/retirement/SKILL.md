@@ -83,6 +83,8 @@ All scripts print JSON.
 
 ## Steps
 
+A call with no question (the skill invoked on its own) runs **The user asks "am I on track" or "how much do I need to retire" (projection)**, asking only for the inputs that are missing.
+
 Pick the case that matches the request.
 
 **The user asks "am I on track" or "how much do I need to retire" (projection)**

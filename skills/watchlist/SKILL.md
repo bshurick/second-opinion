@@ -20,6 +20,8 @@ Maintains the user's watchlist and checks their alert rules on demand. The rules
   | `snoozed` | Inside a snooze window. |
 
   `summary.newly_triggered_symbols` counts the `new` ones.
+- **Saved picks.** The stock-screener's pick store puts every deep pick on the watchlist with a `price_below` rule at its valuation's worst-case value: the lowest scenario value, leaving out stress tests and reference scenarios. Its note reads "deep pick; alert at worst-case value …".
+  - Saving the pick again moves the rule, and removing the pick takes it off. `picks.py sync-watchlist` restores the rule for every pick.
 - **Session start.** Once a watchlist exists, the plugin's session-start hook prints the last saved check when a session opens.
 - **Other skills.** Analysis of a symbol belongs to trading, valuation or fundamental-research. Orders belong to portfolio-analysis. Holdings belong to portfolio-analysis.
 
@@ -60,6 +62,8 @@ All commands print JSON except `summary`.
 | 6 | Python dependencies missing | the error, and say the get-started skill repairs it |
 
 ## Steps
+
+A call with no question (the skill invoked on its own) runs **The user asks what moved, or whether anything triggered**.
 
 Pick the case that matches the request.
 
@@ -103,6 +107,10 @@ Pick the case that matches the request.
 
 - Seen: run `ack SYMBOL [RULE_TYPE]`.
 - Quiet: run `snooze SYMBOL DAYS`.
+
+**A triggered rule's note holds "deep pick; alert at worst-case value"**
+
+The pick store wrote that rule. Say the price is below the lowest scenario value of the saved deep valuation, and give the valuation date from the note. Name both readings: the market prices in an outcome worse than every scenario, or the valuation is out of date. Point to "re-check my picks" in the stock-screener skill.
 
 **A triggered rule's note begins with `journal j-...`**
 

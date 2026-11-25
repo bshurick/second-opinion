@@ -849,6 +849,8 @@ def test_render_deep_about_card_shows_company_and_chart(tmp_path) -> None:
     assert "12,345 employees" in card and "$4.2B market cap" in card
     assert "Acme makes industrial fasteners" in card
     assert 'aria-label="ACME five-year weekly share price"' in card
+    title = "ACME share price: weekly close, last five years</h3>"
+    assert title in card and card.index(title) < card.index('id="price-chart"')
 
 
 @requires_chrome

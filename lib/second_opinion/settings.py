@@ -35,14 +35,10 @@ ROLES = ("trading", "retirement", "savings")
 WEIGHTINGS = ("equal", "market_cap", "valuation", "size")
 GAIN_POLICIES = ("hold", "allow")
 EMPLOYER_POLICIES = ("sell_on_arrival", "hold")
-# Skills with a deep path, and what it is. With depth deep, the others answer as they always have.
+# Skills that follow the depth setting, and what deep means in each. The four deep reviews run on request at either depth.
 DEEP_PATHS: dict[str, str] = {
     "valuation": "researched scenarios by segment",
     "stock-screener": "deep picker with the downside gate",
-    "portfolio-analysis": "deep review of shared bets",
-    "real-estate": "deep review of one property",
-    "tax-aware": "multi-year plan comparison",
-    "trade-review": "skill against luck review",
 }
 
 DEFAULTS: dict[str, Any] = {

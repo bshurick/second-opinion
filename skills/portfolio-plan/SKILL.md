@@ -161,6 +161,8 @@ Every `plan.py` output carries `command`, `sleeve` (the sleeve engine's output o
 
 ## Steps
 
+A call with no question (the skill invoked on its own) runs **"What's my ETF vs stock mix", "how am I doing against my plan"**: plan status, with no trades.
+
 Every case starts with a script call, which is the same-day holdings read. After each call, apply **After every run** before showing any split or trades. DIR is the session scratchpad.
 
 **Before adding to picks, opening a pick or rebalancing the picks, under every strategy:** run stock-screener's `picks.py due` and follow its re-check steps for each due pick, recording each check. A pick whose check cannot finish yet is held by the plan.

@@ -505,3 +505,13 @@ def test_depth_rule_wording() -> None:
     text = DEPTH_RULE.read_text().lower()
     for banned in ("you should buy", "recommend", "guarantee"):
         assert banned not in text, f"depth rule must not use '{banned}'"
+
+
+def test_follow_ups_never_suggest_a_deep_review() -> None:
+    assert "Never suggest a deep review or a deep review's re-check" in FOLLOW_UPS.read_text()
+
+
+def test_depth_rule_starts_no_review() -> None:
+    text = DEPTH_RULE.read_text()
+    assert "run a new deep review" not in text and "deep review's re-check" not in text
+    assert "runs only when the person asks for one by name" in text

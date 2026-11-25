@@ -64,6 +64,7 @@ REFERENCE_FILES = [
     "trade-review/references/deep-roles.md",
     "tax-aware/references/deep-roles.md",
     "portfolio-analysis/references/how-figures-are-built.md",
+    "portfolio-analysis/references/what-this-means-for-you.md",
     "trading/references/momentum-research.md",
     "financial-education/references/curriculum.md",
     "personal-finance/references/account-rules.md",
@@ -608,6 +609,28 @@ def test_deep_skills_name_the_depth_rule():
         assert "the session's depth rule" in _skill_md_path(name).read_text(), name
 
 
+REVIEW_SKILLS = ("portfolio-analysis", "real-estate", "tax-aware", "trade-review")
+
+
+def test_deep_reviews_run_on_request_only():
+    for name in REVIEW_SKILLS:
+        text = _skill_md_path(name).read_text()
+        assert "a deep review is available" not in text, name
+        assert "depth rule makes the deep review the default" not in text, name
+        assert "say a new deep review would" not in text, name
+        assert "none has been run: offer one" not in text, name
+        assert "Run this only when the person asks for a deep review by name." in text, name
+        assert "give `rerun_reasons` as what changed since the review. Add nothing about a new review." in text, name
+        assert "subagents" in text, name
+    for name in ("tax-aware", "trade-review"):
+        assert "say so in one line with the run's size, and ask once before starting" in _skill_md_path(name).read_text(), name
+
+
+def test_no_example_prompt_runs_a_deep_review():
+    text = (PLUGIN_ROOT / "docs" / "examples.md").read_text()
+    assert "deep review" not in text.lower() and "deep tax review" not in text.lower()
+
+
 def test_no_two_modes_tables_remain():
     for skill in SKILLS_ROOT.glob("*/SKILL.md"):
         assert "### Two modes" not in skill.read_text(), skill
@@ -663,7 +686,7 @@ def test_get_started_asks_every_setup_question_in_one_form() -> None:
                   "plan.cash_reserve", "taxes.short_term_gain_policy"):
         assert saved in table, saved
     # depth states what each choice costs; the employer question says what each answer does
-    assert "research subagents" in table and "up to an hour" in table
+    assert "research subagents" in table and "review" not in table[table.index("| Depth |"):table.index("| Approach |")]
     for choice in ("**Yes, sold when they arrive**", "**Yes, kept**", "**No**"):
         assert choice in table, choice
     assert "Do you hold your employer's stock?" not in text

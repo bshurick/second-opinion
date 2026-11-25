@@ -75,7 +75,18 @@ and ``check`` on a light pick exits 2 (DEEP_VALUATION_NEEDED). ``list`` marks ea
 reading EDGAR for them, and ``summary`` names them on one line. Unreadable settings exit 5, except in
 ``summary``, which reads as standard depth. Switching back to standard restores the light behaviour.
 
-Output (JSON, except summary): save-* {"pick", "baseline_path"} (save-deep adds "flags"); list {"picks"}; check {"symbol",
+Watchlist: ``save-deep`` puts the pick on the watchlist (when that skill is installed) with a
+``price_below`` rule at the valuation's worst-case value: the lowest value per share among the
+central scenario and those that are neither a stress test nor a reference. Saving again moves the
+rule to the new valuation's value. A ``price_below`` rule the pick did not write (the person's own,
+or a trade-journal planned add) is left alone and reported as ``watchlist_kept``. ``remove`` takes
+the pick's rule and note back off the watchlist and drops the entry when nothing else is on it.
+``sync-watchlist`` does the same as ``save-deep`` for every saved deep pick. A failing watchlist
+step never fails the command; it is reported as ``watchlist_error``.
+
+Output (JSON, except summary): save-* {"pick", "baseline_path"} (save-deep adds "flags" and one of
+"watchlist_rule", "watchlist_kept" or "watchlist_error"); remove {"removed", "count", "watchlist"};
+sync-watchlist {"synced", "kept", "errors"}; list {"picks"}; check {"symbol",
 "kind", "pick", "since_added", "actuals", "result", "recorded"}; due {"due": [{"symbol",
 "reasons"}], "not_due", "flags", "needs_deep_valuation"}. Exit codes: 0, 2 (bad input, unknown pick, a page without
 window.DATA), 4 (SKILL_MISSING: fundamental-research not installed), 5 (EDGAR or Yahoo), 6.
@@ -85,6 +96,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import re
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -101,6 +113,9 @@ PICKS_FILE = "picks.json"
 BASELINE_DIR = "picks"
 WATCHLIST_LAST_CHECK = "watchlist-last-check.json"
 FUNDAMENTALS_SCRIPT = _HERE.parents[1] / "fundamental-research" / "scripts" / "fundamentals.py"
+WATCHLIST_SCRIPTS = _HERE.parents[1] / "watchlist" / "scripts"
+# The sentence a pick writes into its watchlist note. It marks the price_below rule as the pick's own.
+WATCH_NOTE_RE = re.compile(r"deep pick; alert at worst-case value \$[\d.]+ \(central \$[\d.]+, valuation \d{4}-\d{2}-\d{2}\)")
 DEFAULT_MOVE = 0.15
 TTM_SPAN = (250, 300)  # days between the first and last period ends of four consecutive quarters
 YEAR_TOLERANCE = 15
@@ -202,6 +217,95 @@ def level_crossing(pick: dict, baseline: dict, price: float, min_upside: float |
     if now == "normal" or now == before:
         return None
     return now, LEVEL_TEXT[now].format(p=price, **{k: (v if v is not None else float("nan")) for k, v in levels.items()})
+
+
+def worst_case(baseline: dict) -> tuple[float, float] | None:
+    """(worst, central) values per share of a deep baseline: worst is the lowest among the central
+    scenario and those that are neither a stress test nor a reference. None without a model."""
+    scen = (baseline.get("model") or {}).get("scenarios") or []
+    vals = [s["value_per_share"] for i, s in enumerate(scen)
+            if isinstance(s.get("value_per_share"), (int, float)) and (i == 0 or not (s.get("stress") or s.get("reference")))]
+    if not vals or not isinstance(scen[0].get("value_per_share"), (int, float)):
+        return None
+    return float(min(vals)), float(scen[0]["value_per_share"])
+
+
+def _watchlist():
+    """The watchlist skill's module, or None when it is not installed."""
+    if not (WATCHLIST_SCRIPTS / "watchlist.py").is_file():
+        return None
+    if str(WATCHLIST_SCRIPTS) not in sys.path:
+        sys.path.insert(0, str(WATCHLIST_SCRIPTS))
+    import watchlist  # noqa: PLC0415 - optional sibling skill
+
+    return watchlist
+
+
+def watch_pick(pick: dict, baseline: dict) -> dict:
+    """Put a deep pick on the watchlist with a price_below rule at its worst-case value. Never raises."""
+    try:
+        levels = worst_case(baseline)
+        if levels is None:
+            return {}
+        wl = _watchlist()
+        if wl is None:
+            return {"watchlist_error": "watchlist skill not installed; the pick is saved without a price alert"}
+        symbol, (worst, central) = pick["symbol"], levels
+        entry = next((w for w in wl.load()["watchlist"] if w.get("symbol") == symbol), None)
+        old = (entry or {}).get("note") or ""
+        own = next((r for r in (entry or {}).get("rules") or [] if r.get("type") == "price_below"), None)
+        if own is not None and not WATCH_NOTE_RE.search(old):
+            return {"watchlist_kept": {"symbol": symbol, "type": "price_below", "value": own.get("value"),
+                                       "message": f"{symbol} already has its own price_below rule at {own.get('value')}; the pick's worst-case value is {worst:.2f}"}}
+        mark = f"deep pick; alert at worst-case value ${worst:.2f} (central ${central:.2f}, valuation {baseline.get('as_of')})"
+        note = WATCH_NOTE_RE.sub(lambda _m: mark, old) if WATCH_NOTE_RE.search(old) else f"{old.rstrip('. ')}. {mark}" if old.strip() else mark
+        saved = wl.upsert_rule(symbol, "price_below", worst, note=note, added_price=pick.get("added_price"))
+        return {"watchlist_rule": {"symbol": symbol, "type": "price_below", "value": worst, "note": note, "watchlist_path": saved["watchlist_path"]}}
+    except Exception as exc:  # noqa: BLE001 - the pick is already saved
+        return {"watchlist_error": f"{exc.__class__.__name__}: {exc}"}
+
+
+def unwatch_pick(symbol: str) -> dict:
+    """Take a removed pick's rule and note off the watchlist; drop the entry when nothing else is on it. Never raises."""
+    try:
+        wl = _watchlist()
+        if wl is None:
+            return {"status": "not_installed"}
+        book = wl.load()
+        entry = next((w for w in book["watchlist"] if w.get("symbol") == symbol), None)
+        if entry is None:
+            return {"status": "absent"}
+        note = entry.get("note") or ""
+        if not WATCH_NOTE_RE.search(note):
+            return {"status": "kept", "message": f"{symbol} stays on the watchlist: its entry was not written by the pick"}
+        entry["rules"] = [r for r in entry.get("rules") or [] if r.get("type") != "price_below"]
+        entry["note"] = WATCH_NOTE_RE.sub("", note).strip(" .") or None
+        if entry["note"] is None and not entry["rules"]:
+            book["watchlist"] = [w for w in book["watchlist"] if w is not entry]
+            wl.save(book)
+            return {"status": "removed"}
+        wl.save(book)
+        return {"status": "rule_removed", "message": f"{symbol} stays on the watchlist with its other rules or note"}
+    except Exception as exc:  # noqa: BLE001 - the pick is already removed
+        return {"status": "error", "message": f"{exc.__class__.__name__}: {exc}"}
+
+
+def _sync_watchlist() -> dict:
+    out: dict = {"synced": [], "kept": [], "errors": []}
+    for pick in load()["picks"]:
+        if pick.get("kind") != "deep":
+            continue
+        try:
+            res = watch_pick(pick, load_baseline(pick))
+        except InvalidInput as exc:
+            res = {"watchlist_error": str(exc)}
+        if "watchlist_rule" in res:
+            out["synced"].append({k: res["watchlist_rule"][k] for k in ("symbol", "value", "note")})
+        elif "watchlist_kept" in res:
+            out["kept"].append(res["watchlist_kept"])
+        elif "watchlist_error" in res:
+            out["errors"].append({"symbol": pick["symbol"], "error": res["watchlist_error"]})
+    return out
 
 
 def _upsert(symbol: str, kind: str, baseline: dict, as_of: str, fields: dict) -> dict:
@@ -434,7 +538,8 @@ def _save_deep(ns: argparse.Namespace) -> dict:
         if ns.style and ns.style != saved:
             flags.append({"code": "STYLE_KEPT", "message": f"{symbol} stays a {saved} pick; the new valuation was saved as asked for {ns.style}. Pass --restyle to move it."})
     fields = {"added": added, "added_price": added_price, "thesis": ns.thesis, "source": ns.source or str(ns.case or ns.page), "style": style}
-    return {**_upsert(symbol, "deep", baseline, as_of, fields), "flags": flags}
+    saved_pick = _upsert(symbol, "deep", baseline, as_of, fields)
+    return {**saved_pick, "flags": flags, **watch_pick(saved_pick["pick"], baseline)}
 
 
 def _save_light(ns: argparse.Namespace) -> dict:
@@ -743,6 +848,7 @@ def main(argv: list[str] | None = None) -> int:
         sl.add_argument("--in", dest="input", required=True)
         sl.add_argument("--date")
         sub.add_parser("list", add_help=False)
+        sub.add_parser("sync-watchlist", add_help=False)
         rm = sub.add_parser("remove", add_help=False)
         rm.add_argument("symbol")
         ck = sub.add_parser("check", add_help=False)
@@ -771,7 +877,9 @@ def main(argv: list[str] | None = None) -> int:
             get(book, sym)
             book["picks"] = [x for x in book["picks"] if x.get("symbol") != sym]
             save(book)
-            return {"removed": sym, "count": len(book["picks"])}
+            return {"removed": sym, "count": len(book["picks"]), "watchlist": unwatch_pick(sym)}
+        if ns.cmd == "sync-watchlist":
+            return _sync_watchlist()
         if ns.cmd == "check":
             return _check(ns)
         return _due(ns)

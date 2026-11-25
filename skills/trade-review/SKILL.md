@@ -72,9 +72,9 @@ Run with the Bash tool.
 
 ## Steps
 
-**The user asks for a review of their trades**
+A call with no question (the skill invoked on its own) runs **The user asks for a review of their trades**, unscoped.
 
-When one question names a single big decision, in standard depth, end the reply with one line: a deep review is available and sends about ten research subagents.
+**The user asks for a review of their trades**
 
 1. Run `run-review.py --save` once, writing the output to a file: `> DIR/trade-review.json`. DIR is the session scratchpad. Add `--account` or `--symbol` only when the user scopes the question.
 2. If it exits 2 with an empty-ledger message, the user has not imported history yet. Hand off to statement-import: `sync-broker.py` for the last two years, `import-csv.py` for older statements. Come back when `ledger.py --summary` shows BUY and SELL rows.
@@ -90,9 +90,9 @@ When one question names a single big decision, in standard depth, end the reply 
 7. If the Artifact tool is not available in the session, follow the "No Artifact tool" rule: save the page with `local_page.py` and reply with the page format. The markdown fallback is the last resort.
 8. If the user then asks what to do next with an open lot, finish the review first, then hand off to portfolio-analysis or valuation.
 
-**The user asks for a deep review of their decisions, or skill against luck**
+**The user asks for a deep review of their decisions**
 
-Run this when the person asks for a deep review or for depth, or when the session's depth rule makes the deep review the default.
+Run this only when the person asks for a deep review by name. When they ask which trades were skill and which were luck without naming it, only this review can answer: say so in one line with the run's size, and ask once before starting.
 
 1. Make `DIR/deep-trades/` and its `baseline/`, `research/` and `threads/` folders, where DIR is the session scratchpad. Write `run-review.py --save` to `baseline/review.json`. If the ledger is empty, hand off to statement-import, as above. A run with `PRICES_UNAVAILABLE` has no results to compare, so say so and stop.
 2. Run `decisions.py --pick 8 < baseline/review.json`, and write it to `picks.json`. Use a smaller number if the person scopes it, and name the share of money covered from `amount_covered`.
@@ -112,10 +112,10 @@ Run this when the person asks for a deep review or for depth, or when the sessio
 
 **The user asks to re-check a deep review**
 
-1. Run `run-review.py --save` once, writing to `DIR/trade-review.json`, then `decision_store.py check --review DIR/trade-review.json`. Exit 2 with "no saved review" means none has been run: offer one.
+1. Run `run-review.py --save` once, writing to `DIR/trade-review.json`, then `decision_store.py check --review DIR/trade-review.json`. Exit 2 with "no saved review" means none is saved: say so, and stop.
 2. Present `changed`, each changed decision's grade with its then and now result and cell, and `cells`.
 3. Say that the grades are frozen, and that this re-measures results only.
-4. If `rerun_due` is true, give `rerun_reasons` and say a new deep review would cover them.
+4. If `rerun_due` is true, give `rerun_reasons` as what changed since the review. Add nothing about a new review.
 
 ## Reply format
 

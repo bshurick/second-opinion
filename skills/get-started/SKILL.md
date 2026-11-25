@@ -196,7 +196,7 @@ Ask in this order. Leave out the plan questions (5 to 8) when no account is conn
 | # | Tab | Question | Choices, and what the plugin does with each | Saved with |
 |---|---|---|---|---|
 | 1 | Accounts | "Here is each account and the role proposed for it. Keep these roles?" Put the Account · Type · Proposed role lines from `roles.py` in the question. | **Keep as proposed.** / **Change one**: the person names the account and the role. A role decides where picks may sit: trading is taxable and holds picks, and its funds can be sold to pay for picks; retirement is tax-advantaged and holds no picks; savings is taxable and holds no picks. | `roles.py --accept`, after `settings.py set accounts.<id>.role ROLE` for each change |
-| 2 | Depth | "How thorough should valuations, stock picks and reviews be?" | **Standard** (the default): an answer in seconds from the scripts and little usage; a deep run happens only when you ask for one. / **Deep**: every valuation, pick and review sends 5 to 40 research subagents through filings and news; a run takes minutes and a portfolio review up to an hour, with far more of your Claude usage; it asks first before starting more than 3 deep valuations. | `settings.py set depth standard` or `deep` |
+| 2 | Depth | "How thorough should valuations and stock picks be?" | **Standard** (the default): an answer in seconds from the scripts and little usage; a deep run happens only when you ask for one. / **Deep**: every valuation and pick sends 5 to 40 research subagents through filings and news; a run takes minutes, with far more of your Claude usage; it asks first before starting more than 3 deep valuations. | `settings.py set depth standard` or `deep` |
 | 3 | Approach | "Which of these describe how you invest? Pick any." | **Value**: what a business is worth. / **Growth**. / **Dividends**. / **Index funds**. / **Charts and momentum**. / **Not sure yet**. The plugin offers the matching analysis first. It never scores a holding against the answer. | `profile.py set approach value,growth,dividend,index,technical,unsure` (the ones chosen) |
 | 4 | Horizon | "How long do you usually hold an investment?" | **Years** / **Months** / **Weeks or less** / **It varies**. It sets which time frame the answers lead with. | `profile.py set horizon years`, `months`, `weeks` or `mixed` |
 | 5 | Employer stock | "Does your employer pay you in its stock (stock awards, a purchase plan), or do you hold its shares? If so, which ticker, and what happens to new shares?" When `plan.py status` gives `employer_candidate`, name it: "Your account history shows TICKER shares arriving." | **Yes, sold when they arrive**: the plan keeps that stock as its own line outside your picks, and lists each new batch as a sale whose proceeds go to your targets. / **Yes, kept**: the plan keeps that stock as its own line, never lists it for sale on arrival, and flags it above 10% of the portfolio. / **No**: no holding is treated as employer stock, and every single stock counts as one of your picks. | `settings.py set plan.sleeves.EMPLOYER.members TICKER` and `plan.sleeves.EMPLOYER.policy sell_on_arrival` or `hold`; for No, `members none` |
@@ -254,14 +254,14 @@ This case covers "turn off suggested questions", "turn off the trade plan check"
 
 1. Run `settings.py show`.
 2. Reply with one table per group, with the columns label, value and meaning. Mark a row whose `is_default` is true as default.
-3. Under the Depth table, list `deep_paths`: the skills with a deep path and what each one is. Say that deep does nothing more in other skills.
+3. Under the Depth table, list `deep_paths`: the skills that follow depth and what deep means in each. Say that deep does nothing more in other skills, and that the four deep reviews run only on request.
 4. If `warnings` is not empty, list each one verbatim.
 
 **Change depth**
 
 Change it only when the person asks in their own words, as for any setting.
 
-1. Before setting it, state what each choice costs. Standard: seconds and little usage per answer, with a deep run on request. Deep: minutes and 5 to 40 research subagents per run (a portfolio review can take up to an hour), a deep valuation or deep pick only, and a question first when a request would start more than `deep.ask_above` (default 3) deep valuations.
+1. Before setting it, state what each choice costs. Standard: seconds and little usage per answer, with a deep run on request. Deep: minutes and 5 to 40 research subagents per run, a deep valuation or deep pick only, and a question first when a request would start more than `deep.ask_above` (default 3) deep valuations.
 2. Run `settings.py set depth deep` or `settings.py set depth standard`.
 3. Say the scripts follow it on the next command, and the session's depth rule from the next session.
 

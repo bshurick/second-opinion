@@ -52,7 +52,7 @@ Its output is `summary.py`'s contract plus `as_of`, `sources` and `news`. The in
 - dividends with yield context
 - risk stress
 - journal review
-- debt picture
+- debt picture: the next payment on each recorded loan or card. Statements are typed in by hand and often weeks old, so the statement's due date rolls forward a month at a time to the next date on or after today. No payment shows as past due. A payment due within 7 days is an alert, and every account's next payment joins `events` as a `payment` row whose `label` gives the minimum and says when the date came from the monthly schedule.
 - spending changes and recurring
 - ledger summary
 

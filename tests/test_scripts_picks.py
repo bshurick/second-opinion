@@ -645,3 +645,87 @@ def test_check_passes_the_min_upside_setting_to_track_math(env, capsys, tmp_path
     seen.clear()
     run(["check", "ACME"], capsys)
     assert "min_upside" not in seen[0] and seen[0]["style"] == "value"
+
+
+# --- the watchlist follows the picks ---------------------------------------------------------
+
+
+def _watch(env) -> list[dict]:
+    path = env["dir"] / "watchlist.json"
+    return json.loads(path.read_text())["watchlist"] if path.is_file() else []
+
+
+def test_worst_case_leaves_out_stress_and_reference_scenarios() -> None:
+    scen = [{"value_per_share": 30.0}, {"value_per_share": 22.0}, {"value_per_share": 9.0, "stress": True},
+            {"value_per_share": 5.0, "reference": True}, {"value_per_share": None}]
+    assert PICKS.worst_case({"model": {"scenarios": scen}}) == (22.0, 30.0)
+    assert PICKS.worst_case({"model": {"scenarios": [{"value_per_share": 12.0, "stress": True}]}}) == (12.0, 12.0)
+    assert PICKS.worst_case({"fair_values": {"bear": 1}}) is None
+
+
+def test_save_deep_puts_the_pick_on_the_watchlist_at_its_worst_case_value(env, capsys, tmp_path) -> None:
+    case, _ = case_folder(tmp_path)
+    rc, out = run(["save-deep", "ACME", "--case", str(case), "--added-price", "19.5"], capsys)
+    base = json.loads((env["dir"] / out["pick"]["baseline"]).read_text())
+    worst, central = PICKS.worst_case(base)
+    rule = out["watchlist_rule"]
+    assert rc == 0 and rule["type"] == "price_below" and rule["value"] == worst
+    assert rule["note"] == f"deep pick; alert at worst-case value ${worst:.2f} (central ${central:.2f}, valuation {base['as_of']})"
+    (entry,) = _watch(env)
+    assert entry["symbol"] == "ACME" and entry["added_price"] == 19.5
+    assert entry["rules"] == [{"type": "price_below", "value": worst}] and entry["note"] == rule["note"]
+    run(["save-deep", "ACME", "--case", str(case)], capsys)  # saving again rewrites the one rule
+    assert len(_watch(env)) == 1 and len(_watch(env)[0]["rules"]) == 1
+
+
+def test_save_deep_keeps_the_persons_other_rules_and_note(env, capsys, tmp_path) -> None:
+    (env["dir"] / "watchlist.json").write_text(json.dumps({"watchlist": [
+        {"symbol": "ACME", "note": "held; reference = cost.", "added": "2026-09-01", "added_price": 18.0,
+         "rules": [{"type": "from_added", "value": -0.1}]}]}))
+    case, _ = case_folder(tmp_path)
+    rc, out = run(["save-deep", "ACME", "--case", str(case)], capsys)
+    (entry,) = _watch(env)
+    assert rc == 0 and entry["added_price"] == 18.0 and entry["added"] == "2026-09-01"
+    assert [r["type"] for r in entry["rules"]] == ["from_added", "price_below"]
+    assert entry["note"].startswith("held; reference = cost. deep pick; alert at worst-case value $")
+    rc, out = run(["remove", "ACME"], capsys)
+    (entry,) = _watch(env)
+    assert out["watchlist"]["status"] == "rule_removed"
+    assert entry["rules"] == [{"type": "from_added", "value": -0.1}] and entry["note"] == "held; reference = cost"
+
+
+def test_save_deep_leaves_a_price_below_rule_it_did_not_write(env, capsys, tmp_path) -> None:
+    mine = {"symbol": "ACME", "note": "journal j-1: planned add at 15", "added": "2026-09-01", "added_price": 18.0,
+            "rules": [{"type": "price_below", "value": 15.0}]}
+    (env["dir"] / "watchlist.json").write_text(json.dumps({"watchlist": [mine]}))
+    case, _ = case_folder(tmp_path)
+    rc, out = run(["save-deep", "ACME", "--case", str(case)], capsys)
+    assert rc == 0 and out["watchlist_kept"]["value"] == 15.0 and "watchlist_rule" not in out
+    assert _watch(env) == [mine]
+    rc, out = run(["remove", "ACME"], capsys)
+    assert out["watchlist"]["status"] == "kept" and _watch(env) == [mine]
+
+
+def test_remove_takes_the_pick_off_the_watchlist(env, capsys, tmp_path) -> None:
+    case, _ = case_folder(tmp_path)
+    run(["save-deep", "ACME", "--case", str(case)], capsys)
+    rc, out = run(["remove", "ACME"], capsys)
+    assert rc == 0 and out["watchlist"] == {"status": "removed"} and _watch(env) == []
+
+
+def test_a_broken_watchlist_never_fails_the_save(env, capsys, tmp_path) -> None:
+    (env["dir"] / "watchlist.json").write_text("{not json")
+    case, _ = case_folder(tmp_path)
+    rc, out = run(["save-deep", "ACME", "--case", str(case)], capsys)
+    assert rc == 0 and out["pick"]["symbol"] == "ACME" and "ApiError" in out["watchlist_error"]
+    rc, out = run(["remove", "ACME"], capsys)
+    assert rc == 0 and out["removed"] == "ACME" and out["watchlist"]["status"] == "error"
+
+
+def test_sync_watchlist_backfills_every_deep_pick(env, capsys, tmp_path) -> None:
+    case, _ = case_folder(tmp_path)
+    run(["save-deep", "ACME", "--case", str(case)], capsys)
+    (env["dir"] / "watchlist.json").unlink()
+    rc, out = run(["sync-watchlist"], capsys)
+    assert rc == 0 and [s["symbol"] for s in out["synced"]] == ["ACME"] and out["kept"] == [] and out["errors"] == []
+    assert _watch(env)[0]["rules"][0]["type"] == "price_below"

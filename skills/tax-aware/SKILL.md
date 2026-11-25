@@ -77,9 +77,9 @@ Run with the Bash tool.
 
 ## Steps
 
-**The user asks about their tax position, a sale, or harvesting**
+A call with no question (the skill invoked on its own) runs **The user asks about their tax position, a sale, or harvesting** for the current tax year.
 
-When the question spans several years or plans, in standard depth, end the reply with one line: a deep review is available and sends about five research subagents.
+**The user asks about their tax position, a sale, or harvesting**
 
 1. Settle the rates.
    - If the user has stated their marginal rates, pass them with the rate flags.
@@ -102,9 +102,9 @@ When the question spans several years or plans, in standard depth, end the reply
 8. If the user is married filing separately, say the script applied 3,000 and that the deduction and carryforward figures would differ under the 1,500 cap.
 9. Present the numbers for each path (sell, harvest, wait) and stop. If the user wants to place an order, hand off to portfolio-analysis.
 
-**The user asks for a deep review, or to compare multi-year plans**
+**The user asks for a deep review**
 
-Run this when the person asks for a deep review or for depth, or when the session's depth rule makes the deep review the default.
+Run this only when the person asks for a deep review by name. When they ask to compare multi-year plans without naming it, only this review can answer: say so in one line with the run's size, and ask once before starting.
 
 1. Make `DIR/deep-tax/` and its `baseline/` and `research/` folders, where DIR is the session scratchpad. Write `tax-report.py` to `baseline/tax-report.json`. If the ledger is empty, hand off to statement-import, as above.
 2. Ask once for what only the person knows, and write it to `income.json`: filing status, expected ordinary income and withholding for each year, Traditional and Roth balances with any after-tax basis, the years to cover, and their exit-rate and growth assumptions. Never look up or guess a bracket or income. Without income for a year, stop and say the comparison needs it.
@@ -122,10 +122,10 @@ Run this when the person asks for a deep review or for depth, or when the sessio
 
 **The user asks to re-check a tax plan comparison**
 
-1. Run `tax-report.py` once, writing to `DIR/tax-aware.json`, then `plan_store.py check --report DIR/tax-aware.json`. Exit 2 with "no saved" means none has been run: offer one.
+1. Run `tax-report.py` once, writing to `DIR/tax-aware.json`, then `plan_store.py check --report DIR/tax-aware.json`. Exit 2 with "no saved" means none is saved: say so, and stop.
 2. Present each plan's then and now figures, `leading_then` and `leading_now`, `short` and `actions_due` with `days_left`.
 3. Say that this reruns the arithmetic only. The rules stay as checked at the review and no new research ran, so a change in law would not show.
-4. If `rerun_due` is true, give `rerun_reasons` and say a new deep review would check the rules again.
+4. If `rerun_due` is true, give `rerun_reasons` as what changed since the review. Add nothing about a new review.
 
 ## Reply format
 

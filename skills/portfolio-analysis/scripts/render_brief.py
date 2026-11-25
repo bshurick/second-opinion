@@ -75,7 +75,7 @@ BODY = """
   </div>
   <div class="twrap" id="holdings"></div>
 </section>
-<section class="card" id="events-card" hidden><h2>Upcoming events</h2><p class="sub">Earnings and dividend dates coming up for what you hold.</p><div class="twrap" id="events"></div></section>
+<section class="card" id="events-card" hidden><h2>Upcoming events</h2><p class="sub">Earnings and dividend dates for what you hold, and your next loan and card payments.</p><div class="twrap" id="events"></div></section>
 <section class="card" id="compare-card" hidden><h2>Change since last snapshot</h2><p class="sub" id="compare-line"></p><div class="twrap" id="compare"></div></section>
 <section data-help="none" id="flags-section"><h2>Flags</h2>""" + page.FLAGS_INTRO + """<ul class="flags" id="flags"></ul></section>
 <p class="note">Headlines are the newest dated stories Yahoo lists for each mover in the last 7 days; the dateline is the publication date, and a story is context, not the cause of the move. Quotes are delayed. Weights are of total value across every connected account. Unrealized P&amp;L excludes positions with no cost basis. General information, not financial advice.</p>
@@ -294,7 +294,7 @@ SCRIPT = r"""
   }
   // events
   if (Array.isArray(D.events) && D.events.length) { g('events-card').hidden = false;
-    g('events').innerHTML = '<table><thead><tr><th class="l">Date</th><th class="l">Symbol</th><th class="l">Type</th></tr></thead><tbody>' + D.events.map(e => `<tr><td class="l">${F.esc(e.date)}</td><td class="l">${F.esc(e.symbol)}</td><td class="l">${F.esc(e.type)}</td></tr>`).join('') + '</tbody></table>'; }
+    g('events').innerHTML = '<table><thead><tr><th class="l">Date</th><th class="l">Holding or account</th><th class="l">Event</th></tr></thead><tbody>' + D.events.map(e => `<tr><td class="l">${F.esc(e.date)}</td><td class="l">${F.esc(e.symbol)}</td><td class="l">${F.esc(e.label || String(e.type || '').replace('_', '-'))}</td></tr>`).join('') + '</tbody></table>'; }
   // comparison
   const K = D.comparison;
   if (K && K.total_value) { g('compare-card').hidden = false; const tv = K.total_value;
@@ -320,8 +320,8 @@ SCRIPT = r"""
   const topH = rows.length ? [...rows].sort((a, b) => (b.market_value || 0) - (a.market_value || 0)).find(r => F.isNum(r.cost_basis) && F.isNum(r.market_value) && Math.abs(r.market_value - r.cost_basis) >= 1) : null;
   F.help(g('holdings-card'), {lead: 'Every position, largest first. Sort by any column, filter by account, and click a row for details.',
     sections: topH ? [{title: `Unrealized gain or loss, using ${topH.symbol}`, html: F.flow([{label: 'value today', value: F.money(topH.market_value)}, {op: '−', label: 'what you paid', value: F.money(topH.cost_basis)}, {op: '=', label: 'unrealized', value: F.moneyS(topH.market_value - topH.cost_basis)}]) + '<p>Unrealized means on paper: nothing is taxed or locked in until you sell.</p>'}] : []});
-  F.help(g('events-card'), {lead: 'Upcoming earnings reports and dividend dates for what you hold.',
-    sections: [{title: 'The two kinds of date', html: '<p>An earnings date is when the company reports results; prices often move more than usual around it. An ex-dividend date is the cutoff: own the shares before it to receive the next dividend.</p>'}]});
+  F.help(g('events-card'), {lead: 'Upcoming earnings reports and dividend dates for what you hold, and the next payment on each loan or card you recorded.',
+    sections: [{title: 'The three kinds of date', html: '<p>An earnings date is when the company reports results; prices often move more than usual around it. An ex-dividend date is the cutoff: own the shares before it to receive the next dividend. A payment date comes from the last statement you recorded; when that statement is older, its due date is carried forward one month at a time.</p>'}]});
   if (K && K.total_value) F.help(g('compare-card'), {lead: 'How the total and each holding changed since the last saved snapshot.',
     sections: [{title: 'How the total moved', html: F.flow([{label: `on ${K.since}`, value: F.money(K.total_value.before)}, {op: '+', label: 'change', value: F.moneyS(K.total_value.delta)}, {op: '=', label: 'now', value: F.money(K.total_value.after)}]) + '<p>The change mixes market moves with any deposits, withdrawals or trades in between.</p>'}]});
   // flags

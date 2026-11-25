@@ -59,11 +59,32 @@ def _old_build(tmp_path):
     return mod.build
 
 
+# Deliberate page changes made after PRE_CHANGE, outside the history card: (old text, new text).
+LATER_CHANGES = [
+    ("<p class=\"sub\">Earnings and dividend dates coming up for what you hold.</p>",
+     "<p class=\"sub\">Earnings and dividend dates for what you hold, and your next loan and card payments.</p>"),
+    ("<th class=\"l\">Symbol</th><th class=\"l\">Type</th></tr></thead><tbody>' + D.events",
+     "<th class=\"l\">Holding or account</th><th class=\"l\">Event</th></tr></thead><tbody>' + D.events"),
+    ("${F.esc(e.type)}</td></tr>`)", "${F.esc(e.label || String(e.type || '').replace('_', '-'))}</td></tr>`)"),
+    ("{lead: 'Upcoming earnings reports and dividend dates for what you hold.',",
+     "{lead: 'Upcoming earnings reports and dividend dates for what you hold, and the next payment on each loan or card you recorded.',"),
+    ("title: 'The two kinds of date', html: '<p>An earnings date is when the company reports results; prices often move more than usual around it. An ex-dividend date is the cutoff: own the shares before it to receive the next dividend.</p>'",
+     "title: 'The three kinds of date', html: '<p>An earnings date is when the company reports results; prices often move more than usual around it. An ex-dividend date is the cutoff: own the shares before it to receive the next dividend. A payment date comes from the last statement you recorded; when that statement is older, its due date is carried forward one month at a time.</p>'"),
+]
+
+
+def _with_later_changes(page: str) -> str:
+    for before, after in LATER_CHANGES:
+        assert before in page, before
+        page = page.replace(before, after)
+    return page
+
+
 def test_render_without_history_byte_identical(tmp_path) -> None:
     new = load_script(SCRIPT).build
     old = _old_build(tmp_path)
-    assert new(SNAP) == old(SNAP)
-    assert new(SNAP, None, None) == old(SNAP)
+    assert new(SNAP) == _with_later_changes(old(SNAP))
+    assert new(SNAP, None, None) == _with_later_changes(old(SNAP))
     assert "perf-card" not in new(SNAP)
 
 

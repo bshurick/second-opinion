@@ -11,7 +11,7 @@ Say these in plain language; Claude picks the skill. Grouped as in the README's 
 
 - **connect:** "Connect my Fidelity account." · "Which accounts are connected?" · "Reconnect E*Trade."
 - **portfolio-analysis (the brief):** "How is my portfolio doing today?" · "Give me the daily brief." · "What changed since last week's snapshot?"
-- **portfolio-analysis:** "What's my allocation across all my accounts? How concentrated am I?" · "How did my portfolio do against SPY this year?" · "Run a deep review of my portfolio: what single belief do I depend on most?" · "Re-check my deep review."
+- **portfolio-analysis:** "What's my allocation across all my accounts? How concentrated am I?" · "How did my portfolio do against SPY this year?"
 - **dividend-income:** "How much dividend income will I earn this year, and in which months?" · "Which of my holdings go ex-dividend soon?" · "Have any of my payers cut their dividend?"
 - **watchlist:** "Watch PLTR and alert me if it drops below 20 or moves 5% in a day." · "What on my watchlist moved?"
 - **risk-analysis:** "How risky is my portfolio?" · "What happens to my portfolio if 2008 repeats? What if NVDA drops 30%?"
@@ -19,16 +19,16 @@ Say these in plain language; Claude picks the skill. Grouped as in the README's 
 ## History and decisions
 
 - **statement-import:** "Import this Fidelity CSV export into my ledger." · "Pull two years of activity from my connected accounts."
-- **trade-review:** "Review my trades from the last two years." · "Was selling NVDA in March a good call?" · "Run a deep review of my trades: which were skill and which were luck?"
+- **trade-review:** "Review my trades from the last two years." · "Was selling NVDA in March a good call?"
 - **trade-journal** (extra): "Journal this trade: buying 100 MSFT at 410, target 460, stop 385, six-month horizon." · "Am I following my plan?"
-- **tax-aware:** "What do I owe in capital gains so far this year? Any wash sales?" · "Which lots of AAPL are cheapest to sell, tax-wise?" · "Any losses I could harvest?" · "Run a deep tax review: compare selling my stock awards over three years against converting to a Roth."
+- **tax-aware:** "What do I owe in capital gains so far this year? Any wash sales?" · "Which lots of AAPL are cheapest to sell, tax-wise?" · "Any losses I could harvest?"
 - **spending:** "Import this Amex export." · "Here is my Amazon order list for the month, break the Amazon charges down." · "Where can I cut? Drill into Groceries." · "What subscriptions am I paying for, and which went up?"
 
 ## Planning
 
 - **portfolio-plan:** "I'm targeting 60/40. How far off am I?" · "Where does this $5,000 deposit go?" · "What's my ETF vs individual-stock mix?" · "Add $5k from cash to my picks, split by valuation." · "Get my picks to 20% by next June." · "Rebalance my picks by valuation."
 - **retirement:** "I'm 38 with $400k saved. Am I on track to retire at 60? What if I put $150k into a house first?" · "What withdrawal rate lasts 35 years?" · "Compare claiming Social Security at 62, 67 and 70."
-- **real-estate:** "Run a deep review of 12 Main Street as a rental. The inspection report is in ~/Documents/condo." · "I'm moving. Run the numbers on selling my condo versus renting it out: cap rate, cash flow, IRR over ten years." · "Rent vs buy on a $750k home at 6.5%, against $3,200 rent." · "Refinance from 6.5% to 5.75%? Where is the breakeven?" · "What are O's FFO and AFFO multiples?"
+- **real-estate:** "I'm moving. Run the numbers on selling my condo versus renting it out: cap rate, cash flow, IRR over ten years." · "Rent vs buy on a $750k home at 6.5%, against $3,200 rent." · "Refinance from 6.5% to 5.75%? Where is the breakeven?" · "What are O's FFO and AFFO multiples?"
 - **personal-finance:** "Avalanche or snowball on my recorded debts, with $300 extra a month?" · "Build a monthly budget from my cash flow." · "What does $500 a month grow to in 20 years at 7%?"
 - **personal-finance (debts):** "Record this Chase statement: ~/Downloads/statement-aug.pdf." · "What do I owe across my cards and mortgage? What is the monthly interest run rate?"
 
@@ -52,7 +52,7 @@ Card CSV exports carry transactions but never a balance, minimum payment, due da
 
 1. "Record this statement: ~/Downloads/statement.pdf." Claude reads the summary box and transcribes about a dozen numbers (previous balance, payments, purchases, interest, fees, new balance, minimum, due date, APR).
 2. Before storing anything, the recorder checks the statement's own identity: previous balance minus payments and credits plus purchases, fees, and interest must equal the new balance to the cent. A misread digit fails loudly instead of landing in your data.
-3. "What do I owe?" gives balances, APRs, minimums, due dates, utilization, interest this period and over the trailing twelve months, and flags such as a stale statement, a past due date, or minimum-only payments. Mortgages, auto and student loans, and HELOCs sit in the same register as cards.
+3. "What do I owe?" gives balances, APRs, minimums, due dates, utilization, interest this period and over the trailing twelve months, the next due date (an older statement's date carried forward a month at a time), and flags such as a stale statement or minimum-only payments. Mortgages, auto and student loans, and HELOCs sit in the same register as cards.
 4. "Avalanche or snowball?" hands the recorded balances, APRs, and minimums to the payoff calculator in personal-finance. Escrow is excluded from a loan's minimum.
 
 Only the last four digits of an account number are stored, and the PDF itself is never copied. Statements live in `statements.json` in the data directory.

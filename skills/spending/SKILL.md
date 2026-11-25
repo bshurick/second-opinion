@@ -99,6 +99,8 @@ Every script prints JSON.
 
 ## Steps
 
+A call with no question (the skill invoked on its own) runs **Month review ("where did my money go", "review August")** for the latest month in the store. With an empty store, ask for an export file instead.
+
 Pick the case that matches the request.
 
 **The user has an export file (CSV, OFX, QFX, xlsx)**

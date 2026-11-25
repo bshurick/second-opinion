@@ -139,6 +139,8 @@ Run with the Bash tool. Every script prints JSON. Each script's docstring is its
 
 ## Steps
 
+A call with no question (the skill invoked on its own, or "how are rates") runs **What the market assumes, and how today compares with history**, then **The page**.
+
 A usual question about one bond or fund runs the matching "earns if held" case, then the market and history case, then the page case. Add the other cases when the request calls for them.
 
 **What a fund earns if held**

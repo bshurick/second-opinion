@@ -52,7 +52,6 @@ It also keeps the debt register: one snapshot per account per statement period, 
   |---|---|
   | `NO_STATEMENTS` | The account has no statement recorded. |
   | `STALE` | The statement is older than `assumptions.stale_days` days. |
-  | `PAST_DUE` | The due date on the latest statement has passed. Ask whether the payment was made; never assume. |
   | `OVER_LIMIT` | The balance is above the credit limit. |
   | `HIGH_UTILIZATION` | Utilization is above `assumptions.utilization_warn`. |
   | `MINIMUM_ONLY` | The last two payments were the minimum. |
@@ -105,7 +104,7 @@ Run with the Bash tool.
 | `debtpicture.py` | The shared pure math behind `debts.py`. |
 | `render_debts.py` | Turns a saved `debts.py` result into one self-contained HTML page for the Artifact tool. Prints `{"out", "title", "accounts", "flags"}`. |
 
-The page `render_debts.py` builds has a banner for STALE and PAST_DUE, stat tiles, the register sortable by balance, APR and due date with past-due and stale rows highlighted, balance and utilization bars, an interest-paid trend from `history`, and flags. It has light and dark themes and no external scripts.
+The page `render_debts.py` builds has a banner for STALE, stat tiles, the register sortable by balance, APR and next due date with stale rows marked, balance and utilization bars, an interest-paid trend from `history`, and flags. It has light and dark themes and no external scripts.
 
 Every script prints JSON.
 
@@ -236,7 +235,7 @@ Write "not stated" in any cell the source does not cover. Never leave a cell bla
 
 1. The artifact link, or the saved page's `path`, on its own line.
 2. One line: Total debt `totals.total_debt` (revolving `totals.revolving`, installment `totals.installment`) · Weighted APR `totals.weighted_apr` · Minimums `totals.minimum_payments_total` · Next due `totals.next_due` (account, date, amount).
-3. **Flags** — one bullet per flag in plain words, or "None". `PAST_DUE` still asks whether the payment was made.
+3. **Flags** — one bullet per flag in plain words, or "None".
 
 The page carries the register, balances, utilization and interest trend. Do not repeat them in the reply. If the user asks for a number the page shows, read it from the script's JSON.
 
@@ -252,7 +251,7 @@ The page carries the register, balances, utilization and interest trend. Do not 
    - minimum payments total `minimum_payments_total`
    - next due `next_due`
    - change since prior statements `change_vs_prior`
-3. **Accounts** — a table from `accounts`: Account (`name`) · Kind · Balance · APR · Min/payment (`minimum_payment`) · Due (`due_date`, `days_to_due`) · Utilization · Interest this period · Change vs prior · Statement date (`period_end`). A card with `paid_in_full` true shows its run rate as the cost if the balance were carried.
+3. **Accounts** — a table from `accounts`: Account (`name`) · Kind · Balance · APR · Min/payment (`minimum_payment`) · Next due (`next_due_date`, `days_to_due`, "from the monthly schedule" when `due_projected`) · Utilization · Interest this period · Change vs prior · Statement date (`period_end`). A card with `paid_in_full` true shows its run rate as the cost if the balance were carried.
 4. One sentence that the figures are general information from the recorded statements as of `as_of`, not financial advice.
 
 History tables and payoff comparisons stay in markdown, as described in Steps.
@@ -292,5 +291,5 @@ History tables and payoff comparisons stay in markdown, as described in Steps.
 - Never hand-edit `statements.json`. A wrong snapshot is fixed by re-recording the same period with `--replace`.
 - Always run `--dry-run` before recording a statement.
 - One `record-statement.py` call per statement, oldest period first.
-- Never assume a `PAST_DUE` payment was made or missed. Ask.
+- Statements are entered by hand and are often a month or two old. `next_due_date` carries the latest statement's due date forward a month at a time, so no payment is reported past due. Never say a payment was made or missed.
 - Neither payoff order is presented as preferred. Both are shown with the interest difference.
