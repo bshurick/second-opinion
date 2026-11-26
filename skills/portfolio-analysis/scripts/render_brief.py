@@ -45,27 +45,27 @@ TARGETS = (
 )
 
 BODY = """
-<style>#holdings td.l{white-space:normal;min-width:120px}#hold-more,#ev-more{margin-top:10px}</style>
+<style>#holdings td.l{white-space:normal;min-width:120px}#hold-more,#ev-more{margin-top:10px}.grid2>section{margin-bottom:0}</style>
 <h1>Portfolio Snapshot</h1>
 <p class="sub" id="asof"></p>
 <div id="explain"></div>
 <div class="tiles" id="tiles"></div>
 {{SUMMARY}}
+<div class="grid2">
 <section class="card" id="headlines-card" hidden><h2>Headlines</h2>
   <p class="sub hl-totals" id="hl-totals"></p>
   <ul class="hl" id="headlines"></ul>
   <button type="button" class="chip" id="hl-more" hidden></button>
   <details class="cov"><summary id="cov-line"></summary><div class="twrap" id="coverage"></div></details></section>
-<div class="grid2">
   <div class="card" id="accounts-card"><h2>Accounts</h2><p class="sub">Each connected account’s value and its share of the total.</p><div id="accounts"></div></div>
+</div>
+<div class="grid2">
   <div class="card" id="alloc-card"><h2>Allocation</h2><p class="sub">How the money splits between US stocks, international stocks, bonds, cash and other.</p><div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
     <div id="donut"></div><div style="flex:1;min-width:180px"><div id="buckets"></div></div></div>
     <p class="note" id="alloc-note"></p><p class="note" id="conc"></p></div>
-</div>
-<div class="grid2">
   <div class="card" id="sector-card"><h2>Sector exposure</h2><p class="sub" id="sector-sub"></p><div id="sectors"></div></div>
-  <div class="card" id="movers-card"><h2>Movers today</h2><p class="sub">The holdings that moved most today, with the newest dated story for each.</p><div id="movers"></div></div>
 </div>
+<section class="card" id="movers-card"><h2>Movers today</h2><p class="sub">The holdings that moved most today, with the newest dated story for each.</p><div id="movers"></div></section>
 <section class="card" id="holdings-card"><h2>Holdings</h2>
   <p class="sub">Click a row for what the holding is, its one-year price history and where it sits across accounts.</p>
   <div class="controls">
@@ -489,7 +489,8 @@ def build(snapshot: dict, summary: dict | None = None, history: dict | None = No
         return page.render(TITLE, snapshot, body, script)
     if not isinstance(history, dict) or not isinstance(history.get("series"), list):
         raise InvalidInput("history must be a history_report.py result (a JSON object with series)")
-    body = body.replace('<div class="grid2">', PERF_CARD + '\n<div class="grid2">', 1)
+    # below Holdings, so the day's cards come first
+    body = body.replace('<section class="card" id="events-card"', PERF_CARD + '\n<section class="card" id="events-card"', 1)
     return page.render(TITLE, {**snapshot, "history": history}, body, script + PERF_SCRIPT)
 
 

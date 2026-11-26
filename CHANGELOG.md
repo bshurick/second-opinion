@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.18.3
+
+- brief page: Headlines and Accounts share a row, so the short Accounts card no longer leaves a column of empty space; with no headlines, Accounts runs full width.
+- brief page: Allocation sits beside Sector exposure, and Movers today runs full width.
+- brief page: Performance vs. the market moves below Holdings, so the day's cards come first.
+- README: the portfolio brief screenshot shows the new layout.
+
 ## 1.18.2
 
 - market flows page: the stat tiles sit at the top, above the headline analysis, as on the brief.

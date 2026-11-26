@@ -86,6 +86,18 @@ LATER_CHANGES = [
      "  // the ten largest by default; a search or an account filter shows every match\n  const HOLD_TOP = 10;\n  let holdAll = false;\n  const tbl = F.table(g('holdings'), cols, rows, {sortKey: 'market_value', onDraw: vis => {\n    const narrowed = !!g('acct').value || !!g('q').value.trim(), cut = !holdAll && !narrowed && vis.length > HOLD_TOP;\n    g('count').textContent = cut ? `top ${HOLD_TOP} of ${rows.length}` : `${vis.length} of ${rows.length}`;\n    g('holdings').querySelectorAll('tbody tr').forEach((tr, i) => { tr.classList.add('clickable'); tr.tabIndex = 0; if (cut && i >= HOLD_TOP) tr.hidden = true; const open = () => detail(vis[i]); tr.addEventListener('click', open); tr.addEventListener('keydown', e => { if (e.key === 'Enter') open(); }); });\n    const mb = g('hold-more'); mb.hidden = narrowed || vis.length <= HOLD_TOP; mb.textContent = holdAll ? `Show top ${HOLD_TOP}` : `View all ${vis.length} holdings`; }});\n  g('hold-more').addEventListener('click', () => { holdAll = !holdAll; tbl.redraw(); });\n"),
     ("    g('events').innerHTML = '<table><thead><tr><th class=\"l\">Date</th><th class=\"l\">Holding or account</th><th class=\"l\">Event</th></tr></thead><tbody>' + D.events.map(e => `<tr><td class=\"l\">${F.esc(e.date)}</td><td class=\"l\">${F.esc(e.symbol)}</td><td class=\"l\">${F.esc(e.label || String(e.type || '').replace('_', '-'))}</td></tr>`).join('') + '</tbody></table>'; }\n",
      "    const EV_TOP = 8;  // the next eight by date; the rest behind View all\n    g('events').innerHTML = '<table><thead><tr><th class=\"l\">Date</th><th class=\"l\">Holding or account</th><th class=\"l\">Event</th></tr></thead><tbody>' + D.events.map((e, i) => `<tr${i >= EV_TOP ? ' hidden' : ''}><td class=\"l\">${F.esc(e.date)}</td><td class=\"l\">${F.esc(e.symbol)}</td><td class=\"l\">${F.esc(e.label || String(e.type || '').replace('_', '-'))}</td></tr>`).join('') + '</tbody></table>';\n    if (D.events.length > EV_TOP) { const b = g('ev-more'); let all = false; b.hidden = false;\n      const label = () => { b.textContent = all ? `Show next ${EV_TOP}` : `View all ${D.events.length} events`; }; label();\n      b.addEventListener('click', () => { all = !all; g('events').querySelectorAll('tbody tr').forEach((tr, i) => { if (i >= EV_TOP) tr.hidden = !all; }); label(); }); } }\n"),
+    # Headlines and Accounts share a row, Allocation sits beside Sector exposure and Movers runs full width
+    ("#hold-more,#ev-more{margin-top:10px}</style>", "#hold-more,#ev-more{margin-top:10px}.grid2>section{margin-bottom:0}</style>"),
+    ('\n<section class="card" id="headlines-card" hidden>', '\n<div class="grid2">\n<section class="card" id="headlines-card" hidden>'),
+    ('</details></section>\n<div class="grid2">\n  <div class="card" id="accounts-card">',
+     '</details></section>\n  <div class="card" id="accounts-card">'),
+    ('<div id="accounts"></div></div>\n  <div class="card" id="alloc-card">',
+     '<div id="accounts"></div></div>\n</div>\n<div class="grid2">\n  <div class="card" id="alloc-card">'),
+    ('<p class="note" id="conc"></p></div>\n</div>\n<div class="grid2">\n  <div class="card" id="sector-card">',
+     '<p class="note" id="conc"></p></div>\n  <div class="card" id="sector-card">'),
+    ('<div id="sectors"></div></div>\n  <div class="card" id="movers-card">',
+     '<div id="sectors"></div></div>\n</div>\n<section class="card" id="movers-card">'),
+    ('<div id="movers"></div></div>\n</div>', '<div id="movers"></div></section>'),
 ]
 
 
@@ -109,7 +121,7 @@ def test_render_with_history_has_card_picker_ranges() -> None:
     assert 'id="perf-card"' in html and 'id="perf-account"' in html and "Performance vs. the market" in html
     for r in ("1M", "3M", "YTD", "1Y", "All"):
         assert f"'{r}'" in html
-    assert html.index('id="tiles"') < html.index('id="headlines-card"') < html.index('id="perf-card"') < html.index('id="accounts-card"')
+    assert html.index('id="tiles"') < html.index('id="headlines-card"') < html.index('id="accounts-card"') < html.index('id="holdings-card"') < html.index('id="perf-card"') < html.index('id="events-card"')
     assert '"history":' in html
 
 
