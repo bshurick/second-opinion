@@ -46,7 +46,7 @@ def test_watchlist_without_triggers_is_empty() -> None:
     assert WL.extract({"main": {"as_of": "2026-09-14", "triggered": []}}, CTX) == []
 
 
-def test_events_within_seven_days_are_alerts() -> None:
+def test_events_within_seven_days_earnings_notice_ex_dividend_info() -> None:
     ctx = {**CTX, "snapshot": {"events": [
         {"symbol": "KO", "type": "earnings", "date": "2026-09-20"},
         {"symbol": "PEP", "type": "ex_dividend", "date": "2026-09-21"},
@@ -55,7 +55,8 @@ def test_events_within_seven_days_are_alerts() -> None:
     ]}}
     hs = EV.extract({}, ctx)
     assert [h["key"] for h in hs] == ["portfolio-analysis:EARNINGS:KO:2026-09-20", "portfolio-analysis:EX_DIVIDEND:PEP:2026-09-21"]
-    assert hs[0]["title"] == "KO reports earnings on 2026-09-20" and hs[0]["severity"] == "alert"
+    assert hs[0]["title"] == "KO reports earnings on 2026-09-20" and hs[0]["severity"] == "notice"
+    assert hs[1]["severity"] == "info"
     assert hs[1]["title"] == "PEP goes ex-dividend on 2026-09-21"
     assert hs[0]["ask"] == "What is KO's expected move through earnings?"
     assert hs[1]["ask"] == "What is PEP's next dividend worth to me?"
@@ -67,3 +68,12 @@ def test_events_within_seven_days_are_alerts() -> None:
 
 def test_events_none_is_empty() -> None:
     assert EV.extract({}, CTX) == []
+
+
+def test_expected_fund_ex_dividend_says_expected() -> None:
+    ctx = {**CTX, "snapshot": {"events": [
+        {"symbol": "BND", "type": "ex_dividend", "date": "2026-09-16", "projected": True, "label": "x"},
+    ]}}
+    hs = EV.extract({}, ctx)
+    assert hs[0]["title"] == "BND is expected to go ex-dividend around 2026-09-16"
+    assert hs[0]["key"] == "portfolio-analysis:EX_DIVIDEND:BND:2026-09-16"

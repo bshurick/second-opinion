@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.18.1
+
+- daily brief: Movers today is one list from the largest gain to the largest loss, so the losers no longer run in reverse.
+- daily brief: a fund (ETF or mutual fund) with no announced ex-dividend date gets an expected one, a year after last year's date, labelled as expected in Upcoming events. A fund whose last ex-date is over 400 days old gets none.
+- brief page: the total tiles sit at the top, above the headline analysis, and the analysis can carry one chart beside its text (`chart` in the summary file: `day_split`, `top_movers`, `vs_market` or `mix`), picked per day.
+- daily brief: movers' news keeps only stories about the company: no tickers, the company's ticker first, or its ticker in the title.
+- headlines: one severity rule across sources. Alerts are a fired watchlist rule or journal stop, a dividend cut, a band breach, a payment due within 3 days, a wash sale from the last 30 days that disallows $10 or more, an index move of 2% or more, or a VIX at or above its 95th percentile. Earnings within 7 days, new filings and other market readings are notices. Ex-dividend dates, fundamentals flags and smaller or older wash sales are info, so they no longer crowd out market news.
+- tax headlines: lots of one symbol sold the same day are one wash sale, with the disallowed amounts summed.
+- brief page: Holdings shows the top ten and Upcoming events the next eight, each with a View all button. A search or account filter shows every match.
+- README: the portfolio brief screenshot shows the new layout.
+
 ## 1.18.0
 
 - debts, daily brief: payments are never reported past due. Statements are entered by hand and often weeks old, so the latest statement's due date is carried forward a month at a time to the next date on or after today (`next_due_date`, with `due_projected` when it was carried). The `PAST_DUE` flag, the brief's past-due and stale-statement headlines and the debts page's red past-due rows are gone. Each loan or card's next payment now appears in the brief's Upcoming events table, and a payment due within 7 days is still an alert.

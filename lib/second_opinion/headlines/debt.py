@@ -15,6 +15,7 @@ from second_opinion import headlines as H
 
 SKILL = "personal-finance"
 DUE_WINDOW_DAYS = 7
+DUE_ALERT_DAYS = 3  # due this soon is an alert; later inside the window, a notice
 WHY = {"DUE_SOON": "A loan or card payment falls due within a week.",
        "HIGH_UTILIZATION": "Utilization above 30% weighs on credit scores."}
 
@@ -95,7 +96,8 @@ def extract(results: dict, ctx: dict) -> list[dict]:
             answer = _payment_answer(a)
             if nd[1] and answer:
                 answer += f"; date from the monthly schedule of the {str(a.get('due_date'))[:10]} statement"
-            alerts.append(H.make(SKILL, "DUE_SOON", "alert", f"{name} payment is due {due} ({days} days)", discriminator=f"{aid}:{due}",
+            sev = "alert" if days <= DUE_ALERT_DAYS else "notice"
+            alerts.append(H.make(SKILL, "DUE_SOON", sev, f"{name} payment is due {due} ({days} days)", discriminator=f"{aid}:{due}",
                                  as_of=str(today), ask=interest_ask, answer=answer, why=WHY["DUE_SOON"]))
         if "HIGH_UTILIZATION" in set(a.get("flags") or []):
             util, limit, balance = a.get("utilization"), a.get("credit_limit"), a.get("balance")

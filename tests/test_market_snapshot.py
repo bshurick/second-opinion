@@ -486,3 +486,22 @@ def test_next_events_drops_dates_before_today(monkeypatch) -> None:
     _patch(monkeypatch, {"AAPL": _Ticker(calendar=cal)})
     assert market.next_events("AAPL", today=date(2026, 9, 4)) == {"next_earnings": "2026-10-29", "next_ex_dividend": None}
     assert market.next_events("AAPL", today=date(2026, 8, 9))["next_ex_dividend"] == "2026-08-09"  # today still counts
+
+
+def test_expected_ex_dividend_uses_last_years_matching_date() -> None:
+    today = date(2026, 11, 25)
+    # monthly bond fund: last December's payment is the first one on or after a year ago
+    monthly = ["2025-11-03", "2025-12-01", "2026-01-02", "2026-11-02"]
+    assert market.expected_ex_dividend(monthly, today) == "2026-12-01"
+    # irregular quarterly mutual fund keeps its December slot, not last date + 91 days
+    assert market.expected_ex_dividend(["2025-10-03", "2025-12-19", "2026-04-10", "2026-10-02"], today) == "2026-12-19"
+    # annual payer
+    assert market.expected_ex_dividend(["2024-12-13", "2025-12-12"], today) == "2026-12-12"
+
+
+def test_expected_ex_dividend_none_without_a_pattern() -> None:
+    today = date(2026, 11, 25)
+    assert market.expected_ex_dividend([], today) is None
+    assert market.expected_ex_dividend(["2025-06-01"], today) is None  # stopped paying: last ex-date over 400 days ago
+    assert market.expected_ex_dividend(["2024-01-02"], today) is None
+    assert market.expected_ex_dividend(["not a date"], today) is None

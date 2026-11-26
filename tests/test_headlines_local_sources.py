@@ -66,7 +66,7 @@ def test_debt_due_soon_rolls_old_statements_forward_and_never_past_due() -> None
     assert [h["key"] for h in hs] == ["personal-finance:DUE_SOON:-:chase:2026-09-19", "personal-finance:DUE_SOON:-:mortgage:2026-09-18",
                                        "personal-finance:HIGH_UTILIZATION:-:chase"]
     assert not any(h["code"] in ("PAST_DUE", "STALE") for h in hs)
-    assert hs[0]["severity"] == "alert" and hs[0]["title"] == "Chase Sapphire payment is due 2026-09-19 (5 days)"
+    assert hs[0]["severity"] == "notice" and hs[0]["title"] == "Chase Sapphire payment is due 2026-09-19 (5 days)"  # alert only within 3 days
     assert hs[0]["answer"] == "Minimum $90.00 on $4,200.00 at 22.0% APR ($76.99 interest a month)"
     assert hs[0]["why"] == "A loan or card payment falls due within a week."
     assert hs[1]["title"] == "Sample Mortgage payment is due 2026-09-18 (4 days)"
@@ -157,3 +157,10 @@ def test_ledger_answer_omits_last_import_clause_when_source_or_added_is_bad() ->
                     "date_range": {"start": "2024-01-01", "end": "2026-06-28"}}}
     hs = L.extract(res, CTX)
     assert hs[0]["answer"] == "4213 transactions through 2026-06-28"
+
+
+def test_debt_due_within_three_days_is_an_alert() -> None:
+    from datetime import date
+    hs = DB.extract({"main": {"accounts": [{"id": "c", "name": "Card", "due_date": "2026-09-16", "days_to_due": 2, "flags": []}]}},
+                      {"today": date(2026, 9, 14)})
+    assert hs[0]["severity"] == "alert"

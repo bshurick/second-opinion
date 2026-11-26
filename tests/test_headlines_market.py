@@ -112,3 +112,9 @@ def test_cash_record_unit_word_covers_trillions_and_other_units() -> None:
 def test_flows_error_block_and_missing_indices_are_tolerated() -> None:
     assert M.extract({"flows": {"positioning": {"error": "cftc down", "code": "API_ERROR"}, "cash": {"error": "x"}}}, CTX) == []
     assert M.extract({}, CTX) == []
+
+
+def test_large_index_move_and_extreme_vix_are_alerts() -> None:
+    hs = M.extract({"indices": _indices(spx=-2.4, spx_week=-4.2, vix=34.0, vix_pct=0.97, spread=0.5, above=6, rsp_spy=0.0)}, CTX)
+    sev = {h["code"]: h["severity"] for h in hs}
+    assert sev["INDEX_MOVE"] == "alert" and sev["VIX_HIGH"] == "alert"

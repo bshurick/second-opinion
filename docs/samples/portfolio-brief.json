@@ -423,6 +423,7 @@
    "asset_class": "fund"
   },
   "single_stock": {
+   "day_change": 85.93,
    "hhi": 0.0131,
    "hhi_interpretation": "diversified",
    "weight": 0.2236,
@@ -772,6 +773,13 @@
    "symbol": "COST",
    "type": "earnings",
    "date": "2026-09-22"
+  },
+  {
+   "symbol": "BND",
+   "type": "ex_dividend",
+   "date": "2026-10-01",
+   "projected": true,
+   "label": "ex-dividend (expected, from last year's date)"
   }
  ],
  "flags": [
@@ -2990,21 +2998,6 @@
    "why": "A price rule you set on your watchlist fired on today's quote."
   },
   {
-   "key": "portfolio-analysis:EARNINGS:COST:2026-09-22",
-   "code": "EARNINGS",
-   "skill": "portfolio-analysis",
-   "severity": "alert",
-   "symbol": "COST",
-   "title": "COST reports earnings on 2026-09-22",
-   "detail": "",
-   "as_of": "2026-09-15",
-   "status": "new",
-   "ask": "What is COST's expected move through earnings?",
-   "url": "https://finance.yahoo.com/quote/COST",
-   "answer": "Options price a ±$38.43 (±4.2%) move by 2026-09-25 (ATM IV 27%)",
-   "why": "Earnings days bring the largest single-day moves; the options market prices how large."
-  },
-  {
    "key": "market-analysis:CASH_RECORD:-:2026-09-10",
    "code": "CASH_RECORD",
    "skill": "market-analysis",
@@ -3018,6 +3011,21 @@
    "url": "https://fred.stlouisfed.org/series/WRMFNS",
    "answer": "+62 billion over four weeks, +11.4% over a year",
    "why": "Cash parked in money-market funds; a high level is dry powder that has not been put into stocks or bonds."
+  },
+  {
+   "key": "portfolio-analysis:EARNINGS:COST:2026-09-22",
+   "code": "EARNINGS",
+   "skill": "portfolio-analysis",
+   "severity": "notice",
+   "symbol": "COST",
+   "title": "COST reports earnings on 2026-09-22",
+   "detail": "",
+   "as_of": "2026-09-15",
+   "status": "new",
+   "ask": "What is COST's expected move through earnings?",
+   "url": "https://finance.yahoo.com/quote/COST",
+   "answer": "Options price a ±$38.43 (±4.2%) move by 2026-09-25 (ATM IV 27%)",
+   "why": "Earnings days bring the largest single-day moves; the options market prices how large."
   },
   {
    "key": "market-analysis:DAY:-:2026-09-15",
@@ -3035,21 +3043,6 @@
    "why": ""
   },
   {
-   "key": "portfolio-analysis:EX_DIVIDEND:SCHD:2026-09-21",
-   "code": "EX_DIVIDEND",
-   "skill": "portfolio-analysis",
-   "severity": "alert",
-   "symbol": "SCHD",
-   "title": "SCHD goes ex-dividend on 2026-09-21",
-   "detail": "",
-   "as_of": "2026-09-15",
-   "status": "still",
-   "ask": "What is SCHD's next dividend worth to me?",
-   "url": "https://finance.yahoo.com/quote/SCHD",
-   "answer": "About $104.00 for your 400 shares (last $0.2600 per share)",
-   "why": "You must hold the shares before the ex-dividend date to receive the next payment."
-  },
-  {
    "key": "portfolio-plan:BAND_BREACH:-:US equities,bonds,international",
    "code": "BAND_BREACH",
    "skill": "portfolio-plan",
@@ -3063,6 +3056,21 @@
    "url": "",
    "answer": "Plan: SELL 98 VTI $30,576.00; SELL 22 AAPL $5,104.00; SELL 10 MSFT $5,050.00 — turnover 12.8%",
    "why": "Your allocation drifted past the tolerance band you set around each target weight."
+  },
+  {
+   "key": "portfolio-analysis:EX_DIVIDEND:SCHD:2026-09-21",
+   "code": "EX_DIVIDEND",
+   "skill": "portfolio-analysis",
+   "severity": "info",
+   "symbol": "SCHD",
+   "title": "SCHD goes ex-dividend on 2026-09-21",
+   "detail": "",
+   "as_of": "2026-09-15",
+   "status": "still",
+   "ask": "What is SCHD's next dividend worth to me?",
+   "url": "https://finance.yahoo.com/quote/SCHD",
+   "answer": "About $104.00 for your 400 shares (last $0.2600 per share)",
+   "why": "You must hold the shares before the ex-dividend date to receive the next payment."
   }
  ],
  "coverage": [

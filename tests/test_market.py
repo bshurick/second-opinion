@@ -646,3 +646,21 @@ def test_top_holdings_failure_is_null_and_never_fails_the_snapshot(monkeypatch, 
     out = market.index_snapshot(holdings=True)
     assert [r["top_holdings"] for r in out["sectors"]] == [None] * 11
     assert "top_holdings" not in out["indices"][0]
+
+
+def test_recent_news_keeps_only_stories_about_the_company(monkeypatch) -> None:
+    # Yahoo lists a story's subject first: an Intuit story tagged INTU, HRB is not about H&R Block.
+    _news_yf(monkeypatch, RuntimeError("HTTP 404"), [
+        _story("How Low Can Intuit Stock Go?", 1, ["INTU", "MSFT", "HRB"]),
+        _story("H&R Block Q1 Earnings Meet Estimates", 2, ["HRB", "NSP"]),
+        _story("Is H&R Block (HRB) Undervalued?", 3, ["^GSPC", "HRB"]),
+        _story("HRBR rallies", 4, ["HRBR", "HRB"]),
+    ])
+    assert [n["title"] for n in market.recent_news("HRB", limit=5)] == ["H&R Block Q1 Earnings Meet Estimates", "Is H&R Block (HRB) Undervalued?"]
+
+
+def test_recent_news_ticker_news_uses_stock_tickers_for_the_subject(monkeypatch) -> None:
+    when = datetime.now().astimezone().isoformat()
+    item = lambda title, syms: {"content": {"title": title, "pubDate": when, "finance": {"stockTickers": [{"symbol": s} for s in syms]}}}  # noqa: E731
+    _news_yf(monkeypatch, [item("UnitedHealth slides", ["UNH", "CI"]), item("Cigna beats", ["CI"])], [])
+    assert [n["title"] for n in market.recent_news("CI")] == ["Cigna beats"]

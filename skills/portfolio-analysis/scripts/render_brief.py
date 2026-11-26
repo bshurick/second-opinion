@@ -45,17 +45,17 @@ TARGETS = (
 )
 
 BODY = """
-<style>#holdings td.l{white-space:normal;min-width:120px}</style>
+<style>#holdings td.l{white-space:normal;min-width:120px}#hold-more,#ev-more{margin-top:10px}</style>
 <h1>Portfolio Snapshot</h1>
 <p class="sub" id="asof"></p>
 <div id="explain"></div>
+<div class="tiles" id="tiles"></div>
 {{SUMMARY}}
 <section class="card" id="headlines-card" hidden><h2>Headlines</h2>
   <p class="sub hl-totals" id="hl-totals"></p>
   <ul class="hl" id="headlines"></ul>
   <button type="button" class="chip" id="hl-more" hidden></button>
   <details class="cov"><summary id="cov-line"></summary><div class="twrap" id="coverage"></div></details></section>
-<div class="tiles" id="tiles"></div>
 <div class="grid2">
   <div class="card" id="accounts-card"><h2>Accounts</h2><p class="sub">Each connected account’s value and its share of the total.</p><div id="accounts"></div></div>
   <div class="card" id="alloc-card"><h2>Allocation</h2><p class="sub">How the money splits between US stocks, international stocks, bonds, cash and other.</p><div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
@@ -74,11 +74,97 @@ BODY = """
     <span class="muted" id="count"></span>
   </div>
   <div class="twrap" id="holdings"></div>
+  <button type="button" class="chip" id="hold-more" hidden></button>
 </section>
-<section class="card" id="events-card" hidden><h2>Upcoming events</h2><p class="sub">Earnings and dividend dates for what you hold, and your next loan and card payments.</p><div class="twrap" id="events"></div></section>
+<section class="card" id="events-card" hidden><h2>Upcoming events</h2><p class="sub">Earnings and dividend dates for what you hold, and your next loan and card payments.</p><div class="twrap" id="events"></div><button type="button" class="chip" id="ev-more" hidden></button></section>
 <section class="card" id="compare-card" hidden><h2>Change since last snapshot</h2><p class="sub" id="compare-line"></p><div class="twrap" id="compare"></div></section>
 <section data-help="none" id="flags-section"><h2>Flags</h2>""" + page.FLAGS_INTRO + """<ul class="flags" id="flags"></ul></section>
 <p class="note">Headlines are the newest dated stories Yahoo lists for each mover in the last 7 days; the dateline is the publication date, and a story is context, not the cause of the move. Quotes are delayed. Weights are of total value across every connected account. Unrealized P&amp;L excludes positions with no cost basis. General information, not financial advice.</p>
+"""
+
+# Charts the summary card can name in its optional "chart" field, drawn beside its text. Each one
+# shows figures already in the snapshot (or, for vs_market, the history); none forecasts anything.
+CHARTS = ("day_split", "top_movers", "vs_market", "mix")
+
+CHART_CSS = """<style>
+.summary-card .sum-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:28px;align-items:start}
+@media (max-width:900px){.summary-card .sum-grid{grid-template-columns:1fr}}
+.sum-chart{margin:0;padding:14px 16px;border:1px solid var(--ring);border-radius:6px}
+.sc-title{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;font-weight:600}
+.summary-card .sum-chart .sc-note{font-size:12px;color:var(--muted);margin:10px 0 0}
+.sc-row{display:grid;grid-template-columns:72px minmax(0,1fr) 76px;align-items:center;gap:8px;font-size:12.5px;margin:5px 0;color:var(--ink2)}
+.sc-row .lab{color:var(--ink);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-row .val{text-align:right;font-variant-numeric:tabular-nums}
+.sc-track{position:relative;height:14px}
+.sc-axis{position:absolute;top:-3px;bottom:-3px;width:1px;background:var(--ring)}
+.sc-bar{position:absolute;top:0;height:14px;border-radius:2px}
+.sc-row.net .lab,.sc-row.net .val{font-weight:700;color:var(--ink)}
+.sc-sep{border-top:1px solid var(--ring);margin:8px 0}
+.sc-stack{display:flex;height:22px;border-radius:3px;overflow:hidden;margin:4px 0 12px}
+.sc-key{display:grid;grid-template-columns:12px 1fr auto;gap:6px 8px;font-size:12.5px;color:var(--ink2);align-items:center}
+.sc-key i{width:10px;height:10px;border-radius:2px;display:block}
+.sc-key .val{font-variant-numeric:tabular-nums}
+</style>
+"""
+
+CHART_SCRIPT = r"""
+(() => {
+  const D = window.DATA, F = FA, T = D.totals || {}, P = D.positions || [], H = D.history || {};
+  const g = id => document.getElementById(id), fig = g('sum-chart');
+  if (!fig) return;
+  const num = v => typeof v === 'number' && isFinite(v);
+  // diverging bars on one zero axis; a row may start where the one above ended (from)
+  const rows = (items, pct) => {
+    const ends = items.filter(r => !r.sep).flatMap(r => [r.from || 0, (r.from || 0) + r.v]);
+    const lo = Math.min(0, ...ends), hi = Math.max(0, ...ends), span = (hi - lo) || 1, x = v => (v - lo) / span * 100;
+    return items.map(r => {
+      if (r.sep) return '<div class="sc-sep"></div>';
+      const a = r.from || 0, b = a + r.v, L = Math.min(x(a), x(b)), W = Math.max(Math.abs(x(b) - x(a)), 0.8);
+      const col = r.color || (r.v >= 0 ? 'var(--up)' : 'var(--down)');
+      return `<div class="sc-row${r.net ? ' net' : ''}" title="${F.esc(r.tip || '')}"><span class="lab">${F.esc(r.label)}</span>` +
+        `<span class="sc-track"><span class="sc-axis" style="left:${x(0)}%"></span><span class="sc-bar" style="left:${L}%;width:${W}%;background:${col}"></span></span>` +
+        `<span class="val">${pct ? F.pct(r.v, 2, true) : F.moneyS(r.v)}</span></div>`;
+    }).join('');
+  };
+  const charts = {
+    day_split: () => {
+      const S = (D.concentration || {}).single_stock || {};
+      if (!num(S.day_change) || !num(T.day_change)) return null;
+      const rest = T.day_change - S.day_change;
+      return {title: 'Where today’s move came from', html: rows([
+        {label: 'Stocks', v: S.day_change, tip: `${S.count} single stocks`},
+        {label: 'Funds', v: rest, from: S.day_change, tip: 'funds and everything else that moved'},
+        {sep: 1},
+        {label: 'Net', v: T.day_change, net: 1, color: 'var(--s1)'},
+      ]), note: `Your ${S.count} single stocks against your funds and everything else. Cash does not move.`};
+    },
+    top_movers: () => {
+      const m = P.filter(p => num(p.day_change) && p.day_change !== 0).sort((a, b) => b.day_change - a.day_change);
+      if (!m.length) return null;
+      const top = m.slice(0, 4), bot = m.slice(-4).filter(p => !top.includes(p));
+      return {title: 'Biggest dollar moves today', html: rows([...top, ...bot].map(p => ({label: p.symbol, v: p.day_change, tip: `${p.name || p.symbol} ${F.pct(p.day_change_pct, 2, true)}`}))),
+        note: 'The four largest dollar gains and losses, from largest gain to largest loss.'};
+    },
+    vs_market: () => {
+      const it = num(T.day_change_pct) ? [{label: 'You', v: T.day_change_pct, color: 'var(--s1)', net: 1}] : [];
+      let day = '';
+      (H.benchmarks || []).forEach(b => { const p = b.points || []; if (p.length > 1) { day = p[p.length - 1][0]; it.push({label: b.symbol || b.label, v: p[p.length - 1][1] / p[p.length - 2][1] - 1, color: 'var(--muted)', tip: b.label}); } });
+      if (it.length < 2) return null;
+      return {title: 'Your day against the market', html: rows(it, true), note: `SPY, QQQ and DIA track the S&P 500, Nasdaq and Dow; their close on ${day} against the one before.`};
+    },
+    mix: () => {
+      const B = (D.allocation || {}).buckets || {};
+      const order = [['cash', 'Cash', 'var(--s4)'], ['us_equity', 'US stocks', 'var(--s1)'], ['bonds', 'Bonds', 'var(--s3)'], ['intl_equity', 'International', 'var(--s7)'], ['other', 'Other', 'var(--s5)']].filter(([k]) => (B[k] || {}).value > 0);
+      if (!order.length) return null;
+      return {title: 'Where the money sits', html: '<div class="sc-stack">' + order.map(([k, n, c]) => `<span style="width:${B[k].weight * 100}%;background:${c}" title="${n}"></span>`).join('') + '</div>' +
+        '<div class="sc-key">' + order.map(([k, n, c]) => `<i style="background:${c}"></i><span>${n}</span><span class="val">${F.pct(B[k].weight)} · ${F.money(B[k].value)}</span>`).join('') + '</div>',
+        note: 'Share of total value across every connected account.'};
+    },
+  };
+  const make = charts[fig.dataset.chart], r = make ? make() : null;
+  if (!r) { fig.remove(); return; }
+  g('sc-title').textContent = r.title; g('sc-body').innerHTML = r.html; g('sc-note').textContent = r.note || '';
+})();
 """
 
 PERF_CARD = """<style>#perf-ranges .chip:disabled{opacity:.4;cursor:not-allowed;border-style:dashed}</style>
@@ -260,14 +346,22 @@ SCRIPT = r"""
     if (hist.length > 1) F.lines(chart, {series: [{name: r.symbol, points: hist.map(h => [Date.parse(h.date), h.close]), color: F.S[0], area: true}], xIsDate: true, yFmt: v => F.money(v, 2), height: 220, aria: `${r.symbol} one-year price history`});
     else chart.innerHTML = '<span class="muted">No price history available.</span>';
   };
-  const tbl = F.table(g('holdings'), cols, rows, {sortKey: 'market_value', onDraw: vis => { g('count').textContent = `${vis.length} of ${rows.length}`;
-    g('holdings').querySelectorAll('tbody tr').forEach((tr, i) => { tr.classList.add('clickable'); tr.tabIndex = 0; const open = () => detail(vis[i]); tr.addEventListener('click', open); tr.addEventListener('keydown', e => { if (e.key === 'Enter') open(); }); }); }});
+  // the ten largest by default; a search or an account filter shows every match
+  const HOLD_TOP = 10;
+  let holdAll = false;
+  const tbl = F.table(g('holdings'), cols, rows, {sortKey: 'market_value', onDraw: vis => {
+    const narrowed = !!g('acct').value || !!g('q').value.trim(), cut = !holdAll && !narrowed && vis.length > HOLD_TOP;
+    g('count').textContent = cut ? `top ${HOLD_TOP} of ${rows.length}` : `${vis.length} of ${rows.length}`;
+    g('holdings').querySelectorAll('tbody tr').forEach((tr, i) => { tr.classList.add('clickable'); tr.tabIndex = 0; if (cut && i >= HOLD_TOP) tr.hidden = true; const open = () => detail(vis[i]); tr.addEventListener('click', open); tr.addEventListener('keydown', e => { if (e.key === 'Enter') open(); }); });
+    const mb = g('hold-more'); mb.hidden = narrowed || vis.length <= HOLD_TOP; mb.textContent = holdAll ? `Show top ${HOLD_TOP}` : `View all ${vis.length} holdings`; }});
+  g('hold-more').addEventListener('click', () => { holdAll = !holdAll; tbl.redraw(); });
   const sel = g('acct'); accts.forEach(a => { const o = document.createElement('option'); o.value = a.account_id; o.textContent = a.name || a.account_id; sel.appendChild(o); });
   sel.addEventListener('change', () => tbl.setFilter(r => !sel.value || (r.accounts || []).includes(sel.value)));
   g('q').addEventListener('input', e => tbl.setQuery(e.target.value));
   // movers
   const M = D.movers || {up: [], down: []};
-  const mv = [...(M.up || []).map(m => ({...m, dir: 1})), ...(M.down || []).map(m => ({...m, dir: -1}))];
+  // one scale, largest gain to largest loss, so the losers end with the biggest drop
+  const mv = [...(M.up || []), ...(M.down || [])].sort((a, b) => (b.day_change_pct || 0) - (a.day_change_pct || 0));
   const N = D.news || {};
   if (!mv.length) g('movers').innerHTML = '<span class="muted">no quote data</span>';
   else {
@@ -294,7 +388,11 @@ SCRIPT = r"""
   }
   // events
   if (Array.isArray(D.events) && D.events.length) { g('events-card').hidden = false;
-    g('events').innerHTML = '<table><thead><tr><th class="l">Date</th><th class="l">Holding or account</th><th class="l">Event</th></tr></thead><tbody>' + D.events.map(e => `<tr><td class="l">${F.esc(e.date)}</td><td class="l">${F.esc(e.symbol)}</td><td class="l">${F.esc(e.label || String(e.type || '').replace('_', '-'))}</td></tr>`).join('') + '</tbody></table>'; }
+    const EV_TOP = 8;  // the next eight by date; the rest behind View all
+    g('events').innerHTML = '<table><thead><tr><th class="l">Date</th><th class="l">Holding or account</th><th class="l">Event</th></tr></thead><tbody>' + D.events.map((e, i) => `<tr${i >= EV_TOP ? ' hidden' : ''}><td class="l">${F.esc(e.date)}</td><td class="l">${F.esc(e.symbol)}</td><td class="l">${F.esc(e.label || String(e.type || '').replace('_', '-'))}</td></tr>`).join('') + '</tbody></table>';
+    if (D.events.length > EV_TOP) { const b = g('ev-more'); let all = false; b.hidden = false;
+      const label = () => { b.textContent = all ? `Show next ${EV_TOP}` : `View all ${D.events.length} events`; }; label();
+      b.addEventListener('click', () => { all = !all; g('events').querySelectorAll('tbody tr').forEach((tr, i) => { if (i >= EV_TOP) tr.hidden = !all; }); label(); }); } }
   // comparison
   const K = D.comparison;
   if (K && K.total_value) { g('compare-card').hidden = false; const tv = K.total_value;
@@ -321,7 +419,7 @@ SCRIPT = r"""
   F.help(g('holdings-card'), {lead: 'Every position, largest first. Sort by any column, filter by account, and click a row for details.',
     sections: topH ? [{title: `Unrealized gain or loss, using ${topH.symbol}`, html: F.flow([{label: 'value today', value: F.money(topH.market_value)}, {op: '−', label: 'what you paid', value: F.money(topH.cost_basis)}, {op: '=', label: 'unrealized', value: F.moneyS(topH.market_value - topH.cost_basis)}]) + '<p>Unrealized means on paper: nothing is taxed or locked in until you sell.</p>'}] : []});
   F.help(g('events-card'), {lead: 'Upcoming earnings reports and dividend dates for what you hold, and the next payment on each loan or card you recorded.',
-    sections: [{title: 'The three kinds of date', html: '<p>An earnings date is when the company reports results; prices often move more than usual around it. An ex-dividend date is the cutoff: own the shares before it to receive the next dividend. A payment date comes from the last statement you recorded; when that statement is older, its due date is carried forward one month at a time.</p>'}]});
+    sections: [{title: 'The three kinds of date', html: '<p>An earnings date is when the company reports results; prices often move more than usual around it. An ex-dividend date is the cutoff: own the shares before it to receive the next dividend. A fund has no announced date, so its date is marked expected: a year after the matching payment last year. A payment date comes from the last statement you recorded; when that statement is older, its due date is carried forward one month at a time.</p>'}]});
   if (K && K.total_value) F.help(g('compare-card'), {lead: 'How the total and each holding changed since the last saved snapshot.',
     sections: [{title: 'How the total moved', html: F.flow([{label: `on ${K.since}`, value: F.money(K.total_value.before)}, {op: '+', label: 'change', value: F.moneyS(K.total_value.delta)}, {op: '=', label: 'now', value: F.money(K.total_value.after)}]) + '<p>The change mixes market moves with any deposits, withdrawals or trades in between.</p>'}]});
   // flags
@@ -417,13 +515,20 @@ class _Parser(argparse.ArgumentParser):
 def build(snapshot: dict, summary: dict | None = None, history: dict | None = None) -> str:
     if not isinstance(snapshot, dict) or "totals" not in snapshot:
         raise InvalidInput("input must be a snapshot.py result (a JSON object with totals)")
+    chart = (summary or {}).get("chart")
+    if chart == "vs_market" and history is None:
+        raise InvalidInput("summary chart 'vs_market' needs --history: the index moves come from history_report.py")
     body = BODY.replace("{{SUMMARY}}", summary_card.card_html(summary))
+    script = SCRIPT
+    if chart:
+        body = CHART_CSS + body
+        script = SCRIPT + CHART_SCRIPT
     if history is None:
-        return page.render(TITLE, snapshot, body, SCRIPT)
+        return page.render(TITLE, snapshot, body, script)
     if not isinstance(history, dict) or not isinstance(history.get("series"), list):
         raise InvalidInput("history must be a history_report.py result (a JSON object with series)")
-    body = body.replace('<div class="tiles" id="tiles"></div>', '<div class="tiles" id="tiles"></div>\n' + PERF_CARD, 1)
-    return page.render(TITLE, {**snapshot, "history": history}, body, SCRIPT + PERF_SCRIPT)
+    body = body.replace('<div class="grid2">', PERF_CARD + '\n<div class="grid2">', 1)
+    return page.render(TITLE, {**snapshot, "history": history}, body, script + PERF_SCRIPT)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -439,7 +544,7 @@ def main(argv: list[str] | None = None) -> int:
             snapshot = json.loads(raw)
         except (OSError, json.JSONDecodeError) as exc:
             raise InvalidInput(f"could not read snapshot JSON: {exc}") from exc
-        summary = summary_card.load(ns.summary, TARGETS) if ns.summary else None
+        summary = summary_card.load(ns.summary, TARGETS, CHARTS) if ns.summary else None
         history = None
         if ns.history:
             try:

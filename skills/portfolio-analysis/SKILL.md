@@ -233,9 +233,10 @@ Every script prints JSON.
 
 ### The headline analysis
 
-A small card at the top of the page: a headline, "What stands out", "What to look into", and a folded "What this means for you". The file is `{"headline", "stands_out", "look_into", "for_you"}`, where `for_you` is a list such as `[{"topic": "Cash", "text": "..."}]`.
+A small card under the total tiles: a headline, "What stands out", "What to look into", a folded "What this means for you" and an optional chart to the right. The file is `{"headline", "stands_out", "look_into", "for_you", "chart"}`, where `for_you` is a list such as `[{"topic": "Cash", "text": "..."}]`.
 
 - Limits, which `render_brief.py` enforces: `headline` 20 words, `stands_out` 90 and `look_into` 90. `for_you` is up to five `{"topic", "text"}` points, each `topic` up to 4 words and each `text` up to 70. `for_you` is optional and the rest are required.
+- `chart` is optional, the one chart beside the text, picked to show the headline's point: `day_split` (stocks against funds on the day), `top_movers` (a few holdings made the day), `vs_market` (the day against the market; needs `--history`) or `mix` (where the money sits). Leave it out when none fits.
 - Links take the form `[Sectors](sec-card)`, in `look_into` only, to these ids: `headlines-card`, `accounts-card`, `alloc-card`, `sector-card`, `movers-card`, `holdings-card`, `events-card`, `compare-card`, `flags-section`.
 - Every number comes from this run's script output, quoted as the script gives it.
 - Lead with what is unusual today, not a tour of the page. Say plainly when nothing stands out.

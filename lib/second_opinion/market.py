@@ -752,6 +752,33 @@ def next_events(symbol: str, today: date | None = None) -> dict[str, str | None]
     return {"next_earnings": earnings[0] if earnings else None, "next_ex_dividend": ex_div if ex_div and ex_div >= floor else None}
 
 
+def expected_ex_dividend(ex_dates: list[str], today: date | None = None) -> str | None:
+    """A fund's expected next ex-dividend date from its own history; None when it has no pattern.
+
+    Funds have no Yahoo calendar entry, but they pay on a fixed yearly calendar, so the
+    expected date is the first ex-date in the last year that falls on or after the same
+    day a year ago, moved forward one year. A payer whose last ex-date is more than 400
+    days old has stopped and gets None. Only ISO ``YYYY-MM-DD`` strings are read.
+    """
+    today = today or datetime.now(timezone.utc).date()
+    days = sorted({d for d in (_parse_iso(x) for x in ex_dates) if d})
+    if not days or (today - days[-1]).days > 400:
+        return None
+    year_ago = today - timedelta(days=365)
+    for d in days:
+        if d >= year_ago:
+            nxt = d + timedelta(days=365)
+            return nxt.isoformat() if nxt >= today else None
+    return None
+
+
+def _parse_iso(v: Any) -> date | None:
+    try:
+        return date.fromisoformat(str(v)[:10])
+    except (TypeError, ValueError):
+        return None
+
+
 # --- dividend-income helpers -------------------------------------------------------
 
 
@@ -929,6 +956,25 @@ def _search_news(symbol: str, count: int) -> list[Any]:
     return out
 
 
+def _news_tickers(item: Any, c: dict) -> list[str]:
+    """The tickers Yahoo tagged a story with, subject first: search's ``relatedTickers`` or
+    ``Ticker.news``'s ``finance.stockTickers``."""
+    related = item.get("relatedTickers") if isinstance(item, dict) else None
+    if not isinstance(related, list):
+        fin = c.get("finance") if isinstance(c.get("finance"), dict) else {}
+        related = [t.get("symbol") for t in fin.get("stockTickers") or [] if isinstance(t, dict)]
+    return [str(t).upper() for t in related if t]
+
+
+def _about(symbol: str, item: Any, c: dict) -> bool:
+    """True when a story is about ``symbol``'s company, not one that merely mentions it."""
+    sym = symbol.upper()
+    tickers = _news_tickers(item, c)
+    if not tickers or tickers[0] == sym:
+        return True
+    return re.search(rf"(?<![A-Za-z0-9]){re.escape(sym)}(?![A-Za-z0-9])", str(c.get("title") or "")) is not None
+
+
 def recent_news(symbol: str, days: int = 7, limit: int = 3) -> list[dict[str, Any]]:
     """Up to ``limit`` Yahoo headlines for ``symbol`` published in the last ``days`` days, newest first.
 
@@ -941,6 +987,11 @@ def recent_news(symbol: str, days: int = 7, limit: int = 3) -> list[dict[str, An
     kept when tagged with the symbol or carrying no ticker field at all (an empty ticker list is a
     word match on the symbol and is dropped); its items carry no summary. Raises
     ``Ticker.news``'s error only when the search fails too.
+
+    A story must be about the company: Yahoo tags a story with every ticker it mentions and lists
+    the subject first, so a story about Intuit tagged INTU, HRB comes back for HRB. A story is kept
+    when its first ticker is the symbol or its title names the symbol as a word ("(HRB)"); one
+    carrying no tickers at all is kept, since nothing says it is about another company.
     """
     try:
         raw, failure = _ticker(symbol).news or [], None
@@ -948,7 +999,7 @@ def recent_news(symbol: str, days: int = 7, limit: int = 3) -> list[dict[str, An
         raw, failure = [], exc
     if not raw:
         try:
-            raw = _search_news(symbol, max(10, limit * 3))
+            raw = _search_news(symbol, max(20, limit * 6))
         except Exception:  # noqa: BLE001
             if failure is not None:
                 raise failure from None
@@ -969,6 +1020,8 @@ def recent_news(symbol: str, days: int = 7, limit: int = 3) -> list[dict[str, An
         except (TypeError, ValueError):
             continue
         if published < floor:
+            continue
+        if not _about(symbol, item, c):
             continue
         provider = c.get("provider") or {}
         link = (c.get("canonicalUrl") or c.get("clickThroughUrl") or {}) if isinstance(c.get("canonicalUrl") or c.get("clickThroughUrl"), dict) else {}

@@ -44,7 +44,10 @@ Input JSON contract (stdin)::
                                           # "proxy" names the ETF that move was borrowed from
       "sectors": {"AAPL": "Technology"},  # optional; missing symbol -> "Unknown"
       "events":  {"AAPL": {"next_earnings": "2026-10-01",
-                           "next_ex_dividend": "2026-09-10"}},         # optional
+                           "next_ex_dividend": "2026-09-10",
+                           "expected_ex_dividend": None}},             # optional; a fund's
+                                          # date estimated from last year's payments, used
+                                          # only when next_ex_dividend is null
       "history": {"AAPL": [{"date": "2026-08-01", "close": 90.0}, ...]},
                                           # optional; daily closes per symbol ->
                                           #   1w/1m change (symbol keys uppercased)
@@ -109,7 +112,9 @@ Output JSON contract (stdout)::
                                                        # change came from
       "top_holdings": first 10 of "positions",
       "concentration": {hhi, hhi_interpretation, top_5_concentration, largest_position,
-                        single_stock: {hhi, hhi_interpretation, weight, count, largest}
+                        single_stock: {hhi, hhi_interpretation, weight, count, largest,
+                                       day_change}  # day_change: the single stocks' summed
+                                                    # day change, null with no quote
                                                        # single_stock only with "quote_types":
                                                        # HHI over stock positions alone (funds and
                                                        # cash weigh zero); a position known to be
@@ -233,7 +238,9 @@ Output JSON contract (stdout)::
                                                        # even when its own quote type says
                                                        # EQUITY (e.g. SPYM)
       "movers": {"up": [...], "down": [...]},          # up to 3 each, by day_change_pct
-      "events": [{symbol, type, date}] | null,         # date asc; null unless given
+      "events": [{symbol, type, date}] | null,         # date asc; null unless given; an
+                                                       # expected fund ex-date adds
+                                                       # projected: true and a label
       "flags": [{code, message}]                       # EMPTY_PORTFOLIO, MISSING_PRICE,
                                                        # PARTIAL_QUOTES, CONCENTRATED,
                                                        # CASH_DRAG, MISSING_SECTOR (a single
@@ -839,7 +846,12 @@ def run_summary(params: dict) -> dict:
             stock_weights = [r["units"] * r["price"] / total_value for r in stock_rows]
             stock_hhi = round(sum(w**2 for w in stock_weights), 4)
             top_stock = max(stock_rows, key=lambda r: r["units"] * r["price"], default=None)
+            day_by_symbol = {e["symbol"]: e["day_change"] for e in positions}
+            stock_days = [day_by_symbol.get(r["symbol"]) for r in stock_rows]
             concentration["single_stock"] = {
+                "day_change": _money(sum(d for d in stock_days if d is not None))
+                if any(d is not None for d in stock_days)
+                else None,
                 "hhi": stock_hhi,
                 "hhi_interpretation": _hhi_label(stock_hhi),
                 "weight": _ratio(sum(stock_weights)),
@@ -1166,6 +1178,12 @@ def run_summary(params: dict) -> dict:
                     events.append(
                         {"symbol": str(symbol).upper(), "type": kind, "date": str(ev[key])}
                     )
+            if ev.get("expected_ex_dividend") and not ev.get("next_ex_dividend"):
+                events.append(
+                    {"symbol": str(symbol).upper(), "type": "ex_dividend",
+                     "date": str(ev["expected_ex_dividend"]), "projected": True,
+                     "label": "ex-dividend (expected, from last year's date)"}
+                )
         events.sort(key=lambda e: (e["date"], e["symbol"], e["type"]))
 
     # --- flags -----------------------------------------------------------------------

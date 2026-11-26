@@ -1,4 +1,4 @@
-"""EDGAR source: a fresh 10-K, 10-Q or 8-K is an alert; the quality screen's red flags are one notice per symbol."""
+"""EDGAR source: a fresh 10-K, 10-Q or 8-K is a notice; the quality screen's red flags, standing traits rather than news, are one info line per symbol."""
 from __future__ import annotations
 
 from datetime import date
@@ -55,12 +55,12 @@ def _symbol_headlines(sym: str, res: dict, today: date) -> list[dict]:
             answer, why = _eight_k_answer(items), WHY["FILING_8K"]
         else:
             answer, why = f"Filed {d.isoformat()}; risk-factor comparison pending", WHY["FILING_10"]
-        out.append(H.make(SKILL, "FILING", "alert", f"{sym} filed a {form} on {d.isoformat()}", symbol=sym, discriminator=f"{form}:{d.isoformat()}",
+        out.append(H.make(SKILL, "FILING", "notice", f"{sym} filed a {form} on {d.isoformat()}", symbol=sym, discriminator=f"{form}:{d.isoformat()}",
                           detail="", as_of=d.isoformat(), ask=_ASK[form].format(s=sym), url=url, answer=answer, why=why))
     flagged = sorted({str(f.get("code")): str(f.get("message") or "") for f in res.get("flags") or [] if f.get("code") in RED_FLAGS}.items())
     if flagged:
         codes = ",".join(c for c, _ in flagged)
-        out.append(H.make(SKILL, "RED_FLAGS", "notice", f"{sym} fundamentals flag {', '.join(c for c, _ in flagged)}", symbol=sym, discriminator=codes,
+        out.append(H.make(SKILL, "RED_FLAGS", "info", f"{sym} fundamentals flag {', '.join(c for c, _ in flagged)}", symbol=sym, discriminator=codes,
                           detail="", as_of=str(today), ask=f"What does {sym}'s quality checklist show?",
                           url=H.edgar_url(sym), answer="; ".join(m for _, m in flagged), why=WHY["RED_FLAGS"]))
     return out

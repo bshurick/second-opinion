@@ -22,7 +22,9 @@ bucket}}) for the page's per-holding detail panel.
              per mover, at most six symbols, three dated stories each from the last 7 days,
              under ``news``; ``sources.news`` is "yahoo"; a failure adds NEWS_UNAVAILABLE).
 --events     also fetch next earnings / ex-dividend date per symbol (one Yahoo
-             call per symbol, so slower)
+             call per symbol, so slower). An ETF or mutual fund has no Yahoo calendar
+             date, so one batched dividend-history call gives it an expected ex-date:
+             a year after the first payment on or after this day last year
 --no-quotes  skip the Yahoo quote and history fetches; prices are the broker's
              last values and the 1w/1m change columns are omitted
 Every run over all accounts (no --account) writes ``portfolio-last-check.json`` in the plugin
@@ -476,6 +478,18 @@ def build(args: list[str]) -> dict:
     if ns.events and symbols:
         events = {s: market.next_events(s) for s in symbols}
         sources["events"] = "yahoo"
+        # funds have no Yahoo calendar: expect the ex-date a year after the matching payment
+        funds = [s for s in symbols if not events[s].get("next_ex_dividend")
+                 and str(quote_types.get(s) or "").upper() in ("ETF", "MUTUALFUND")]
+        if funds:
+            try:
+                paid = market.dividend_histories(funds, years=2)
+            except Exception:  # noqa: BLE001 — an expected date is additive; leave it out on failure
+                paid = {}
+            for s in funds:
+                d = market.expected_ex_dividend([str(r.get("date")) for r in paid.get(s.upper()) or []])
+                if d:
+                    events[s]["expected_ex_dividend"] = d
 
     params: dict = {"accounts": rows, "quotes": quotes, "sectors": sectors, "events": events}
     if quote_types:

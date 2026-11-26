@@ -50,11 +50,12 @@ Its output is `summary.py`'s contract plus `as_of`, `sources` and `news`. The in
 - rebalancing breach check
 - tax report
 - dividends with yield context
-- risk stress
-- journal review
-- debt picture: the next payment on each recorded loan or card. Statements are typed in by hand and often weeks old, so the statement's due date rolls forward a month at a time to the next date on or after today. No payment shows as past due. A payment due within 7 days is an alert, and every account's next payment joins `events` as a `payment` row whose `label` gives the minimum and says when the date came from the monthly schedule.
-- spending changes and recurring
-- ledger summary
+- risk stress, and the journal review
+- expected fund ex-dividend dates: Yahoo's calendar has no ex-dividend date for an ETF or mutual fund, so `snapshot.py --events` asks one batched dividend history for those funds and expects the next ex-date a year after the first payment on or after this day last year. A fund whose last payment is over 400 days old gets none. The row carries `projected: true` and the label "ex-dividend (expected, from last year's date)", and a 7-day headline reads "is expected to go ex-dividend around". Money-market funds are left out.
+- debt picture: the next payment on each recorded loan or card. Statements are typed in by hand and often weeks old, so the statement's due date rolls forward a month at a time to the next date on or after today. No payment shows as past due. A payment due within 3 days is an alert and within 7 days a notice, and every account's next payment joins `events` as a `payment` row whose `label` gives the minimum and says when the date came from the monthly schedule.
+- spending changes and recurring charges, and the ledger summary
+
+Severity follows one rule. An alert needs a decision within days or marks a real loss or risk: a watchlist rule or journal stop that fired, a dividend cut, a band breach, a payment due within 3 days, a wash sale from the last 30 days that disallows $10 or more (lots sold the same day count as one sale), an index move of 2% or more, a VIX at or above the 95th percentile of its year. A notice is news that changes the picture: earnings within 7 days, a new filing, other market readings, risk, dividend and spending changes. Info is routine or standing: ex-dividend dates (the dividend arrives on its own), fundamentals flags, smaller or older wash sales, the day's market line.
 
 Source-specific limits:
 
@@ -88,13 +89,12 @@ After the sources run, an enrichment phase fills in `answer`:
 
 `render.py` turns a saved `snapshot.py` or `brief.py` result into one self-contained HTML page for the Artifact tool:
 
-- a headline analysis card at the top when `--summary` is given: text the model wrote, limited to 20 words for the headline, 90 for each of the two paragraphs and 70 for the fold (`second_opinion/summary_card.py`). It is the one part of the page whose numbers are not rendered from the JSON
-- a one-line intro with a "How to read this page" walkthrough
-- hover explanations for every financial term, with links to more
-- stat tiles
+- a one-line intro with a "How to read this page" walkthrough, and hover explanations for every financial term
+- stat tiles for the totals, at the top
+- a headline analysis card under the tiles when `--summary` is given: text the model wrote, limited to 20 words for the headline, 90 for each of the two paragraphs and 70 for the fold (`second_opinion/summary_card.py`). It is the one part of the page whose numbers are not rendered from the JSON. When the summary names a `chart`, the chart sits to the right of the text (below it on a narrow screen), drawn from the snapshot: `day_split` (the single stocks' summed day change, `concentration.single_stock.day_change`, against the rest of the day), `top_movers` (the four largest dollar gains and losses), `vs_market` (the day's percent move against SPY, QQQ and DIA from the history's last two closes; needs `--history`) or `mix` (the allocation buckets as one bar)
 - accounts
 - an allocation donut by bucket (bonds, US equities, international equities, cash, other), with sector exposure looked through ETFs and mutual funds
 - a sortable holdings table with account filter and search; each row opens a detail panel (what the holding is, one-year price chart, links to the quote page, SEC filings and the company site)
-- movers, events, the comparison block, flags
+- movers on one scale from the largest gain to the largest loss, then events, the comparison block and flags
 - a Headlines card with a collapsed coverage table when the input came from `brief.py`
 - light and dark themes; no external scripts

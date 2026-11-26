@@ -47,7 +47,7 @@ def data_dir(monkeypatch, tmp_path):
 
 @pytest.fixture
 def yahoo(monkeypatch):
-    calls: dict[str, list] = {"day_changes": [], "close_histories": [], "sectors": [], "next_events": []}
+    calls: dict[str, list] = {"day_changes": [], "close_histories": [], "sectors": [], "next_events": [], "dividend_histories": []}
 
     def day_changes(symbols, hub=None):
         calls["day_changes"].append(list(symbols))
@@ -80,8 +80,13 @@ def yahoo(monkeypatch):
         calls.setdefault("recent_news", []).append(symbol)
         return [{"title": f"{symbol} story", "publisher": "Wire", "published": "2026-09-13T12:00+00:00", "url": "https://example.com/a", "summary": None}]
 
+    def dividend_histories(symbols, years=5):
+        calls["dividend_histories"].append(list(symbols))
+        return {s.upper(): [] for s in symbols}
+
     monkeypatch.setattr(market, "next_events", next_events)
     monkeypatch.setattr(market, "recent_news", recent_news)
+    monkeypatch.setattr(market, "dividend_histories", dividend_histories)
     return calls
 
 
@@ -187,6 +192,29 @@ def test_snapshot_events_flag(sdk, yahoo, capsys) -> None:
     assert rc == 0
     assert out["events"] == [{"symbol": "AAPL", "type": "earnings", "date": "2026-10-20"}, {"symbol": "MSFT", "type": "earnings", "date": "2026-10-20"}]
     assert sorted(yahoo["next_events"]) == ["AAPL", "MSFT"] and out["sources"]["events"] == "yahoo"
+    # MSFT is an ETF in this fixture with no calendar ex-date, so one batched history call asks for it alone
+    assert yahoo["dividend_histories"] == [["MSFT"]]
+
+
+def test_snapshot_events_expected_fund_ex_dividend(sdk, yahoo, monkeypatch, capsys) -> None:
+    from datetime import date, timedelta
+    a_year_ago_plus = (date.today() - timedelta(days=330)).isoformat()
+    monkeypatch.setattr(market, "dividend_histories",
+                        lambda syms, years=5: {"MSFT": [{"date": a_year_ago_plus, "dividend": 0.2}]})
+    rc, out = run_json(load_script("portfolio-analysis/scripts/snapshot.py"), ["--events"], capsys)
+    assert rc == 0
+    expected = (date.fromisoformat(a_year_ago_plus) + timedelta(days=365)).isoformat()
+    row = next(e for e in out["events"] if e["type"] == "ex_dividend")
+    assert row == {"symbol": "MSFT", "type": "ex_dividend", "date": expected, "projected": True,
+                   "label": "ex-dividend (expected, from last year's date)"}
+
+
+def test_snapshot_events_fund_history_failure_leaves_it_out(sdk, yahoo, monkeypatch, capsys) -> None:
+    def boom(syms, years=5):
+        raise RuntimeError("yahoo down")
+    monkeypatch.setattr(market, "dividend_histories", boom)
+    rc, out = run_json(load_script("portfolio-analysis/scripts/snapshot.py"), ["--events"], capsys)
+    assert rc == 0 and all(e["type"] == "earnings" for e in out["events"])
 
 
 def test_snapshot_no_quotes_flag_skips_yahoo_quotes(sdk, yahoo, capsys) -> None:
@@ -700,6 +728,7 @@ def test_summary_concentration_ignores_funds_when_classes_known(capsys, monkeypa
     assert c["hhi"] > 0.18 and c["largest_position"] == {"symbol": "BND", "weight": round(1000 / 1015, 4), "asset_class": "fund"}
     ss = c["single_stock"]
     assert ss["count"] == 2 and ss["largest"]["symbol"] == "AAA" and ss["hhi"] < 0.01 and ss["hhi_interpretation"] == "diversified"
+    assert ss["day_change"] is None  # no previous closes, so no day change to sum
     assert not any(f["code"] == "CONCENTRATED" for f in out["flags"])
     payload["accounts"][0]["positions"][1]["units"] = 40  # AAA becomes 400 of 1405 = 28%
     payload["prices"]["AAA"] = {"price": 10.0}
@@ -1924,11 +1953,11 @@ def _render_with_summary(tmp_path, capsys, summary):
     return rc, res, out
 
 
-def test_snapshot_page_shows_the_card_above_the_tiles(capsys, tmp_path) -> None:
+def test_snapshot_page_shows_the_tiles_above_the_card(capsys, tmp_path) -> None:
     rc, _, out = _render_with_summary(tmp_path, capsys, SUMMARY)
     assert rc == 0
     html = out.read_text()
-    assert html.index('id="summary-card"') < html.index('id="headlines-card"') < html.index('id="tiles"')
+    assert html.index('id="tiles"') < html.index('id="summary-card"') < html.index('id="headlines-card"')
     assert "Bonds cushion a down day" in html
     assert 'data-summary-target="flags-section"' in html
     assert 'id="flags-section"' in html
@@ -2029,3 +2058,102 @@ def test_partial_read_keeps_the_previous_record(sdk, yahoo, data_dir, capsys, mo
     rec = _read(capsys, "--partial")
     assert rec["partial"] is True
     assert rec["arrivals"] == before["arrivals"] and rec["cash_by_account"] == before["cash_by_account"]
+
+
+def test_single_stock_day_change_sums_the_stocks_only(monkeypatch, capsys) -> None:
+    import io
+    import sys
+    payload = {
+        "accounts": [{"account_id": "a", "cash": 0.0, "positions": [
+            {"symbol": "BND", "units": 100, "price": 10.0},
+            {"symbol": "AAA", "units": 2, "price": 10.0},
+            {"symbol": "BBB", "units": 1, "price": 5.0},
+        ]}],
+        "quotes": {"BND": {"price": 10.0, "previous_close": 9.0}, "AAA": {"price": 10.0, "previous_close": 11.0},
+                   "BBB": {"price": 5.0, "previous_close": 4.0}},
+        "quote_types": {"BND": "ETF", "AAA": "EQUITY", "BBB": "EQUITY"},
+    }
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+    load_script("portfolio-analysis/scripts/summary.py").main()
+    out = json.loads(capsys.readouterr().out)
+    assert out["concentration"]["single_stock"]["day_change"] == -1.0  # AAA -2, BBB +1; BND's +100 left out
+    assert out["totals"]["day_change"] == 99.0
+
+
+CHART_SNAP = {"as_of": "2026-10-31T20:00:00+00:00",
+              "totals": {"total_value": 100.0, "day_change": 3.0, "day_change_pct": 0.03},
+              "concentration": {"single_stock": {"day_change": 5.0, "count": 2}},
+              "positions": [{"symbol": "AAA", "name": "A", "day_change": 5.0, "day_change_pct": 0.05},
+                            {"symbol": "BND", "name": "B", "day_change": -2.0, "day_change_pct": -0.01}],
+              "flags": []}
+
+
+def _render_chart(tmp_path, capsys, chart, history=None):
+    src = tmp_path / "snap.json"
+    src.write_text(json.dumps(CHART_SNAP))
+    card = tmp_path / "summary.json"
+    card.write_text(json.dumps({**SUMMARY, "chart": chart}))
+    out = tmp_path / "page.html"
+    args = ["--in", str(src), "--out", str(out), "--summary", str(card)]
+    if history is not None:
+        (tmp_path / "hist.json").write_text(json.dumps(history))
+        args += ["--history", str(tmp_path / "hist.json")]
+    rc, res = run_json(load_script("portfolio-analysis/scripts/render_brief.py"), args, capsys)
+    return rc, res, out
+
+
+@pytest.mark.parametrize("chart", ["day_split", "top_movers", "mix"])
+def test_summary_chart_sits_beside_the_text(capsys, tmp_path, chart) -> None:
+    rc, _, out = _render_chart(tmp_path, capsys, chart)
+    assert rc == 0
+    html = out.read_text()
+    assert f'data-chart="{chart}"' in html and 'class="sum-grid"' in html and ".sum-chart{" in html
+    assert html.index('id="sum-chart"') < html.index('</section>', html.index('id="summary-card"'))
+
+
+def test_summary_chart_unknown_name_is_rejected(capsys, tmp_path) -> None:
+    rc, res, out = _render_chart(tmp_path, capsys, "pie")
+    assert rc == 2 and "'pie' is not one of" in res["error"] and not out.exists()
+
+
+def test_summary_chart_vs_market_needs_history(capsys, tmp_path) -> None:
+    rc, res, out = _render_chart(tmp_path, capsys, "vs_market")
+    assert rc == 2 and "needs --history" in res["error"] and not out.exists()
+    rc, _, out = _render_chart(tmp_path, capsys, "vs_market", {"series": [], "benchmarks": []})
+    assert rc == 0 and 'data-chart="vs_market"' in out.read_text()
+
+
+def test_summary_without_chart_has_no_chart_markup(capsys, tmp_path) -> None:
+    rc, _, out = _render_with_summary(tmp_path, capsys, SUMMARY)
+    html = out.read_text()
+    assert rc == 0 and "sum-chart" not in html and "sum-grid" not in html
+
+
+@requires_chrome
+def test_holdings_and_events_show_a_short_list_with_view_all(tmp_path, capsys) -> None:
+    import re
+    import subprocess
+
+    from page_dom import chrome_cmd
+    positions = [{"symbol": f"S{i:02d}", "name": f"Stock {i}", "units": 1, "price": 100.0 - i, "market_value": 100.0 - i,
+                  "weight": 0.01, "accounts": ["a"]} for i in range(14)]
+    events = [{"symbol": f"S{i:02d}", "type": "earnings", "date": f"2026-12-{i + 1:02d}"} for i in range(11)]
+    snap = {"as_of": "2026-11-25T20:00:00+00:00", "totals": {"total_value": 1000.0}, "accounts": [{"account_id": "a", "name": "A"}],
+            "positions": positions, "events": events, "flags": []}
+    src, out = tmp_path / "snap.json", tmp_path / "page.html"
+    src.write_text(json.dumps(snap))
+    rc, res = run_json(load_script("portfolio-analysis/scripts/render_brief.py"), ["--in", str(src), "--out", str(out)], capsys)
+    assert rc == 0, res
+    doc = tmp_path / "doc.html"
+    doc.write_text(f'<!doctype html><html><head><meta charset="utf-8"></head><body>{out.read_text()}</body></html>')
+    dom = subprocess.run([*chrome_cmd(tmp_path, budget_ms=3000), "--dump-dom", doc.as_uri()], capture_output=True, text=True, timeout=90).stdout
+
+    def rows(table_id):
+        body = re.search(rf'id="{table_id}".*?<tbody>(.*?)</tbody>', dom, re.S).group(1)
+        trs = re.findall(r"<tr[^>]*>", body)
+        return len(trs), sum("hidden" in t for t in trs)
+
+    assert rows("holdings") == (14, 4)
+    assert rows("events") == (11, 3)
+    assert re.search(r'id="hold-more"[^>]*>View all 14 holdings<', dom) and re.search(r'id="ev-more"[^>]*>View all 11 events<', dom)
+    assert re.search(r'id="count"[^>]*>top 10 of 14<', dom)

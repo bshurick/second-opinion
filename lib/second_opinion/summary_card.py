@@ -12,6 +12,10 @@ which ids exist.
 ``for_you`` is the one part that goes deep, because it sits folded: a list of one to five
 ``{"topic", "text"}`` points, each topic a short label and each text its own paragraph. A plain
 string is still read as one unlabelled paragraph.
+
+``chart`` is optional: the name of one chart the page draws beside the text. A page declares
+which charts it offers by passing ``charts`` to ``load``; a page that passes none rejects the key,
+and a card with no chart is text alone.
 """
 from __future__ import annotations
 
@@ -92,7 +96,7 @@ def _check_for_you(value: object, targets: set[str]) -> None:
             raise InvalidInput(str(exc).replace("summary for_you", f"summary for_you[{i}] text", 1)) from exc
 
 
-def load(path: str, targets: Iterable[str]) -> dict:
+def load(path: str, targets: Iterable[str], charts: Iterable[str] = ()) -> dict:
     """Read and validate a summary file. Raises InvalidInput naming the rule it breaks."""
     try:
         summary = json.loads(Path(path).read_text())
@@ -102,7 +106,13 @@ def load(path: str, targets: Iterable[str]) -> dict:
         raise InvalidInput(f"summary file {path} is not valid JSON: {exc}") from exc
     if not isinstance(summary, dict):
         raise InvalidInput(f"summary file {path} must hold a JSON object")
-    unknown = sorted(set(summary) - set(WORD_LIMITS))
+    offered = sorted(set(charts))
+    if "chart" in summary:
+        if not offered:
+            raise InvalidInput("summary chart is not offered on this page")
+        if summary["chart"] not in offered:
+            raise InvalidInput(f"summary chart {summary['chart']!r} is not one of: {', '.join(offered)}")
+    unknown = sorted(set(summary) - set(WORD_LIMITS) - {"chart"})
     if unknown:
         raise InvalidInput(f"summary has unknown keys: {', '.join(unknown)}")
     for field in REQUIRED:
@@ -110,6 +120,8 @@ def load(path: str, targets: Iterable[str]) -> dict:
             raise InvalidInput(f"summary is missing {field}")
     allowed = set(targets)
     for field, value in summary.items():
+        if field == "chart":
+            continue
         if field == "for_you":
             _check_for_you(value, allowed)
         else:
@@ -152,13 +164,22 @@ def card_html(summary: dict | None) -> str:
         if for_you
         else ""
     )
-    return (
-        '<section class="card summary-card" data-help="none" id="summary-card">'
+    text = (
         f'<p class="summary-head">{html.escape(summary["headline"])}</p>'
         f'<p><span class="summary-label">What stands out</span>{html.escape(summary["stands_out"])}</p>'
         f'<p><span class="summary-label">What to look into</span>{_with_links(summary["look_into"])}</p>'
-        f"{fold}</section>"
+        f"{fold}"
     )
+    chart = summary.get("chart")
+    if chart:
+        text = (
+            f'<div class="sum-grid"><div class="sum-text">{text}</div>'
+            f'<figure class="sum-chart" id="sum-chart" data-chart="{html.escape(chart, quote=True)}">'
+            '<figcaption class="sc-title" id="sc-title"></figcaption><div id="sc-body"></div>'
+            '<p class="sc-note" id="sc-note"></p></figure></div>'
+        )
+    return f'<section class="card summary-card" data-help="none" id="summary-card">{text}</section>'
+
 
 
 def full_read_today(now: datetime | None = None) -> bool:

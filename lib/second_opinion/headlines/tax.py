@@ -1,14 +1,27 @@
-"""Tax source: wash sales and lots about to turn long-term are alerts; sizeable harvest candidates are notices."""
+"""Tax source: a recent wash sale that disallowed a loss is an alert, an older or zero one info; lots about
+to turn long-term and sizeable harvest candidates are notices."""
 from __future__ import annotations
+
+from datetime import date
 
 from second_opinion import headlines as H
 
 SKILL = "tax-aware"
 LONG_TERM_WINDOW_DAYS = 30
+WASH_ALERT_DAYS = 30  # a wash sale sold this recently can still change; older ones are history
+WASH_ALERT_MIN = 10.0  # a disallowed loss under this is a rounding residue, not worth an alert
 HARVEST_MIN_LOSS = 1000.0
 WHY = {"WASH_SALE": "A loss is disallowed when the same security is bought within 30 days of the sale; the loss is added to the new lot's cost basis.",
        "NEAR_LONG_TERM": "Gains on lots held over a year are taxed at the lower long-term rate.",
        "HARVEST": "Selling a losing lot realizes a loss that offsets gains or up to $3,000 of income."}
+
+
+def _wash_severity(sell_date: str, disallowed: float, today: date) -> str:
+    try:
+        age = (today - date.fromisoformat(sell_date[:10])).days
+    except ValueError:
+        return "alert"
+    return "alert" if disallowed >= WASH_ALERT_MIN and age <= WASH_ALERT_DAYS else "info"
 
 
 def extract(results: dict, ctx: dict) -> list[dict]:
@@ -18,15 +31,21 @@ def extract(results: dict, ctx: dict) -> list[dict]:
 
     # Use realized list if available, otherwise fallback to flags
     if "realized" in res:
-        realized_washes = [r for r in (res.get("realized") or []) if r.get("wash_sale")]
-        realized_washes.sort(key=lambda r: (str(r.get("sell_date") or ""), str(r.get("symbol") or "").upper()))
-        for r in realized_washes:
-            sym = str(r.get("symbol") or "").upper()
-            sell_date = str(r.get("sell_date") or "")
-            disallowed = float(r.get("disallowed") or 0.0)
-            wash_buy_date = str(r.get("wash_buy_date") or "")
+        # one headline per symbol and sale date: lots sold together are one sale
+        merged: dict[tuple[str, str], dict] = {}
+        for r in res.get("realized") or []:
+            if not r.get("wash_sale"):
+                continue
+            k = (str(r.get("sell_date") or ""), str(r.get("symbol") or "").upper())
+            m = merged.setdefault(k, {"disallowed": 0.0, "buys": []})
+            m["disallowed"] += float(r.get("disallowed") or 0.0)
+            if r.get("wash_buy_date") and str(r["wash_buy_date"]) not in m["buys"]:
+                m["buys"].append(str(r["wash_buy_date"]))
+        for (sell_date, sym), m in sorted(merged.items()):
+            disallowed = m["disallowed"]
+            wash_buy_date = ", ".join(m["buys"])
             detail = f"repurchased {wash_buy_date}; the disallowed amount is added to that lot's basis"
-            out.append(H.make(SKILL, "WASH_SALE", "alert",
+            out.append(H.make(SKILL, "WASH_SALE", _wash_severity(sell_date, disallowed, ctx["today"]),
                              f"{sym} sold {sell_date}: {H.money(disallowed)} of loss disallowed as a wash sale",
                              symbol=sym, discriminator=sell_date,
                              detail=detail,
@@ -59,7 +78,7 @@ def extract(results: dict, ctx: dict) -> list[dict]:
             answer = f"Tax if sold now {H.money(tax_if_sold)} vs {H.money(tax_if_sold_long)} after {when} (difference {H.money(diff)})"
         else:
             answer = ""
-        out.append(H.make(SKILL, "NEAR_LONG_TERM", "alert", f"{sym} lot turns long-term on {when} ({int(lot['days_to_long_term'])} days)", symbol=sym,
+        out.append(H.make(SKILL, "NEAR_LONG_TERM", "notice", f"{sym} lot turns long-term on {when} ({int(lot['days_to_long_term'])} days)", symbol=sym,
                           discriminator=when, detail=f"{lot.get('units')} units bought {lot.get('buy_date')}, unrealized {'-' if unreal < 0 else ''}{H.money(unreal)}",
                           as_of=today, ask=f"Which lots of {sym} are near long-term?",
                           url=H.yahoo_url(sym), answer=answer, why=WHY["NEAR_LONG_TERM"]))

@@ -67,7 +67,7 @@ def test_tax_wash_sale_lots_near_long_term_and_harvest_candidates() -> None:
     assert hs[0]["why"] == ("A loss is disallowed when the same security is bought within 30 days of the sale; "
                              "the loss is added to the new lot's cost basis.")
     assert hs[1]["severity"] == "alert" and hs[1]["title"] == "AAPL sold 2026-09-03: $310.00 of loss disallowed as a wash sale"
-    assert hs[2]["severity"] == "alert" and hs[2]["title"] == "PEP lot turns long-term on 2026-10-02 (18 days)"
+    assert hs[2]["severity"] == "notice" and hs[2]["title"] == "PEP lot turns long-term on 2026-10-02 (18 days)"
     assert hs[2]["detail"] == "142 units bought 2025-10-02, unrealized $1,240.00" and hs[2]["ask"] == "Which lots of PEP are near long-term?"
     assert hs[2]["url"] == "https://finance.yahoo.com/quote/PEP"
     assert hs[2]["answer"] == "Tax if sold now $372.00 vs $186.00 after 2026-10-02 (difference $186.00)"
@@ -122,3 +122,20 @@ def test_rebalancing_source_skips_on_corrupt_settings(monkeypatch, tmp_path) -> 
     monkeypatch.setenv("SECOND_OPINION_DATA", str(tmp_path))
     (tmp_path / "settings.json").write_text("{bad")
     assert _rebalancing_ready()({"data_dir": tmp_path}) == "settings.json is unreadable"
+
+
+def test_tax_wash_sale_older_than_30_days_or_zero_is_info() -> None:
+    from datetime import date
+
+    from second_opinion.headlines import tax as TX
+    res = {"main": {"realized": [
+        {"symbol": "OLD", "sell_date": "2026-01-27", "disallowed": 50.0, "wash_sale": True, "wash_buy_date": "2025-12-31"},
+        {"symbol": "ZERO", "sell_date": "2026-09-10", "disallowed": 0.0, "wash_sale": True, "wash_buy_date": "2026-09-01"},
+        {"symbol": "PENNY", "sell_date": "2026-09-10", "disallowed": 0.13, "wash_sale": True, "wash_buy_date": "2026-09-01"},
+        {"symbol": "NEW", "sell_date": "2026-09-10", "disallowed": 6.0, "wash_sale": True, "wash_buy_date": "2026-09-01"},
+        {"symbol": "NEW", "sell_date": "2026-09-10", "disallowed": 5.0, "wash_sale": True, "wash_buy_date": "2026-09-03"}]}}
+    hs = TX.extract(res, {"today": date(2026, 9, 14)})
+    assert {h["symbol"]: h["severity"] for h in hs} == {"OLD": "info", "ZERO": "info", "PENNY": "info", "NEW": "alert"}
+    new = [h for h in hs if h["symbol"] == "NEW"]
+    assert len(new) == 1 and new[0]["title"] == "NEW sold 2026-09-10: $11.00 of loss disallowed as a wash sale"
+    assert new[0]["answer"].startswith("repurchased 2026-09-01, 2026-09-03;")

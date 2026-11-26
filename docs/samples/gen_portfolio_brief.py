@@ -122,7 +122,8 @@ params = {
     ],
     "quotes": {s: {"price": SEC[s][1], "previous_close": HIST[s][-2]} for s in SEC},
     "sectors": {s: (INFO[s][3] if INFO[s][0] == "EQUITY" else "ETF") for s in SEC},
-    "events": {"SCHD": {"next_ex_dividend": "2026-09-21"}, "COST": {"next_earnings": "2026-09-22"}},
+    "events": {"SCHD": {"next_ex_dividend": "2026-09-21"}, "COST": {"next_earnings": "2026-09-22"},
+               "BND": {"next_ex_dividend": None, "expected_ex_dividend": "2026-10-01"}},
     "history": {s: [{"date": d.isoformat(), "close": round(c, 4)} for d, c in zip(DATES, HIST[s])] for s in SEC},
     "asset_info": {
         s: {"name": SEC[s][0], "quote_type": INFO[s][0], "category": INFO[s][1], "country": INFO[s][2],
@@ -207,7 +208,7 @@ headlines = [
      "ask": "What on my watchlist moved?", "url": "https://finance.yahoo.com/quote/MSFT",
      "answer": "Now 505.00; rule price_below at 510.0; -3.2% since added, 8.4% below the 52-week high",
      "why": "A price rule you set on your watchlist fired on today's quote."},
-    {"key": "portfolio-analysis:EARNINGS:COST:2026-09-22", "code": "EARNINGS", "skill": "portfolio-analysis", "severity": "alert", "symbol": "COST",
+    {"key": "portfolio-analysis:EARNINGS:COST:2026-09-22", "code": "EARNINGS", "skill": "portfolio-analysis", "severity": "notice", "symbol": "COST",
      "title": "COST reports earnings on 2026-09-22", "detail": "", "as_of": TODAY_S, "status": "new",
      "ask": "What is COST's expected move through earnings?", "url": "https://finance.yahoo.com/quote/COST",
      "answer": "Options price a ±$38.43 (±4.2%) move by 2026-09-25 (ATM IV 27%)",
@@ -220,13 +221,16 @@ headlines = [
     {"key": "market-analysis:DAY:-:2026-09-15", "code": "DAY", "skill": "market-analysis", "severity": "info", "symbol": None,
      "title": "S&P 500 +0.5% · Nasdaq +0.8% · 10y 4.12% · VIX 15.8", "detail": "", "as_of": TODAY_S, "status": "new",
      "ask": "How is the market positioned this week?", "url": "", "answer": "", "why": ""},
-    {"key": "portfolio-analysis:EX_DIVIDEND:SCHD:2026-09-21", "code": "EX_DIVIDEND", "skill": "portfolio-analysis", "severity": "alert", "symbol": "SCHD",
+    {"key": "portfolio-analysis:EX_DIVIDEND:SCHD:2026-09-21", "code": "EX_DIVIDEND", "skill": "portfolio-analysis", "severity": "info", "symbol": "SCHD",
      "title": "SCHD goes ex-dividend on 2026-09-21", "detail": "", "as_of": TODAY_S, "status": "still",
      "ask": "What is SCHD's next dividend worth to me?", "url": "https://finance.yahoo.com/quote/SCHD",
      "answer": "About $104.00 for your 400 shares (last $0.2600 per share)",
      "why": "You must hold the shares before the ex-dividend date to receive the next payment."},
     rebalancing_headline,
 ]
+# the brief's own order: new first, then alert, notice, info, then source order
+_SOURCES = ["watchlist", "market-analysis", "portfolio-analysis", "portfolio-plan"]
+headlines.sort(key=lambda h: (h["status"] != "new", ["alert", "notice", "info"].index(h["severity"]), _SOURCES.index(h["skill"])))
 
 coverage = [
     {"skill": "watchlist", "script": "scripts/watchlist.py", "status": "ok", "reason": "", "hint": "", "seconds": 3.1, "headlines": 1},

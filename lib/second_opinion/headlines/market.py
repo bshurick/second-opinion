@@ -5,7 +5,9 @@ from second_opinion import headlines as H
 
 SKILL = "market-analysis"
 INDEX_MOVE_PCT = 1.0          # indices[].day_change_pct is in percent
+INDEX_ALERT_PCT = 2.0         # a move this large is an alert, not a notice
 VIX_PERCENTILE = 0.80         # vix_percentile_1y is a 0-1 fraction
+VIX_ALERT_PERCENTILE = 0.95   # at or above this the VIX reading is an alert
 BREADTH_WEAK = 0.30
 BREADTH_STRONG = 0.80
 CFTC_HIGH = 95.0              # classes[].percentile is 0-100 over the contract's own weeks window (flows.py --weeks defaults to 52; sources.py runs it with no --weeks)
@@ -64,14 +66,15 @@ def _from_indices(res: dict, today: str) -> list[dict]:
             week = _num((r or {}).get("week_change_pct"))
             last = _num((r or {}).get("last"))
             answer = f"{name} {last:,.2f}, {week:+.1f}% on the week" if last is not None and week is not None else ""
-            out.append(H.make(SKILL, "INDEX_MOVE", "notice", f"{name} {verb} {abs(chg):.1f}% today", discriminator=f"{name}:{today}",
+            sev = "alert" if abs(chg) >= INDEX_ALERT_PCT else "notice"
+            out.append(H.make(SKILL, "INDEX_MOVE", sev, f"{name} {verb} {abs(chg):.1f}% today", discriminator=f"{name}:{today}",
                               detail=f"last {r.get('last')}", as_of=today, ask=ASK, answer=answer, why=WHY["INDEX_MOVE"]))
     pct = _num(res.get("vix_percentile_1y"))
     vix_last = _num((vix or {}).get("last"))
     if pct is not None and pct >= VIX_PERCENTILE:
         p = int(round(pct * 100))
         vix_answer = f"VIX {vix_last:.1f} versus a one-year range; above the 80th percentile" if vix_last is not None else ""
-        out.append(H.make(SKILL, "VIX_HIGH", "notice", f"VIX {vix_last:.1f} is at the {_ordinal(p)} percentile of the last year" if vix_last is not None
+        out.append(H.make(SKILL, "VIX_HIGH", "alert" if pct >= VIX_ALERT_PERCENTILE else "notice", f"VIX {vix_last:.1f} is at the {_ordinal(p)} percentile of the last year" if vix_last is not None
                           else f"VIX is at the {_ordinal(p)} percentile of the last year", discriminator=today, as_of=today, ask=ASK,
                           answer=vix_answer, why=WHY["VIX_HIGH"]))
     spread = _num((res.get("spreads") or {}).get("10y_13w"))
@@ -158,6 +161,7 @@ def extract(results: dict, ctx: dict) -> list[dict]:
     today = str(ctx["today"])
     indices = results.get("indices") or {}
     flows = results.get("flows") or {}
-    notices = [h for h in _from_indices(indices, today) if h["severity"] == "notice"]
-    info = [h for h in _from_indices(indices, today) if h["severity"] == "info"]
-    return notices + _from_flows(flows, today) + info
+    from_indices = _from_indices(indices, today)
+    first = [h for h in from_indices if h["severity"] != "info"]  # alerts and notices, in reading order
+    info = [h for h in from_indices if h["severity"] == "info"]
+    return first + _from_flows(flows, today) + info

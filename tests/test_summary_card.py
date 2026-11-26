@@ -260,3 +260,18 @@ def test_card_html_draws_one_labelled_paragraph_per_point():
     assert fold.count("<p>") == 3 and "<details open" not in fold
     assert '<span class="summary-label">Cash</span>Cash is 51.5%' in fold
     assert '<span class="summary-label">A &lt;b&gt;</span>x &amp; y' in fold
+
+
+def test_chart_must_be_offered_by_the_page(tmp_path) -> None:
+    with pytest.raises(InvalidInput, match="not offered on this page"):
+        load(_write(tmp_path, {**GOOD, "chart": "mix"}), TARGETS)
+    with pytest.raises(InvalidInput, match="'pie' is not one of: day_split, mix"):
+        load(_write(tmp_path, {**GOOD, "chart": "pie"}), TARGETS, ("mix", "day_split"))
+    assert load(_write(tmp_path, {**GOOD, "chart": "mix"}), TARGETS, ("mix",))["chart"] == "mix"
+
+
+def test_card_html_with_chart_wraps_text_and_figure() -> None:
+    html = card_html({**GOOD, "chart": "mix"})
+    assert '<div class="sum-grid"><div class="sum-text"><p class="summary-head">' in html
+    assert '<figure class="sum-chart" id="sum-chart" data-chart="mix">' in html
+    assert "sum-grid" not in card_html(GOOD)

@@ -69,7 +69,23 @@ LATER_CHANGES = [
     ("{lead: 'Upcoming earnings reports and dividend dates for what you hold.',",
      "{lead: 'Upcoming earnings reports and dividend dates for what you hold, and the next payment on each loan or card you recorded.',"),
     ("title: 'The two kinds of date', html: '<p>An earnings date is when the company reports results; prices often move more than usual around it. An ex-dividend date is the cutoff: own the shares before it to receive the next dividend.</p>'",
-     "title: 'The three kinds of date', html: '<p>An earnings date is when the company reports results; prices often move more than usual around it. An ex-dividend date is the cutoff: own the shares before it to receive the next dividend. A payment date comes from the last statement you recorded; when that statement is older, its due date is carried forward one month at a time.</p>'"),
+     "title: 'The three kinds of date', html: '<p>An earnings date is when the company reports results; prices often move more than usual around it. An ex-dividend date is the cutoff: own the shares before it to receive the next dividend. A fund has no announced date, so its date is marked expected: a year after the matching payment last year. A payment date comes from the last statement you recorded; when that statement is older, its due date is carried forward one month at a time.</p>'"),
+    ("const mv = [...(M.up || []).map(m => ({...m, dir: 1})), ...(M.down || []).map(m => ({...m, dir: -1}))];",
+     "// one scale, largest gain to largest loss, so the losers end with the biggest drop\n  const mv = [...(M.up || []), ...(M.down || [])].sort((a, b) => (b.day_change_pct || 0) - (a.day_change_pct || 0));"),
+    # the total tiles moved to the top, above the summary card and Headlines
+    ('<div id="explain"></div>\n', '<div id="explain"></div>\n<div class="tiles" id="tiles"></div>\n'),
+    ('</details></section>\n<div class="tiles" id="tiles"></div>\n<div class="grid2">', '</details></section>\n<div class="grid2">'),
+    # Holdings shows the top ten and Upcoming events the next eight, each with a View all toggle
+    ("<style>#holdings td.l{white-space:normal;min-width:120px}</style>",
+     "<style>#holdings td.l{white-space:normal;min-width:120px}#hold-more,#ev-more{margin-top:10px}</style>"),
+    ("  <div class=\"twrap\" id=\"holdings\"></div>\n</section>",
+     "  <div class=\"twrap\" id=\"holdings\"></div>\n  <button type=\"button\" class=\"chip\" id=\"hold-more\" hidden></button>\n</section>"),
+    ("<div class=\"twrap\" id=\"events\"></div></section>",
+     "<div class=\"twrap\" id=\"events\"></div><button type=\"button\" class=\"chip\" id=\"ev-more\" hidden></button></section>"),
+    ("  const tbl = F.table(g('holdings'), cols, rows, {sortKey: 'market_value', onDraw: vis => { g('count').textContent = `${vis.length} of ${rows.length}`;\n    g('holdings').querySelectorAll('tbody tr').forEach((tr, i) => { tr.classList.add('clickable'); tr.tabIndex = 0; const open = () => detail(vis[i]); tr.addEventListener('click', open); tr.addEventListener('keydown', e => { if (e.key === 'Enter') open(); }); }); }});\n",
+     "  // the ten largest by default; a search or an account filter shows every match\n  const HOLD_TOP = 10;\n  let holdAll = false;\n  const tbl = F.table(g('holdings'), cols, rows, {sortKey: 'market_value', onDraw: vis => {\n    const narrowed = !!g('acct').value || !!g('q').value.trim(), cut = !holdAll && !narrowed && vis.length > HOLD_TOP;\n    g('count').textContent = cut ? `top ${HOLD_TOP} of ${rows.length}` : `${vis.length} of ${rows.length}`;\n    g('holdings').querySelectorAll('tbody tr').forEach((tr, i) => { tr.classList.add('clickable'); tr.tabIndex = 0; if (cut && i >= HOLD_TOP) tr.hidden = true; const open = () => detail(vis[i]); tr.addEventListener('click', open); tr.addEventListener('keydown', e => { if (e.key === 'Enter') open(); }); });\n    const mb = g('hold-more'); mb.hidden = narrowed || vis.length <= HOLD_TOP; mb.textContent = holdAll ? `Show top ${HOLD_TOP}` : `View all ${vis.length} holdings`; }});\n  g('hold-more').addEventListener('click', () => { holdAll = !holdAll; tbl.redraw(); });\n"),
+    ("    g('events').innerHTML = '<table><thead><tr><th class=\"l\">Date</th><th class=\"l\">Holding or account</th><th class=\"l\">Event</th></tr></thead><tbody>' + D.events.map(e => `<tr><td class=\"l\">${F.esc(e.date)}</td><td class=\"l\">${F.esc(e.symbol)}</td><td class=\"l\">${F.esc(e.label || String(e.type || '').replace('_', '-'))}</td></tr>`).join('') + '</tbody></table>'; }\n",
+     "    const EV_TOP = 8;  // the next eight by date; the rest behind View all\n    g('events').innerHTML = '<table><thead><tr><th class=\"l\">Date</th><th class=\"l\">Holding or account</th><th class=\"l\">Event</th></tr></thead><tbody>' + D.events.map((e, i) => `<tr${i >= EV_TOP ? ' hidden' : ''}><td class=\"l\">${F.esc(e.date)}</td><td class=\"l\">${F.esc(e.symbol)}</td><td class=\"l\">${F.esc(e.label || String(e.type || '').replace('_', '-'))}</td></tr>`).join('') + '</tbody></table>';\n    if (D.events.length > EV_TOP) { const b = g('ev-more'); let all = false; b.hidden = false;\n      const label = () => { b.textContent = all ? `Show next ${EV_TOP}` : `View all ${D.events.length} events`; }; label();\n      b.addEventListener('click', () => { all = !all; g('events').querySelectorAll('tbody tr').forEach((tr, i) => { if (i >= EV_TOP) tr.hidden = !all; }); label(); }); } }\n"),
 ]
 
 
@@ -93,7 +109,7 @@ def test_render_with_history_has_card_picker_ranges() -> None:
     assert 'id="perf-card"' in html and 'id="perf-account"' in html and "Performance vs. the market" in html
     for r in ("1M", "3M", "YTD", "1Y", "All"):
         assert f"'{r}'" in html
-    assert html.index('id="tiles"') < html.index('id="perf-card"') < html.index('id="accounts-card"')
+    assert html.index('id="tiles"') < html.index('id="headlines-card"') < html.index('id="perf-card"') < html.index('id="accounts-card"')
     assert '"history":' in html
 
 
