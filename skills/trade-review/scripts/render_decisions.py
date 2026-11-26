@@ -6,7 +6,7 @@ Turns a trade-review deep review into one self-contained HTML page for the Artif
     {"as_of", "headline" (25 words at most), "summary", "review": <decisions.py output>,
      "missing_roles": [...], "notes": [...]}
 
-Sections: the headline, stat tiles, Skill or luck (grade against result), Decisions (largest first;
+Sections: stat tiles, the headline, Skill or luck (grade against result), Decisions (largest first;
 rows open to what was known then, kept apart from what came out later), Patterns, Flags. Prints
 {"out", "title", "decisions", "flags"}. Exit 2 on a missing headline or review, a headline over the
 limit, or one of the verbs the compliance rules forbid in the headline, summary, notes or a grade's
@@ -46,8 +46,8 @@ table.t td,table.t th{padding:4px 10px 4px 0;border-bottom:1px solid var(--grid)
 </style>
 <h1>Decision review</h1>
 <p class="sub" id="sub"></p>
-<div class="lead"><p class="h" id="headline"></p><p class="s" id="summary"></p></div>
 <div class="tiles" id="tiles"></div>
+<div class="lead"><p class="h" id="headline"></p><p class="s" id="summary"></p></div>
 <section class="card" id="cell-card"><h2>Skill or luck</h2><p class="sub">Each decision's grade, made without seeing its result, set against how it turned out.</p><div class="grid22" id="cells"></div><p class="src" id="unclear" style="margin-top:8px"></p></section>
 <section class="card" id="dec-card"><h2>Decisions</h2><p class="sub">The largest by money moved, chosen without looking at results. Open a row for what was known at the time.</p><div id="dec"></div></section>
 <section class="card" id="pat-card"><h2>Patterns</h2><p class="sub" id="pat-sub"></p><div class="scroll" id="pat"></div></section>

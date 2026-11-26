@@ -300,7 +300,9 @@ const FA = (() => {
   // tooltip
   let tipEl;
   const tip = { show(ev, html) { if (!tipEl) { tipEl = el('div', {class: 'tip'}); document.body.appendChild(tipEl); } tipEl.innerHTML = html; tipEl.style.display = 'block'; this.move(ev); },
-                move(ev) { if (!tipEl) return; const x = ev.clientX + 14, y = ev.clientY + 12; tipEl.style.left = Math.min(x, window.innerWidth - tipEl.offsetWidth - 8) + 'px'; tipEl.style.top = y + 'px'; },
+                // right of the cursor, or left of it when that would run past the edge; the width leaves out the scrollbar
+                move(ev) { if (!tipEl) return; const vw = document.documentElement.clientWidth || window.innerWidth, w = tipEl.offsetWidth, x = ev.clientX + 14 + w > vw - 8 ? ev.clientX - 14 - w : ev.clientX + 14;
+                  tipEl.style.left = Math.max(8, x) + 'px'; tipEl.style.top = (ev.clientY + 12) + 'px'; },
                 hide() { if (tipEl) tipEl.style.display = 'none'; } };
   const bindTip = (node, html) => { node.addEventListener('mousemove', ev => tip.show(ev, typeof html === 'function' ? html() : html)); node.addEventListener('mouseleave', () => tip.hide()); };
   // horizontal bar list: rows = [{label, value, share (0..1), color, tip}]
@@ -370,9 +372,18 @@ const FA = (() => {
     const ticks = niceTicks(y0, y1).filter(t => !floor0 || t >= 0).filter(t => (opts.yMin == null || t >= opts.yMin) && (opts.yMax == null || t <= opts.yMax));
     if (opts.yMin == null) y0 = Math.min(y0, ticks[0]); if (opts.yMax == null) y1 = Math.max(y1, ticks[ticks.length - 1]);
     const X = x => m.l + iw * (x1 === x0 ? 0.5 : (x - x0) / (x1 - x0)), Y = y => m.t + ih * (1 - (y - y0) / (y1 - y0));
-    const xFmt = opts.xFmt || (opts.xIsDate ? (x => new Date(x).toLocaleDateString('en-US', {month: 'short', year: '2-digit'})) : (x => String(x)));
+    // date axes: two years or more label each year on its January 1 (2021, 2022); shorter spans name the month
+    // and the full year (Sep 2026), never a two-digit year that reads as a day. Dates are UTC midnight.
+    const years = opts.xIsDate && !opts.xFmt && !opts.xTicks && (x1 - x0) >= 2 * 365.25 * 864e5;
+    const xFmt = opts.xFmt || (opts.xIsDate ? (years ? (x => String(new Date(x).getUTCFullYear())) : (x => new Date(x).toLocaleDateString('en-US', {month: 'short', year: 'numeric', timeZone: 'UTC'}))) : (x => String(x)));
+    let yearTicks = null;
+    if (years) { const first = new Date(x0).getUTCFullYear() + 1, last = new Date(x1).getUTCFullYear(), step = Math.max(1, Math.ceil((last - first + 1) / 8));
+      yearTicks = []; for (let yr = first; yr <= last; yr += step) yearTicks.push(Date.UTC(yr, 0, 1)); }
+    // the tooltip names the date of the nearest point in full (Oct 30, 2026), whatever the axis labels show; dates
+    // arrive as YYYY-MM-DD, which parse as UTC midnight, so they are formatted in UTC to keep the day
+    const tipFmt = opts.tipFmt || (opts.xIsDate ? (x => new Date(x).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC'})) : xFmt);
     const yFmt = opts.yFmt || (y => num(y, 0));
-    const xt = []; let lastX = null; for (const t of (opts.xTicks || [0, 1, 2, 3, 4, 5].map(k => x0 + (x1 - x0) * k / 5))) { const lab = xFmt(t); if (lab !== lastX) xt.push(t); lastX = lab; }
+    const xt = []; let lastX = null; for (const t of (opts.xTicks || yearTicks || [0, 1, 2, 3, 4, 5].map(k => x0 + (x1 - x0) * k / 5))) { const lab = xFmt(t); if (lab !== lastX) xt.push(t); lastX = lab; }
     let g = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.aria || 'chart')}">`;
     g += ticks.map(t => `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(t).toFixed(1)}" y2="${Y(t).toFixed(1)}" stroke="var(--grid)"/>`).join('');
     g += ticks.map(t => `<text x="${m.l - 8}" y="${(Y(t) + 4).toFixed(1)}" text-anchor="end" font-size="11" fill="var(--muted)">${esc(yFmt(t))}</text>`).join('');
@@ -407,7 +418,8 @@ const FA = (() => {
     hit.addEventListener('mousemove', ev => { const r = svg.getBoundingClientRect(); const px = (ev.clientX - r.left) * W / r.width; const xv = x0 + (px - m.l) / iw * (x1 - x0);
       cx.setAttribute('x1', px); cx.setAttribute('x2', px); cx.setAttribute('opacity', 1);
       const rows = series.map((s, i) => { let best = null; for (const p of s.points) { if (isNum(p[1]) && (best === null || Math.abs(+p[0] - xv) < Math.abs(+best[0] - xv))) best = p; } return best ? `<div class="r"><span><i style="background:${s.color || S[i % 8]};width:8px;height:8px;display:inline-block;border-radius:2px;margin-right:5px"></i>${esc(s.name)}</span><b>${esc(yFmt(best[1]))}</b></div>` : ''; }).join('');
-      tip.show(ev, `<div style="color:var(--ink2);margin-bottom:3px">${esc(xFmt(xv))}</div>${rows}`); });
+      let xn = null; for (const s of series) for (const p of s.points) { if (isNum(p[1]) && (xn === null || Math.abs(+p[0] - xv) < Math.abs(xn - xv))) xn = +p[0]; }
+      tip.show(ev, `<div style="color:var(--ink2);margin-bottom:3px">${esc(tipFmt(xn ?? xv))}</div>${rows}`); });
     hit.addEventListener('mouseleave', () => { cx.setAttribute('opacity', 0); tip.hide(); });
   };
   // heatmap: opts = {rows:[labels], cols:[labels], values:[[..]], fmt, diverging (blue/red around 0), min, max}

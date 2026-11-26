@@ -6,7 +6,7 @@ Turns a real-estate deep review into one self-contained HTML page for the Artifa
     {"as_of", "headline" (25 words at most), "summary", "case": <property_case.py output>,
      "missing_roles": [...], "notes": [...]}
 
-Sections: the headline, stat tiles, Scenarios, What moves the answer, Inputs and evidence, One-time
+Sections: stat tiles, the headline, Scenarios, What moves the answer, Inputs and evidence, One-time
 costs, Comparable sales and rents, Evidence on both sides, Open questions, What to watch, Flags. A
 section with nothing in it stays hidden. Prints {"out", "title", "scenarios", "flags"}. Exit 2 on a
 missing headline or case, a headline over the limit, or one of the verbs the compliance rules forbid
@@ -43,8 +43,8 @@ table.t td,table.t th{padding:4px 10px 4px 0;border-bottom:1px solid var(--grid)
 </style>
 <h1 id="h1"></h1>
 <p class="sub" id="sub"></p>
-<div class="lead"><p class="h" id="headline"></p><p class="s" id="summary"></p></div>
 <div class="tiles" id="tiles"></div>
+<div class="lead"><p class="h" id="headline"></p><p class="s" id="summary"></p></div>
 <section class="card" id="sc-card"><h2>Scenarios</h2><p class="sub">Each runs the same calculators on the base inputs plus its own changes. The first is the central case.</p><div class="scroll" id="sc"></div></section>
 <section class="card" id="dr-card"><h2>What moves the answer</h2><p class="sub">The central case rerun with one change at a time, largest swing first. Soft means the evidence is a regional figure, an assumption or over a year old.</p><div class="scroll" id="dr"></div></section>
 <section class="card" id="in-card"><h2>Inputs and evidence</h2><p class="sub">Every number the calculators used, and what it rests on.</p><div class="scroll" id="in"></div></section>

@@ -7,9 +7,9 @@ Turns a portfolio deep review into one self-contained HTML page for the Artifact
      "conclusions": [2 to 5 sentences, 40 words at most each], "exposure": <exposure.py output>,
      "missing_roles": [...], "notes": [...]}
 
-The page reads top to bottom as one account. "What this review did" says what question the
+The page reads top to bottom as one account. Stat tiles open it. "What this review did" says what question the
 research asked and how. "What it found" gives the headline, the summary, the conclusions and the
-same result in numbers. Then the evidence: stat tiles, Shared bets (largest first, each with a
+same result in numbers. Then the evidence: Shared bets (largest first, each with a
 plain-language reading; rows open to the holdings, income, evidence on both sides and what prices
 show), Overlaps, Not yet mapped, What to watch, Flags. Every section opens with a sentence saying
 what it holds and why it matters, and a "How to read this page" walkthrough steps through them.
@@ -55,13 +55,13 @@ table.links td,table.links th{padding:3px 8px 3px 0;border-bottom:1px solid var(
 </style>
 <h1 id="h1">Portfolio deep review</h1>
 <p class="sub" id="sub"></p>
+<div class="tiles" id="tiles"></div>
 <section class="card" id="about-card" data-help="none"><h2>What this review did</h2><div id="about"></div><div id="intro"></div></section>
 <section class="card" id="found-card" data-help="none"><h2>What it found</h2>
 <div class="lead"><p class="h" id="headline"></p><p class="s" id="summary"></p></div>
 <h3 class="mini">Conclusions</h3><ul class="plain" id="conclusions"></ul>
 <h3 class="mini">The same result in numbers</h3><ul class="plain" id="numbers"></ul>
 <p class="sub last">The sections below are the evidence for these conclusions, in the order to read them.</p></section>
-<div class="tiles" id="tiles"></div>
 <section class="card" id="bets-card"><h2>1. Shared bets</h2><p class="sub">Start here. Each row is one belief that several of your holdings rest on, largest first. It shows the dollars that depend on the belief and what an assumed shock would cost if it proved wrong. Bets overlap, so these losses do not add up. Open a row for the holdings and the evidence on both sides.</p><p class="sub" id="legend"></p><div id="bars"></div><div id="bets"></div></section>
 <section class="card" id="over-card"><h2>2. Overlaps</h2><p class="sub">Holdings that rest on two bets at once. They matter because one holding can be hit twice if both beliefs fail.</p><div id="over"></div></section>
 <section class="card" id="un-card"><h2>3. Not yet mapped</h2><p class="sub">Holdings of at least 1% of the portfolio that no bet covers. The review says nothing about them, so the conclusions above leave them out.</p><div id="un"></div></section>
@@ -81,8 +81,8 @@ SCRIPT = r"""
     + `<p>They found ${bets(n)} across ${links} ${links === 1 ? 'holding' : 'holdings'}. A bet is a belief that could prove wrong, for example: “${esc(top.belief)}”. For each bet the page shows the dollars that rest on it, what an assumed shock would cost, and the dated evidence for and against.</p>`
     + `<p>The review describes what the holdings depend on. It does not say what to do about it.</p>`;
   F.intro(g('intro'), {lead: 'Read “What it found” first. The numbered sections after it are the evidence.', steps: [
-    {target: '#found-card', title: 'What it found', html: '<p>The headline and summary name the belief that carries the most money. The conclusions are the research’s reading of all the bets together. The numbers under them come straight from the calculation.</p>'},
     {target: '#tiles', title: 'Four figures', html: '<p>The size of the largest bet, the share of the portfolio resting on it, how much of the invested money the review covers, and how many bets share a holding.</p>'},
+    {target: '#found-card', title: 'What it found', html: '<p>The headline and summary name the belief that carries the most money. The conclusions are the research’s reading of all the bets together. The numbers under them come straight from the calculation.</p>'},
     {target: '#bets-card', title: '1. Shared bets', html: '<p>One row per belief, largest first. “Exposed” is the money that depends on the belief. “If wrong” is that money times an assumed shock. The label on each row says where the evidence stands. Open a row to see the holdings and the sources.</p>'},
     {target: '#over-card', title: '2. Overlaps', html: '<p>Two bets can share a holding. That is why the losses in section 1 are never added together.</p>'},
     {target: '#un-card', title: '3. Not yet mapped', html: '<p>The holdings the review could not tie to any shared bet. Nothing above describes them.</p>'},

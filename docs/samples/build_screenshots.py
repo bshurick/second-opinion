@@ -40,6 +40,7 @@ PAGES: dict[str, tuple[str, list[str], int | None]] = {
     "retirement": ("retirement/scripts/render.py", ["--in", "retirement.json"], 1780),
     "rebalancing": ("portfolio-plan/scripts/render.py", ["--in", "rebalancing.json"], 1660),
     "spending": ("spending/scripts/render.py", ["--in", "spending-month.json", "--changes", "spending-changes.json"], 1860),
+    "market-flows": ("market-analysis/scripts/render.py", ["--in", "market-flows.json", "--indices", "market-indices.json", "--summary", "market-summary.json"], 1900),
     # Uncropped, unlike every page above. This skill's point is that each figure ships
     # with the disclosure that bounds it, and those run to the end: the circularity note
     # at 3321 and the whole assumptions section from 3439 to 5931. Cropping at the ~2290

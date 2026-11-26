@@ -76,3 +76,7 @@ env -i PATH=/usr/bin:/bin HOME="$TMP" SECOND_OPINION_DATA="$TMP/fa-data" \
 ```
 
 After changing a fixture or a renderer, rebuild the images with `python3 docs/samples/build_screenshots.py`.
+
+## Market
+
+`market-indices.json`, `market-flows.json` and `market-summary.json` feed the Market Flows sample. `gen_market.py` builds the first two from seeded random walks dated to the same as-of date: invented index levels, sector moves, yields, futures positions and fund flows. None of it is a real price or report.

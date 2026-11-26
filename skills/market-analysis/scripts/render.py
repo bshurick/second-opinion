@@ -2,9 +2,10 @@
 """Usage: render.py [--in flows.json] [--indices indices.json] --out page.html [--summary summary.json]
 
 Turns a ``flows.py`` result and/or an ``indices.py`` result (at least one) into one self-contained
-interactive HTML page for the Artifact tool: stat tiles (S&P 500 with its 200-week level, VIX and its one-year percentile,
+interactive HTML page for the Artifact tool: stat tiles at the top (S&P 500 with its 200-week level, VIX and its one-year percentile,
 the 10-year yield and the 10y-13w spread, breadth, and one S&P futures tile with each trader class's percentile; a tile whose source delivered nothing is
-left out), a chart of the S&P 500's weekly close with its 50-, 100- and 200-week averages and a table of each gap's level (with ``indices.py --history`` data, range
+left out), the headline analysis card under them when ``--summary`` is given (with one optional chart beside
+its text: ``index_moves``, ``sector_moves``, ``crowding``, ``trend_gaps`` or ``yield_moves``), a chart of the S&P 500's weekly close with its 50-, 100- and 200-week averages and a table of each gap's level (with ``indices.py --history`` data, range
 buttons zoom it to daily closes over the latest week, month, three months or year, and out to weekly closes over 10 and 20 years), an interest rates
 chart beside it from ``indices.py --history``'s ``interest_rates`` (fed funds, 2- and 10-year Treasury, 30-year mortgage; range buttons from a week to 20 years), an indices/rates/macro table (each name opens its daily-close chart when the row
 carries ``history``), the
@@ -19,7 +20,7 @@ input.
 
 The page is a fragment (no html/head/body tags): the Artifact host wraps it. Every number shown comes
 from the two JSON files; the page formats and draws, it never recomputes a statistic. The one exception
-is ``--summary``: the headline analysis card at the top is text the model wrote, which ``summary_card``
+is ``--summary``: the headline analysis card under the tiles is text the model wrote, which ``summary_card``
 holds to its rules. A summary that breaks one is exit 2 and no page is written. Without the flag there is
 no card. This page may be shared, so ``for_you`` (the person's holdings) is dropped unless
 ``portfolio-last-check.json`` shows a full read today; the render still succeeds and the printed JSON
@@ -44,12 +45,76 @@ TITLE = "Market Flows"
 # The sections a headline analysis link may point to.
 TARGETS = ("trend-card", "rates-card", "idx-card", "pos-card", "sec-card", "etf-card", "cash-card", "short-card", "flags-section")
 
+# Charts the summary card can name in its optional "chart" field, drawn beside its text. Each one
+# draws figures already in indices.py or flows.py output; none forecasts anything.
+CHARTS = ("index_moves", "sector_moves", "crowding", "trend_gaps", "yield_moves")
+
+CHART_SCRIPT = r"""
+(() => {
+  const D = window.DATA, F = FA, I = D.indices || {}, W = D.flows || {}, num = SC.num;
+  const find = (rows, sym) => (rows || []).find(r => r && r.symbol === sym);
+  const p2 = v => num(v) ? (v > 0 ? '+' : '') + v.toFixed(2) + '%' : '—';   // values already in percent units
+  const list = xs => xs.length < 3 ? xs.join(' and ') : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1];
+  // "3 of 4 indexes rose. Best: A (+1.00%). Worst: B (-2.00%)."
+  const spread = (it, fmt, what) => { const up = it.filter(r => r.v > 0).length, s = [...it].sort((a, b) => b.v - a.v), hi = s[0], lo = s[s.length - 1];
+    return `${up} of ${it.length} ${what} rose. Best: ${hi.label} (${fmt(hi.v)}). Worst: ${lo.label} (${fmt(lo.v)}).`; };
+  const charts = {
+    index_moves: () => {
+      const it = [['^GSPC', 'S&P 500'], ['^IXIC', 'Nasdaq'], ['^DJI', 'Dow'], ['^RUT', 'Russell 2000']].map(([s, n]) => [find(I.indices, s), n])
+        .filter(([r]) => r && num(r.week_change_pct)).map(([r, n]) => ({label: n, v: r.week_change_pct, tip: `${r.name} ${F.num(r.last, 2)}, day ${p2(r.day_change_pct)}`}));
+      if (it.length < 2) return null;
+      return {title: 'The week in the major indexes', html: SC.rows(it, p2), lead: spread(it, p2, 'indexes'), note: 'Change over the last five sessions, to the latest close.'};
+    },
+    sector_moves: () => {
+      const it = (I.sectors || []).filter(r => num(r.week_change_pct)).sort((a, b) => b.week_change_pct - a.week_change_pct)
+        .map(r => ({label: r.symbol, v: r.week_change_pct, tip: `${r.name}, day ${p2(r.day_change_pct)}`}));
+      if (it.length < 2) return null;
+      return {title: 'Sector funds over the week', html: SC.rows(it, p2), lead: spread(it, p2, 'sector funds'), note: 'The SPDR sector funds over the last five sessions, from largest gain to largest loss.'};
+    },
+    crowding: () => {
+      const P = W.positioning && !W.positioning.error ? W.positioning : null;
+      const es = P && (P.contracts || []).find(c => c.code === '13874A');
+      if (!es) return null;
+      // the four classes with a structural role, always all four; other reportables is a small mixed group, on the heatmap
+      const it = [['asset_managers', 'Asset mgrs', 'asset managers'], ['leveraged_funds', 'Leveraged', 'leveraged funds'], ['dealers', 'Dealers', 'dealers'], ['small_traders', 'Small', 'small traders']]
+        .filter(([k]) => num((es.classes[k] || {}).percentile)).map(([k, n, name]) => { const v = es.classes[k].percentile, hot = v <= 10 || v >= 90;
+          return {label: n, name, v, hot, color: hot ? 'var(--warn)' : 'var(--s1)', val: `${v.toFixed(0)}${hot ? ' · crowded' : ''}`, tip: `net ${F.num(es.classes[k].net, 0)} contracts, week change ${F.num(es.classes[k].net_change, 0)}`}; });
+      if (!it.length) return null;
+      const hot = it.filter(r => r.hot);
+      return {title: 'S&P 500 futures positioning', html: SC.marks(it, {lo: 0, hi: 100, fmt: v => v.toFixed(0), bands: [[0, 10, 'var(--muted)'], [90, 100, 'var(--muted)']]}),
+        lead: hot.length ? `${hot.length} of ${it.length} classes sit in a crowded zone: ${list(hot.map(r => `${r.name} (${r.v.toFixed(0)})`))}.` : `None of the ${it.length} classes sits in a crowded zone.`,
+        note: `Each trader class's net position as a percentile of its last ${es.weeks} weeks, report of ${es.report_date}.`};
+    },
+    trend_gaps: () => {
+      const T = I.trend;
+      if (!T) return null;
+      const it = [['wma_200', '200-week'], ['wma_100', '100-week'], ['wma_50', '50-week']].filter(([k]) => T[k] && num(T[k].gap_pct))
+        .map(([k, n]) => ({label: n, v: T[k].gap_pct, tick: T[k].median_gap_pct, bands: num(T[k].band_low_pct) && num(T[k].band_high_pct) ? [[T[k].band_low_pct, T[k].band_high_pct, 'var(--s3)']] : [], tip: `${T[k].level}, percentile ${T[k].percentile}; median ${T[k].median_gap_pct}%`}));
+      if (!it.length) return null;
+      return {title: 'S&P 500 against its weekly averages', html: SC.marks(it, {fmt: p2}),
+        lead: [['wma_200', '200-week'], ['wma_100', '100-week'], ['wma_50', '50-week']].filter(([k]) => T[k] && T[k].level).map(([k, n]) => `${n} ${T[k].level} (percentile ${T[k].percentile})`).join(' · ') + '.',
+        note: `The gap from each average, as of ${T.as_of}. The shaded span is the neutral zone, the tick the median gap since 1950. A trend measure, not a valuation.`};
+    },
+    yield_moves: () => {
+      // indices.py gives the change of the yield itself in percent; in basis points that is last - last / (1 + pct / 100), times 100
+      const it = [['^IRX', '13-week'], ['^FVX', '5-year'], ['^TNX', '10-year'], ['^TYX', '30-year']].map(([s, n]) => [find(I.rates, s), n])
+        .filter(([r]) => r && num(r.last) && num(r.week_change_pct)).map(([r, n]) => ({label: n, v: (r.last - r.last / (1 + r.week_change_pct / 100)) * 100, color: 'var(--s1)', tip: `${r.name} ${F.num(r.last, 3)}%`}));
+      if (it.length < 2) return null;
+      const bpFmt = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(1)} bp`, down = it.filter(r => r.v < 0).length, big = [...it].sort((a, b) => Math.abs(b.v) - Math.abs(a.v))[0];
+      return {title: 'Treasury yields over the week', html: SC.rows(it, bpFmt), lead: `Yields fell at ${down} of ${it.length} maturities; the ${big.label} moved most (${bpFmt(big.v)}).`,
+        note: 'Change in each yield over the last five sessions, in basis points (1 bp = 0.01 percentage point). Bond prices move the other way.'};
+    },
+  };
+  SC.mount(charts);
+})();
+"""
+
 BODY = """
 <h1>Market Flows</h1>
-<p class="sub" id="asof">{{HEADLINE}}</p>
+<p class="sub" id="asof">{{DATES}}</p>
 <div id="explain"></div>
-{{SUMMARY}}
 <div class="tiles" id="tiles"></div>
+{{SUMMARY}}
 <section class="card" id="trend-card"><h2>S&amp;P 500 against its weekly averages</h2><p class="sub" id="trend-sub">The weekly close over five years against its <span class="term" data-term="200-week average" tabindex="0">200-week moving average</span>. The shaded zone is where the 200-week gap is neutral: above it is extended, below it depressed. The 100- and 50-week averages are context; the 50-week is a momentum line. The table ranks today's gap to each average against every week since 1950.</p><div id="trend-chart"></div><div class="twrap" id="trend-table"></div><p class="note" id="trend-note"></p></section>
 <section class="card" id="rates-card" hidden><h2>Interest rates</h2><p class="sub" id="rates-sub">The fed funds rate, the 2- and 10-year Treasury yields and the 30-year mortgage rate, in percent, with each rate's change over the range in percentage points.</p><p class="hl-totals" id="rates-summary"></p><div id="rates-chart"></div></section>
 <section class="card" id="idx-card"><h2>Indices, rates and macro</h2><p class="sub">Where the market closed and how far it moved over the day and the week. Stock indexes and prices move in percent; Treasury yields move in basis points (1 bp = 0.01 percentage point).</p><div class="twrap" id="indices"></div><p class="note" id="idx-note"></p></section>
@@ -62,7 +127,7 @@ BODY = """
 <section class="card" id="short-card" hidden><h2>Short volume</h2><p class="sub">The share of each day's volume that was sold short, against the symbol's own average over the window. Compare a symbol with itself, not with others.</p><div class="twrap" id="short"></div></section>
 <section data-help="none" id="flags-section"><h2>Flags</h2>""" + page.FLAGS_INTRO + """<ul class="flags" id="flags"></ul><ul class="news" id="notes"></ul></section>
 <p class="note">Positioning is futures only and shows how each trader class is positioned, not who owns the cash equities. Asset managers are structurally net long index futures and leveraged funds structurally net short, so each class is read against its own history, not against zero; a crowded reading has historically been prone to reversal but is not a direction. ETF creations mix investor demand with authorized-participant arbitrage. Nothing here is a forecast or a recommendation. General information at the stated sources and dates, not financial advice.</p>
-<noscript><p class="note">JavaScript is off: the charts and tables are not drawn. The headline figures are in the line under the title; the full result is embedded in the page as JSON.</p></noscript>
+<noscript><p class="note">JavaScript is off: the tiles, charts and tables are not drawn. The headline figures: {{HEADLINE}}. The full result is embedded in the page as JSON.</p></noscript>
 """
 
 SCRIPT = r"""
@@ -109,6 +174,7 @@ SCRIPT = r"""
     'small traders': ['Positions too small for the CFTC to require reporting; the closest public proxy for retail.', 'https://www.cftc.gov/MarketReports/CommitmentsofTraders/ExplanatoryNotes/index.htm'],
     'net position': ['Contracts held long minus contracts held short by a trader class.', 'https://www.investopedia.com/terms/n/net-position.asp'],
     'open interest': ['The number of futures contracts outstanding; every contract has one long and one short.', 'https://www.investopedia.com/terms/o/openinterest.asp'],
+    's&p futures percentile': ['Where each trader class\'s net position in S&P 500 futures sits within its own last 52 weeks: 0 is its most net-short, 100 its most net-long.', 'https://www.cftc.gov/MarketReports/CommitmentsofTraders/ExplanatoryNotes/index.htm'],
     'percentile': ['Where the latest reading sits within the window: 0 is the lowest of the window, 100 the highest.', 'https://www.investopedia.com/terms/p/percentile.asp'],
     'crowded': ['A position near the extreme of its own history, so many traders are on the same side; such readings have historically been prone to reversal.', 'https://www.investopedia.com/terms/c/crowdedtrade.asp'],
     'creation': ['Large investors exchange baskets of stocks for new ETF shares (creation) or hand shares back for the stocks (redemption); the change in shares outstanding is the fund\'s net flow.', 'https://www.investopedia.com/terms/c/creationunit.asp'],
@@ -143,7 +209,7 @@ SCRIPT = r"""
   }
   const es = byCode['13874A'];
   // one positioning tile: where each class's S&P futures net position sits in its own year
-  if (es) { const c = es.classes; tiles.push([`S&amp;P futures ${FA.term('percentile')}`, `${p0(c.asset_managers.percentile)} · ${p0(c.leveraged_funds.percentile)} · ${p0(c.small_traders.percentile)}`, `${FA.term('asset managers')} · ${FA.term('leveraged funds')} · ${FA.term('small traders')}, report of ${F.esc(es.report_date || '—')}`]); }
+  if (es) { const c = es.classes; tiles.push([FA.term('s&p futures percentile', 'S&P futures percentile'), `${p0(c.asset_managers.percentile)} · ${p0(c.leveraged_funds.percentile)} · ${p0(c.small_traders.percentile)}`, `${FA.term('asset managers')} · ${FA.term('leveraged funds')} · ${FA.term('small traders')}, report of ${F.esc(es.report_date || '—')}`]); }
   setHtml('tiles', tiles.map(([k, v, d]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d}</div></div>`).join(''));
   // indices table
   if (I) {
@@ -409,7 +475,7 @@ def _find(rows: object, symbol: str) -> dict:
 
 
 def _headline(indices: dict | None, flows: dict | None) -> str:
-    """Static one-line summary so the page reads without JavaScript."""
+    """Static one-line summary so the page reads without JavaScript; it sits in the noscript note."""
     parts = []
     if indices:
         spx, vix, tnx = _find(indices.get("indices"), "^GSPC"), _find(indices.get("indices"), "^VIX"), _find(indices.get("rates"), "^TNX")
@@ -434,6 +500,22 @@ def _headline(indices: dict | None, flows: dict | None) -> str:
     return " · ".join(parts) or "no data"
 
 
+def _dates(indices: dict | None, flows: dict | None) -> str:
+    """The line under the title: the date each source runs to. The figures themselves are in the tiles."""
+    parts = []
+    trend = (indices or {}).get("trend") or {}
+    if trend.get("as_of"):
+        parts.append(f"Prices to the close of {trend['as_of']}")
+    pos, etf, cash = ((flows or {}).get(k) or {} for k in ("positioning", "etf_flows", "cash"))
+    if pos.get("report_date"):
+        parts.append(f"positioning as of {pos['report_date']}")
+    if etf.get("as_of"):
+        parts.append(f"ETF flows as of {etf['as_of']}")
+    if cash.get("date"):
+        parts.append(f"retail money funds as of {cash['date']}")
+    return " · ".join(parts) or "Market flows and positioning"
+
+
 def _load(path: str | None, what: str) -> dict | None:
     if not path:
         return None
@@ -451,9 +533,13 @@ def build(flows: dict | None, indices: dict | None, summary: dict | None = None)
         raise InvalidInput("--indices must be an indices.py result (a JSON object with an indices list)")
     if flows is None and indices is None:
         raise InvalidInput("at least one of --in (a flows.py result) or --indices (an indices.py result) is required")
-    body = BODY.replace("{{HEADLINE}}", html.escape(_headline(indices, flows)))
+    body = BODY.replace("{{HEADLINE}}", html.escape(_headline(indices, flows))).replace("{{DATES}}", html.escape(_dates(indices, flows)))
     body = body.replace("{{SUMMARY}}", summary_card.card_html(summary))
-    return page.render(TITLE, {"flows": flows, "indices": indices}, body, SCRIPT)
+    script = SCRIPT
+    if (summary or {}).get("chart"):
+        body = summary_card.CHART_CSS + body
+        script = SCRIPT + summary_card.CHART_JS + CHART_SCRIPT
+    return page.render(TITLE, {"flows": flows, "indices": indices}, body, script)
 
 
 def _count_flags(flows: dict | None) -> int:
@@ -473,7 +559,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--summary", default=None)
         ns = p.parse_args(args)
         flows, indices = _load(ns.inp, "flows"), _load(ns.indices, "indices")
-        summary = summary_card.load(ns.summary, TARGETS) if ns.summary else None
+        summary = summary_card.load(ns.summary, TARGETS, CHARTS) if ns.summary else None
         dropped = bool(summary and "for_you" in summary and not summary_card.full_read_today())
         if dropped:
             del summary["for_you"]

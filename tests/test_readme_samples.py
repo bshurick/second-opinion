@@ -20,6 +20,7 @@ PAGES = {
     "rebalancing": ("portfolio-plan/scripts/render.py", ["--in", "rebalancing.json"]),
     "spending": ("spending/scripts/render.py", ["--in", "spending-month.json", "--changes", "spending-changes.json"]),
     "fixed-income": ("fixed-income/scripts/render.py", ["--in", "fixed-income.json"]),
+    "market-flows": ("market-analysis/scripts/render.py", ["--in", "market-flows.json", "--indices", "market-indices.json", "--summary", "market-summary.json"]),
 }
 
 
@@ -62,3 +63,13 @@ def test_sample_accounts_are_visibly_fictional() -> None:
     assert all(t["account"].startswith("Sample ") for t in rebalancing["trades"])
     spending = json.loads((SAMPLES / "spending-month.json").read_text())
     assert all(a["name"].startswith("Sample ") for a in spending["accounts"].values())
+
+
+def test_market_sample_says_it_is_invented() -> None:
+    """The market fixtures carry no real prices or positions: their sources and notes say so."""
+    import json
+
+    flows = json.loads((SAMPLES / "market-flows.json").read_text())
+    assert all(v.startswith("Sample data:") for v in flows["sources"].values())
+    assert flows["notes"][0].startswith("Sample data:")
+    assert json.loads((SAMPLES / "market-indices.json").read_text())["trend"]["note"].startswith("Sample data:")

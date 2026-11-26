@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.18.2
+
+- market flows page: the stat tiles sit at the top, above the headline analysis, as on the brief.
+- market flows page: the headline analysis can carry one chart beside its text (`chart` in the summary file): `index_moves` (the week in the S&P 500, Nasdaq, Dow and Russell 2000), `sector_moves` (each sector fund's week), `crowding` (each trader class's S&P 500 futures percentile with the crowded ends shaded), `trend_gaps` (the 200-, 100- and 50-week gaps with each neutral zone and median) or `yield_moves` (the week in Treasury yields, in basis points). A chart whose data is missing is left off.
+- summary card chart: each market chart adds a line reading its figures (for `crowding`, which classes sit in a crowded zone), and the summary file takes an optional `chart_note`, up to 25 words, saying why the chart fits the headline. On `crowding` a crowded class's dot turns amber and its value reads "crowded"; the shaded ends are the crowded zones drawn on every row.
+- market flows page: the S&P futures tile label carries one tooltip explaining the three percentiles, in place of a tooltip on "percentile" alone.
+- market flows page: the line under the title gives only the date each source runs to; the figures it repeated from the tiles move to the note shown when JavaScript is off. The crowding chart's note is one sentence.
+- charts on every page: a line chart's tooltip names the nearest point's full date (Sep 4, 2026) in place of the axis label, and flips to the cursor's left near the right edge so it stays on screen.
+- charts on every page: a date axis spanning two years or more labels each year on its January 1 (2022, 2023); a shorter one names the month with the full year (Sep 2026), never a two-digit year that reads as a day.
+- README: a Market Flows sample page, rendered from invented fixtures (`docs/samples/gen_market.py`).
+- deep review pages (portfolio, property, tax plans, decisions) and the deep valuation page: the stat tiles sit above the headline and the findings, so every page opens with its figures.
+- summary card: the chart layout and drawing helpers are shared by the brief and market pages.
+
 ## 1.18.1
 
 - daily brief: Movers today is one list from the largest gain to the largest loss, so the losers no longer run in reverse.

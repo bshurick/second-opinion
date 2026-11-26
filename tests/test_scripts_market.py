@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from scripts_util import load_script, run_json
 from second_opinion import market
 from page_dom import assert_page_help, render_and_audit, requires_chrome
@@ -125,6 +127,9 @@ def test_market_render_builds_a_page_from_indices_and_flows(tmp_path, capsys) ->
     assert "window.DATA = " in html and "const FA" in html and '"flows"' in html and '"indices"' in html
     assert "</script> INDEX" not in html and "<\\/script> INDEX" in html
     assert "S&amp;P 500 6,500.12 (+0.4%) · vs 200-week average +27.4% (extended) · VIX 15.2 (1y percentile 40) · 10y 4.95% · positioning as of 2026-09-08 · ETF flows as of 2026-09-11 · retail money funds $3,009B (2026-08-03)" in html
+    asof = html.split('id="asof">')[1].split("</p>")[0]  # the line under the title dates the sources; the tiles carry the figures
+    assert asof == "Prices to the close of 2026-09-07 · positioning as of 2026-09-08 · ETF flows as of 2026-09-11 · retail money funds as of 2026-08-03"
+    assert html.index("vs 200-week average") > html.index("<noscript>")
     for section in ("Indices", "Positioning", "Crowdedness", "Sectors", "Fund flows", "Cash on the sidelines", "Short volume", "Flags", "not financial advice"):
         assert section in html
     assert "prefers-color-scheme: dark" in html and 'data-theme="dark"' in html and "http" not in html.split("</style>")[1].split("<script>")[0]
@@ -292,11 +297,11 @@ def _read_today(monkeypatch, tmp_path, **record):
     (tmp_path / "portfolio-last-check.json").write_text(json.dumps(full))
 
 
-def test_market_page_shows_the_card_above_the_tiles(tmp_path, capsys) -> None:
+def test_market_page_shows_the_tiles_above_the_card(tmp_path, capsys) -> None:
     rc, _, out = _render_market_card(tmp_path, capsys, MARKET_SUMMARY)
     assert rc == 0
     html = out.read_text()
-    assert html.index('id="summary-card"') < html.index('id="tiles"')
+    assert html.index('id="tiles"') < html.index('id="summary-card"') < html.index('id="trend-card"')
     assert 'data-summary-target="sec-card"' in html
     assert 'id="flags-section"' in html
 
@@ -518,3 +523,144 @@ def test_market_page_rates_chart_follows_its_range(tmp_path, capsys) -> None:
 @requires_chrome
 def test_market_page_without_rates_hides_the_card(tmp_path, capsys) -> None:
     assert _rates_probe(tmp_path, capsys, INDICES)["hidden"] is True
+
+
+MARKET_CHARTS = ["index_moves", "sector_moves", "crowding", "trend_gaps", "yield_moves"]
+
+
+def _render_market_chart(tmp_path, capsys, chart, flows=None, **extra):
+    (tmp_path / "indices.json").write_text(json.dumps(INDICES))
+    (tmp_path / "flows.json").write_text(json.dumps(flows or FLOWS))
+    (tmp_path / "summary.json").write_text(json.dumps({**MARKET_SUMMARY, "chart": chart, **extra}))
+    out = tmp_path / "market.html"
+    rc, res = run_json(load_script("market-analysis/scripts/render.py"), ["--in", str(tmp_path / "flows.json"), "--indices", str(tmp_path / "indices.json"), "--out", str(out), "--summary", str(tmp_path / "summary.json")], capsys)
+    return rc, res, out
+
+
+@pytest.mark.parametrize("chart", MARKET_CHARTS)
+def test_market_summary_chart_sits_beside_the_text(tmp_path, capsys, chart) -> None:
+    rc, _, out = _render_market_chart(tmp_path, capsys, chart)
+    assert rc == 0
+    html = out.read_text()
+    assert f'data-chart="{chart}"' in html and 'class="sum-grid"' in html and ".sum-chart{" in html and "const SC = " in html
+    assert html.index('id="sum-chart"') < html.index("</section>", html.index('id="summary-card"'))
+
+
+def test_market_summary_chart_unknown_name_is_rejected(tmp_path, capsys) -> None:
+    rc, res, out = _render_market_chart(tmp_path, capsys, "day_split")  # a brief chart, not a market one
+    assert rc == 2 and "is not one of" in res["error"] and not out.exists()
+
+
+def test_market_summary_without_chart_has_no_chart_markup(tmp_path, capsys) -> None:
+    rc, _, out = _render_market_card(tmp_path, capsys, MARKET_SUMMARY)
+    html = out.read_text()
+    assert rc == 0 and "sum-chart" not in html and "const SC = " not in html
+
+
+_CHART_PROBE = """<script>addEventListener('load', () => setTimeout(() => {
+  const fig = document.getElementById('sum-chart');
+  const out = fig ? {title: fig.querySelector('.sc-title').textContent, lead: fig.querySelector('.sc-lead').textContent, why: (fig.querySelector('.sc-why') || {}).textContent || null, rows: [...fig.querySelectorAll('.sc-row')].map(r => [r.querySelector('.lab').textContent, r.querySelector('.val').textContent]),
+    bands: fig.querySelectorAll('.sc-band').length, ticks: fig.querySelectorAll('.sc-tick').length, note: fig.querySelector('.sc-note').textContent} : null;
+  const s = document.createElement('script'); s.type = 'application/json'; s.id = 'probe'; s.textContent = JSON.stringify(out); document.body.appendChild(s);
+}, 200));</script>"""
+
+
+def _chart_probe(tmp_path, capsys, chart, flows=None, **extra):
+    import re
+    import subprocess
+
+    from page_dom import CHROME
+
+    rc, _, out = _render_market_chart(tmp_path, capsys, chart, flows, **extra)
+    assert rc == 0
+    (tmp_path / "probe.html").write_text("<!doctype html><meta charset=utf8>" + out.read_text() + _CHART_PROBE)
+    dom = subprocess.run([CHROME, "--headless=new", "--disable-gpu", "--no-sandbox", "--virtual-time-budget=4000", "--dump-dom", (tmp_path / "probe.html").as_uri()], capture_output=True, text=True, timeout=90).stdout
+    m = re.search(r'<script type="application/json" id="probe">(.*?)</script>', dom, re.S)
+    assert m, "the probe did not run"
+    return json.loads(m.group(1))
+
+
+@requires_chrome
+def test_market_summary_charts_draw_the_scripts_figures(tmp_path, capsys) -> None:
+    crowd = _chart_probe(tmp_path, capsys, "crowding")
+    assert crowd["title"] == "S&P 500 futures positioning"
+    assert crowd["rows"] == [["Asset mgrs", "24"], ["Leveraged", "80"], ["Dealers", "50"], ["Small", "77"]]
+    assert crowd["bands"] == 8 and "report of 2026-09-08" in crowd["note"]  # the two crowded zones, drawn on every row
+    assert crowd["lead"] == "None of the 4 classes sits in a crowded zone." and crowd["why"] is None
+    import copy
+    hot = copy.deepcopy(FLOWS)
+    cls = hot["positioning"]["contracts"][0]["classes"]
+    cls["asset_managers"]["percentile"], cls["leveraged_funds"]["percentile"] = 5.9, 98.0
+    crowd = _chart_probe(tmp_path, capsys, "crowding", hot, chart_note="Two classes sit at the ends of their year.")
+    assert crowd["rows"][:2] == [["Asset mgrs", "6 · crowded"], ["Leveraged", "98 · crowded"]]
+    assert crowd["lead"] == "2 of 4 classes sit in a crowded zone: asset managers (6) and leveraged funds (98)."
+    assert crowd["why"] == "Two classes sit at the ends of their year."
+    sectors = _chart_probe(tmp_path, capsys, "sector_moves")
+    assert sectors["rows"] == [["XLK", "+2.10%"], ["XLE", "-0.40%"]]  # largest gain to largest loss
+    assert sectors["lead"] == "1 of 2 sector funds rose. Best: XLK (+2.10%). Worst: XLE (-0.40%)."
+    gaps = _chart_probe(tmp_path, capsys, "trend_gaps")
+    assert gaps["rows"] == [["200-week", "+27.45%"], ["100-week", "+10.17%"], ["50-week", "+3.18%"]]
+    assert gaps["lead"] == "200-week extended (percentile 80) · 100-week neutral (percentile 57) · 50-week neutral (percentile 40)."
+    assert gaps["bands"] == 1 and gaps["ticks"] == 3  # only the 200-week carries its neutral zone here
+    assert _chart_probe(tmp_path, capsys, "yield_moves") is None  # one yield is too few: the figure is removed
+
+
+def test_market_chart_note_needs_a_chart_and_keeps_to_its_limit(tmp_path, capsys) -> None:
+    rc, res, _ = _render_market_card(tmp_path, capsys, {**MARKET_SUMMARY, "chart_note": "Why this chart."})
+    assert rc == 2 and "chart_note needs a chart" in res["error"]
+    rc, res, _ = _render_market_chart(tmp_path, capsys, "crowding", chart_note=" ".join(["word"] * 26))
+    assert rc == 2 and "chart_note is 26 words" in res["error"]
+
+
+def test_market_futures_tile_label_is_one_term(tmp_path, capsys) -> None:
+    rc, _, out = _render_market_chart(tmp_path, capsys, "crowding")
+    html = out.read_text()
+    assert rc == 0 and "FA.term('s&p futures percentile', 'S&P futures percentile')" in html and "'s&p futures percentile': [" in html
+
+
+_TIP_PROBE = """<script>addEventListener('load', () => setTimeout(() => {
+  const hit = document.querySelector('#trend-chart svg #hit'), r = hit.getBoundingClientRect();
+  hit.dispatchEvent(new MouseEvent('mousemove', {clientX: r.right - 2, clientY: r.top + r.height / 2, bubbles: true}));
+  const tip = document.querySelector('.tip');
+  const s = document.createElement('script'); s.type = 'application/json'; s.id = 'probe';
+  s.textContent = JSON.stringify({axis: [...document.querySelectorAll('#trend-chart svg text[text-anchor="middle"]')].map(n => n.textContent), head: tip ? tip.firstElementChild.textContent : null, left: tip ? tip.getBoundingClientRect().left : null, right: tip ? tip.getBoundingClientRect().right : null, vw: document.documentElement.clientWidth});
+  document.body.appendChild(s);
+}, 200));</script>"""
+
+
+@requires_chrome
+def test_chart_tooltip_names_the_nearest_close_in_full_and_stays_on_screen(tmp_path, capsys) -> None:
+    import re
+    import subprocess
+
+    from page_dom import CHROME
+
+    (tmp_path / "indices.json").write_text(json.dumps(INDICES))
+    rc, _ = run_json(load_script("market-analysis/scripts/render.py"), ["--indices", str(tmp_path / "indices.json"), "--out", str(tmp_path / "p.html")], capsys)
+    assert rc == 0
+    (tmp_path / "probe.html").write_text("<!doctype html><meta charset=utf8>" + (tmp_path / "p.html").read_text() + _TIP_PROBE)
+    dom = subprocess.run([CHROME, "--headless=new", "--disable-gpu", "--no-sandbox", "--window-size=900,1400", "--virtual-time-budget=4000", "--dump-dom", (tmp_path / "probe.html").as_uri()], capture_output=True, text=True, timeout=90).stdout
+    out = json.loads(re.search(r'<script type="application/json" id="probe">(.*?)</script>', dom, re.S).group(1))
+    assert out["axis"] == ["Aug 2026", "Sep 2026"]  # under two years: month and full year, never "Sep 26"
+    assert out["head"] == "Sep 4, 2026"  # the last weekly close, with its day and year, not the axis label "Sep 26"
+    assert out["left"] >= 0 and out["right"] <= out["vw"]  # flipped to the cursor's left at the right edge
+
+
+@requires_chrome
+def test_multi_year_chart_labels_each_year(tmp_path, capsys) -> None:
+    import re
+    import subprocess
+
+    from page_dom import CHROME
+
+    from datetime import date, timedelta
+
+    weeks = [date(2026, 9, 4) - timedelta(days=7 * i) for i in range(259, -1, -1)]  # five years of Fridays
+    series = [{"date": d.isoformat(), "close": 4000.0 + 10 * i, "wma_50": 3900.0 + 10 * i, "wma_100": 3800.0 + 10 * i, "wma_200": 3600.0 + 10 * i} for i, d in enumerate(weeks)]
+    (tmp_path / "indices.json").write_text(json.dumps({**INDICES, "trend": {**INDICES["trend"], "series": series}}))
+    rc, _ = run_json(load_script("market-analysis/scripts/render.py"), ["--indices", str(tmp_path / "indices.json"), "--out", str(tmp_path / "p.html")], capsys)
+    assert rc == 0
+    (tmp_path / "probe.html").write_text("<!doctype html><meta charset=utf8>" + (tmp_path / "p.html").read_text() + _TIP_PROBE)
+    dom = subprocess.run([CHROME, "--headless=new", "--disable-gpu", "--no-sandbox", "--window-size=900,1400", "--virtual-time-budget=4000", "--dump-dom", (tmp_path / "probe.html").as_uri()], capture_output=True, text=True, timeout=90).stdout
+    axis = json.loads(re.search(r'<script type="application/json" id="probe">(.*?)</script>', dom, re.S).group(1))["axis"]
+    assert axis == ["2022", "2023", "2024", "2025", "2026"]  # one label per year, each on its January 1

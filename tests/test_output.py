@@ -130,7 +130,7 @@ def _shared_text(name: str) -> str:
 # the ones nobody enumerated. The value the failure prints is for a maintainer to paste AFTER the
 # review it names, not instead of it.
 SHARED_CSS_SHA256 = "6e2f8a31491904852ab43d52750e6c617b0d8fc399a652b68305cdd7d2a11bba"
-SHARED_JS_SHA256 = "0456b82a887d1d72137417d0bfb749ecac22d7a1dd99d9b9c3ef02de986bc165"
+SHARED_JS_SHA256 = "eb99ba57833ea829c46a4d86d926e12f6294704dd480bbfb3a0d17d706da5064"
 SHARED_GLOSSARY_SHA256 = "5f9580e6bdcc5364f207f45310fb7fd8b71bacb0469744e254f002c1f802c80d"
 
 

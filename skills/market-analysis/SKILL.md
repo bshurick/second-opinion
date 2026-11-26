@@ -75,7 +75,7 @@ One self-contained HTML page for the Artifact tool, light and dark themes, no ex
 - A sectors table joining sector ETF moves, sector futures positioning and sector ETF flows. Clicking a sector opens its fund's ten largest holdings (`--holdings`) and its price chart (`--history`).
 - The fund flow bars, money in to the right of a centre line and money out to the left, with the dates the window covers, the money-fund line, and the short-volume table when present.
 - Flags and the notes.
-- With `--summary`, a headline analysis card at the top. The model writes its text and the script holds it to the limits.
+- With `--summary`, a headline analysis card under the tiles, with an optional chart beside its text. The model writes its text and picks the chart, and the script holds it to the limits.
 
 **How to read the numbers.** These are context, not timing advice.
 
@@ -191,9 +191,19 @@ Use this case for "who is buying", "is money leaving equities", "are institution
 
 **The headline analysis**
 
-A small card at the top of the page: a headline, "What stands out", "What to look into", and a folded "What this means for you". The file is `{"headline", "stands_out", "look_into", "for_you"}`, where `for_you` is a list such as `[{"topic": "Cash", "text": "..."}]`.
+A small card under the stat tiles: a headline, "What stands out", "What to look into", a folded "What this means for you" and an optional chart to the right. The file is `{"headline", "stands_out", "look_into", "for_you", "chart", "chart_note"}`, where `for_you` is a list such as `[{"topic": "Cash", "text": "..."}]`.
 
 - Limits, which `render.py` enforces: `headline` 20 words, `stands_out` 90 and `look_into` 90. `for_you` is up to five `{"topic", "text"}` points, each `topic` up to 4 words and each `text` up to 70. `for_you` is optional and the rest are required.
+- `chart` is optional, the one chart beside the text, picked to show the headline's point. Leave it out when none fits.
+- `chart_note` is optional and needs `chart`: one line of up to 25 words saying why this chart shows the headline's point, such as "Three of the four trader classes sit at the edge of their year." The chart adds its own line reading the figures.
+
+| `chart` | What it draws | Fits a headline about |
+|---|---|---|
+| `index_moves` | The week's change in the S&P 500, Nasdaq, Dow and Russell 2000 | A broad move, or large caps against small caps |
+| `sector_moves` | Each sector fund's week change, largest gain to largest loss | A rotation, or one sector leading or lagging |
+| `crowding` | Each trader class's S&P 500 futures percentile on a 0-100 scale, crowded ends shaded | Crowded positioning |
+| `trend_gaps` | The 200-, 100- and 50-week gaps, each with its neutral zone and median | Where the index sits against its trend |
+| `yield_moves` | The week's change in the 13-week, 5-, 10- and 30-year Treasury yields, in basis points | A move in rates |
 - Links take the form `[Sectors](sec-card)`, in `look_into` only, to these ids: `trend-card`, `rates-card`, `idx-card`, `pos-card`, `sec-card`, `etf-card`, `cash-card`, `short-card`, `flags-section`.
 - Every number comes from this run's script output, quoted as the script gives it.
 - Lead with what is unusual today, not a tour of the page. Say plainly when nothing stands out.

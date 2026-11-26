@@ -86,46 +86,10 @@ BODY = """
 # shows figures already in the snapshot (or, for vs_market, the history); none forecasts anything.
 CHARTS = ("day_split", "top_movers", "vs_market", "mix")
 
-CHART_CSS = """<style>
-.summary-card .sum-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:28px;align-items:start}
-@media (max-width:900px){.summary-card .sum-grid{grid-template-columns:1fr}}
-.sum-chart{margin:0;padding:14px 16px;border:1px solid var(--ring);border-radius:6px}
-.sc-title{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;font-weight:600}
-.summary-card .sum-chart .sc-note{font-size:12px;color:var(--muted);margin:10px 0 0}
-.sc-row{display:grid;grid-template-columns:72px minmax(0,1fr) 76px;align-items:center;gap:8px;font-size:12.5px;margin:5px 0;color:var(--ink2)}
-.sc-row .lab{color:var(--ink);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sc-row .val{text-align:right;font-variant-numeric:tabular-nums}
-.sc-track{position:relative;height:14px}
-.sc-axis{position:absolute;top:-3px;bottom:-3px;width:1px;background:var(--ring)}
-.sc-bar{position:absolute;top:0;height:14px;border-radius:2px}
-.sc-row.net .lab,.sc-row.net .val{font-weight:700;color:var(--ink)}
-.sc-sep{border-top:1px solid var(--ring);margin:8px 0}
-.sc-stack{display:flex;height:22px;border-radius:3px;overflow:hidden;margin:4px 0 12px}
-.sc-key{display:grid;grid-template-columns:12px 1fr auto;gap:6px 8px;font-size:12.5px;color:var(--ink2);align-items:center}
-.sc-key i{width:10px;height:10px;border-radius:2px;display:block}
-.sc-key .val{font-variant-numeric:tabular-nums}
-</style>
-"""
-
 CHART_SCRIPT = r"""
 (() => {
   const D = window.DATA, F = FA, T = D.totals || {}, P = D.positions || [], H = D.history || {};
-  const g = id => document.getElementById(id), fig = g('sum-chart');
-  if (!fig) return;
-  const num = v => typeof v === 'number' && isFinite(v);
-  // diverging bars on one zero axis; a row may start where the one above ended (from)
-  const rows = (items, pct) => {
-    const ends = items.filter(r => !r.sep).flatMap(r => [r.from || 0, (r.from || 0) + r.v]);
-    const lo = Math.min(0, ...ends), hi = Math.max(0, ...ends), span = (hi - lo) || 1, x = v => (v - lo) / span * 100;
-    return items.map(r => {
-      if (r.sep) return '<div class="sc-sep"></div>';
-      const a = r.from || 0, b = a + r.v, L = Math.min(x(a), x(b)), W = Math.max(Math.abs(x(b) - x(a)), 0.8);
-      const col = r.color || (r.v >= 0 ? 'var(--up)' : 'var(--down)');
-      return `<div class="sc-row${r.net ? ' net' : ''}" title="${F.esc(r.tip || '')}"><span class="lab">${F.esc(r.label)}</span>` +
-        `<span class="sc-track"><span class="sc-axis" style="left:${x(0)}%"></span><span class="sc-bar" style="left:${L}%;width:${W}%;background:${col}"></span></span>` +
-        `<span class="val">${pct ? F.pct(r.v, 2, true) : F.moneyS(r.v)}</span></div>`;
-    }).join('');
-  };
+  const num = SC.num, rows = SC.rows, pctFmt = v => F.pct(v, 2, true);
   const charts = {
     day_split: () => {
       const S = (D.concentration || {}).single_stock || {};
@@ -150,7 +114,7 @@ CHART_SCRIPT = r"""
       let day = '';
       (H.benchmarks || []).forEach(b => { const p = b.points || []; if (p.length > 1) { day = p[p.length - 1][0]; it.push({label: b.symbol || b.label, v: p[p.length - 1][1] / p[p.length - 2][1] - 1, color: 'var(--muted)', tip: b.label}); } });
       if (it.length < 2) return null;
-      return {title: 'Your day against the market', html: rows(it, true), note: `SPY, QQQ and DIA track the S&P 500, Nasdaq and Dow; their close on ${day} against the one before.`};
+      return {title: 'Your day against the market', html: rows(it, pctFmt), note: `SPY, QQQ and DIA track the S&P 500, Nasdaq and Dow; their close on ${day} against the one before.`};
     },
     mix: () => {
       const B = (D.allocation || {}).buckets || {};
@@ -161,9 +125,7 @@ CHART_SCRIPT = r"""
         note: 'Share of total value across every connected account.'};
     },
   };
-  const make = charts[fig.dataset.chart], r = make ? make() : null;
-  if (!r) { fig.remove(); return; }
-  g('sc-title').textContent = r.title; g('sc-body').innerHTML = r.html; g('sc-note').textContent = r.note || '';
+  SC.mount(charts);
 })();
 """
 
@@ -521,8 +483,8 @@ def build(snapshot: dict, summary: dict | None = None, history: dict | None = No
     body = BODY.replace("{{SUMMARY}}", summary_card.card_html(summary))
     script = SCRIPT
     if chart:
-        body = CHART_CSS + body
-        script = SCRIPT + CHART_SCRIPT
+        body = summary_card.CHART_CSS + body
+        script = SCRIPT + summary_card.CHART_JS + CHART_SCRIPT
     if history is None:
         return page.render(TITLE, snapshot, body, script)
     if not isinstance(history, dict) or not isinstance(history.get("series"), list):

@@ -76,6 +76,10 @@ Skills that produce a report publish an interactive page as a private Artifact o
 
 ![Retirement projection for a sample household](docs/images/retirement.png)
 
+**Market flows**: futures positioning by trader class, sector fund flows, the S&P 500 against its long averages
+
+![Market flows page with invented positioning and prices](docs/images/market-flows.png)
+
 **Rebalancing plan**: drift against bands, contribution routing, tax-aware trade list
 
 ![Rebalancing plan for a sample household](docs/images/rebalancing.png)

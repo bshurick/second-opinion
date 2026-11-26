@@ -6,7 +6,7 @@ Turns a tax-aware deep review into one self-contained HTML page for the Artifact
     {"as_of", "headline" (25 words at most), "summary", "plans": <tax_plans.py output>,
      "missing_roles": [...], "notes": [...]}
 
-Sections: the disclaimer line, the headline, stat tiles, Plans compared, Year by year, What decides
+Sections: the disclaimer line, stat tiles, the headline, Plans compared, Year by year, What decides
 it, Rules behind the math, Flags, Not modelled. Prints {"out", "title", "plans", "flags"}. Exit 2 on
 a missing headline or plans, a headline over the limit, or one of the verbs the compliance rules
 forbid in the headline, summary, notes or a plan's name or why. Every figure comes from tax_plans.py;
@@ -41,8 +41,8 @@ h3.pl{font-size:13px;margin:12px 0 2px}.nm{font-size:13px;margin:4px 0 0;padding
 <h1>Tax plan comparison</h1>
 <p class="sub" id="sub"></p>
 <p class="dis">Estimate for planning at the stated rates and assumptions; not tax advice or a return.</p>
-<div class="lead"><p class="h" id="headline"></p><p class="s" id="summary"></p></div>
 <div class="tiles" id="tiles"></div>
+<div class="lead"><p class="h" id="headline"></p><p class="s" id="summary"></p></div>
 <section class="card" id="pl-card"><h2>Plans compared</h2><p class="sub">Each plan against doing nothing, by the same end date. Highest after-tax wealth first.</p><div class="scroll" id="pl"></div></section>
 <section class="card" id="yr-card"><h2>Year by year</h2><p class="sub">The tax each plan runs up. Activity is the tax above what income and sales already made would owe, which every plan pays.</p><div class="scroll" id="yr"></div></section>
 <section class="card" id="te-card"><h2>What decides it</h2><p class="sub" id="te-sub"></p><div class="scroll" id="te"></div></section>

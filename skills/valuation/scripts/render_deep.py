@@ -129,8 +129,8 @@ table.plain{border-collapse:collapse;width:100%;font-size:13px}table.plain th,ta
 <h1 id="h1">Deep valuation</h1>
 <p class="sub" id="sub"></p>
 <div id="intro"></div>
-<div id="about"></div>
 <div class="tiles" id="headline"></div>
+<div id="about"></div>
 <section class="card wrap" id="sc-card"><h2>Scenarios</h2><p class="sub">Each row is one possible future for the business, what a share is worth if it happens, and what buying at today’s price would earn a year.</p><div class="twrap" id="sc"></div><p class="sub" id="implied" style="margin-top:12px"></p></section>
 <section class="card" id="strip-card"><h2>Price against the scenarios</h2><p class="sub">Where today’s price sits among the values the scenarios give.</p><div id="strip"></div></section>
 <div id="blocks"></div>

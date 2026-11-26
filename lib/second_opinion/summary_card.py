@@ -15,7 +15,11 @@ string is still read as one unlabelled paragraph.
 
 ``chart`` is optional: the name of one chart the page draws beside the text. A page declares
 which charts it offers by passing ``charts`` to ``load``; a page that passes none rejects the key,
-and a card with no chart is text alone.
+and a card with no chart is text alone. ``chart_note`` is optional and needs ``chart``: one short line,
+written by the model, saying why this chart shows the headline's point. ``CHART_CSS`` and ``CHART_JS`` are the shared pieces a page
+adds when the card names one: the layout, diverging bars (``SC.rows``), markers on a scale
+(``SC.marks``) and ``SC.mount``, which draws the named chart or removes the figure when its data is
+missing. The page supplies the chart definitions, so each chart reads only that page's data.
 """
 from __future__ import annotations
 
@@ -39,8 +43,10 @@ PARAGRAPH_WORDS = 90
 FOR_YOU_WORDS = 70  # per paragraph: the plain string, or each point's text
 FOR_YOU_POINTS = 5
 FOR_YOU_TOPIC_WORDS = 4
+CHART_NOTE_WORDS = 25
 WORD_LIMITS = {
     "headline": HEADLINE_WORDS,
+    "chart_note": CHART_NOTE_WORDS,
     "stands_out": PARAGRAPH_WORDS,
     "look_into": PARAGRAPH_WORDS,
     "for_you": FOR_YOU_WORDS,
@@ -112,6 +118,8 @@ def load(path: str, targets: Iterable[str], charts: Iterable[str] = ()) -> dict:
             raise InvalidInput("summary chart is not offered on this page")
         if summary["chart"] not in offered:
             raise InvalidInput(f"summary chart {summary['chart']!r} is not one of: {', '.join(offered)}")
+    if "chart_note" in summary and "chart" not in summary:
+        raise InvalidInput("summary chart_note needs a chart")
     unknown = sorted(set(summary) - set(WORD_LIMITS) - {"chart"})
     if unknown:
         raise InvalidInput(f"summary has unknown keys: {', '.join(unknown)}")
@@ -175,7 +183,9 @@ def card_html(summary: dict | None) -> str:
         text = (
             f'<div class="sum-grid"><div class="sum-text">{text}</div>'
             f'<figure class="sum-chart" id="sum-chart" data-chart="{html.escape(chart, quote=True)}">'
-            '<figcaption class="sc-title" id="sc-title"></figcaption><div id="sc-body"></div>'
+            '<figcaption class="sc-title" id="sc-title"></figcaption>'
+            + (f'<p class="sc-why">{html.escape(summary["chart_note"])}</p>' if summary.get("chart_note") else "")
+            + '<div id="sc-body"></div><p class="sc-lead" id="sc-lead" hidden></p>'
             '<p class="sc-note" id="sc-note"></p></figure></div>'
         )
     return f'<section class="card summary-card" data-help="none" id="summary-card">{text}</section>'
@@ -192,3 +202,76 @@ def full_read_today(now: datetime | None = None) -> bool:
     except (OSError, ValueError, KeyError, TypeError):
         return False
     return read_at.astimezone().date() == (now or datetime.now()).astimezone().date()
+
+
+CHART_CSS = """<style>
+.summary-card .sum-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:28px;align-items:start}
+@media (max-width:900px){.summary-card .sum-grid{grid-template-columns:1fr}}
+.sum-chart{margin:0;padding:14px 16px;border:1px solid var(--ring);border-radius:6px}
+.sc-title{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;font-weight:600}
+.summary-card .sum-chart .sc-note{font-size:12px;color:var(--muted);margin:10px 0 0}
+.summary-card .sum-chart .sc-why{font-size:12.5px;color:var(--ink2);margin:-4px 0 10px}
+.summary-card .sum-chart .sc-lead{font-size:12.5px;color:var(--ink);margin:10px 0 0}
+.sc-row{display:grid;grid-template-columns:72px minmax(0,1fr) 76px;align-items:center;gap:8px;font-size:12.5px;margin:5px 0;color:var(--ink2)}
+.sc-row.mk{grid-template-columns:72px minmax(0,1fr) 96px}
+.sc-row .val{white-space:nowrap}
+.sc-row .lab{color:var(--ink);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-row .val{text-align:right;font-variant-numeric:tabular-nums}
+.sc-track{position:relative;height:14px}
+.sc-axis{position:absolute;top:-3px;bottom:-3px;width:1px;background:var(--ring)}
+.sc-bar{position:absolute;top:0;height:14px;border-radius:2px}
+.sc-rail{position:absolute;top:6px;height:2px;left:0;right:0;background:var(--grid)}
+.sc-band{position:absolute;top:2px;height:10px;border-radius:2px;opacity:.28}
+.sc-tick{position:absolute;top:0;height:14px;width:2px;background:var(--muted)}
+.sc-dot{position:absolute;top:2px;width:10px;height:10px;margin-left:-5px;border-radius:50%;border:2px solid var(--surface);box-sizing:content-box;margin-top:-2px}
+.sc-row.net .lab,.sc-row.net .val{font-weight:700;color:var(--ink)}
+.sc-sep{border-top:1px solid var(--ring);margin:8px 0}
+.sc-stack{display:flex;height:22px;border-radius:3px;overflow:hidden;margin:4px 0 12px}
+.sc-key{display:grid;grid-template-columns:12px 1fr auto;gap:6px 8px;font-size:12.5px;color:var(--ink2);align-items:center}
+.sc-key i{width:10px;height:10px;border-radius:2px;display:block}
+.sc-key .val{font-variant-numeric:tabular-nums}
+</style>
+"""
+
+# Drawing helpers for the card's chart. They format and place figures the page already holds; none
+# computes a statistic. A chart definition returns {title, html, lead?, note} or null when its data is
+# missing; lead is one line reading the figures drawn (which rows sit where), note says how to read them.
+CHART_JS = r"""
+const SC = (() => {
+  const F = FA, esc = F.esc, num = v => typeof v === 'number' && isFinite(v);
+  const row = (r, track, val, cls = '') => `<div class="sc-row${r.net ? ' net' : ''}${cls}" title="${esc(r.tip || '')}"><span class="lab">${esc(r.label)}</span>` +
+    `<span class="sc-track">${track}</span><span class="val">${val}</span></div>`;
+  // diverging bars on one zero axis; a row may start where the one above ended (from)
+  const rows = (items, fmt = F.moneyS) => {
+    const ends = items.filter(r => !r.sep).flatMap(r => [r.from || 0, (r.from || 0) + r.v]);
+    const lo = Math.min(0, ...ends), hi = Math.max(0, ...ends), span = (hi - lo) || 1, x = v => (v - lo) / span * 100;
+    return items.map(r => {
+      if (r.sep) return '<div class="sc-sep"></div>';
+      const a = r.from || 0, b = a + r.v, L = Math.min(x(a), x(b)), W = Math.max(Math.abs(x(b) - x(a)), 0.8);
+      const col = r.color || (r.v >= 0 ? 'var(--up)' : 'var(--down)');
+      return row(r, `<span class="sc-axis" style="left:${x(0)}%"></span><span class="sc-bar" style="left:${L}%;width:${W}%;background:${col}"></span>`, fmt(r.v));
+    }).join('');
+  };
+  // one marker per row on a shared scale [lo, hi], with optional shaded bands ([from, to, color]) and a tick
+  const marks = (items, {lo, hi, fmt, bands = []}) => {
+    const ends = items.flatMap(r => [r.v, ...(r.bands || []).flatMap(b => [b[0], b[1]]), ...(num(r.tick) ? [r.tick] : [])]).filter(num);
+    const a = num(lo) ? lo : Math.min(...ends), b = num(hi) ? hi : Math.max(...ends), span = (b - a) || 1;
+    const x = v => Math.max(0, Math.min(100, (v - a) / span * 100));
+    return items.map(r => {
+      const shade = [...bands, ...(r.bands || [])].map(([p, q, c]) => `<span class="sc-band" style="left:${x(p)}%;width:${Math.max(x(q) - x(p), 0.8)}%;background:${c || 'var(--warn)'}"></span>`).join('');
+      const tick = num(r.tick) ? `<span class="sc-tick" style="left:${x(r.tick)}%"></span>` : '';
+      return row(r, `<span class="sc-rail"></span>${shade}${tick}<span class="sc-dot" style="left:${x(r.v)}%;background:${r.color || 'var(--s1)'}"></span>`, r.val ?? fmt(r.v), ' mk');
+    }).join('');
+  };
+  // draws the chart the card names; a chart whose data is missing removes the figure
+  const mount = charts => {
+    const g = id => document.getElementById(id), fig = g('sum-chart');
+    if (!fig) return;
+    const make = charts[fig.dataset.chart], r = make ? make() : null;
+    if (!r) { fig.remove(); return; }
+    g('sc-title').textContent = r.title; g('sc-body').innerHTML = r.html; g('sc-note').textContent = r.note || '';
+    const lead = g('sc-lead'); lead.textContent = r.lead || ''; lead.hidden = !r.lead;
+  };
+  return {num, rows, marks, mount};
+})();
+"""
